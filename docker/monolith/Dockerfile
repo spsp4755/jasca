@@ -56,6 +56,8 @@ RUN pnpm -r run prisma:generate
 RUN pnpm --filter api build
 # Build Web
 RUN pnpm --filter web build
+# Compile seed.ts to JavaScript for offline execution
+RUN npx tsc apps/api/prisma/seed.ts --outDir apps/api/prisma --esModuleInterop --resolveJsonModule --skipLibCheck
 
 # RUNNER STAGE
 FROM base AS runner
@@ -68,6 +70,8 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+# Copy compiled seed.js
+COPY --from=builder /app/apps/api/prisma/seed.js ./apps/api/prisma/seed.js
 
 # Copy Web artifacts (Standalone)
 # Next.js standalone folder puts files in a structure like .next/standalone/apps/web/server.js
