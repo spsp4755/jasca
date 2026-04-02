@@ -11,18 +11,21 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { VulnerabilitiesService } from './vulnerabilities.service';
 import { Severity, VulnStatus } from '@prisma/client';
 
 @ApiTags('Vulnerabilities')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('vulnerabilities')
 export class VulnerabilitiesController {
     constructor(private readonly vulnService: VulnerabilitiesService) { }
 
     @Get()
+    @Permissions('vuln:read')
     @ApiOperation({ summary: 'Get all vulnerabilities with filters' })
     @ApiQuery({ name: 'projectId', required: false })
     @ApiQuery({ name: 'severity', required: false, isArray: true })
@@ -71,24 +74,28 @@ export class VulnerabilitiesController {
 
 
     @Get(':id')
+    @Permissions('vuln:read')
     @ApiOperation({ summary: 'Get vulnerability by ID' })
     async findById(@Param('id') id: string) {
         return this.vulnService.findById(id);
     }
 
     @Get('cve/:cveId')
+    @Permissions('vuln:read')
     @ApiOperation({ summary: 'Get CVE details' })
     async findByCveId(@Param('cveId') cveId: string) {
         return this.vulnService.findByCveId(cveId);
     }
 
     @Get('cve/:cveId/affected')
+    @Permissions('vuln:read')
     @ApiOperation({ summary: 'Get all services affected by a CVE' })
     async findAffected(@Param('cveId') cveId: string) {
         return this.vulnService.findAffectedByVuln(cveId);
     }
 
     @Put(':id/status')
+    @Permissions('vuln:update')
     @ApiOperation({ summary: 'Update vulnerability status' })
     async updateStatus(
         @Param('id') id: string,
@@ -98,19 +105,21 @@ export class VulnerabilitiesController {
         if (!user?.id) {
             throw new BadRequestException('User authentication required');
         }
-        return this.vulnService.updateStatus(id, body.status, user.id, user.role);
+        return this.vulnService.updateStatus(id, body.status, user.id, user.roles?.[0]?.role || user.role);
     }
 
     @Get(':id/available-transitions')
+    @Permissions('vuln:read')
     @ApiOperation({ summary: 'Get available status transitions for a vulnerability' })
     async getAvailableTransitions(
         @Param('id') id: string,
         @CurrentUser() user: any,
     ) {
-        return this.vulnService.getAvailableTransitions(id, user.role);
+        return this.vulnService.getAvailableTransitions(id, user.roles?.[0]?.role || user.role);
     }
 
     @Put(':id/assign')
+    @Permissions('vuln:assign')
     @ApiOperation({ summary: 'Assign vulnerability to a user' })
     async assign(
         @Param('id') id: string,
@@ -120,6 +129,7 @@ export class VulnerabilitiesController {
     }
 
     @Post(':id/comments')
+    @Permissions('vuln:update')
     @ApiOperation({ summary: 'Add comment to vulnerability' })
     async addComment(
         @Param('id') id: string,
@@ -133,6 +143,7 @@ export class VulnerabilitiesController {
     }
 
     @Get(':id/history')
+    @Permissions('vuln:read')
     @ApiOperation({ summary: 'Get vulnerability history (status changes (& comments)' })
     async getHistory(@Param('id') id: string) {
         return this.vulnService.getHistory(id);

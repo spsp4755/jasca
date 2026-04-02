@@ -34,6 +34,22 @@ export class UploadScanDto {
     @IsOptional()
     organizationId?: string;
 
+    @ApiPropertyOptional({
+        description: 'Display name shown in scan list when artifact metadata is unclear',
+        example: 'Production API image',
+    })
+    @IsString()
+    @IsOptional()
+    displayName?: string;
+
+    @ApiPropertyOptional({
+        description: 'Free-form description to distinguish uploads with similar or unknown targets',
+        example: 'April release candidate uploaded from isolated build pipeline',
+    })
+    @IsString()
+    @IsOptional()
+    description?: string;
+
     @ApiPropertyOptional({ example: 'registry.example.com/app:v1.0.0' })
     @IsString()
     @IsOptional()

@@ -12,8 +12,8 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PoliciesService } from './policies.service';
 import { PolicyEngineService } from './policy-engine.service';
 import { CreatePolicyDto, CreatePolicyRuleDto } from './dto/create-policy.dto';
@@ -29,6 +29,7 @@ export class PoliciesController {
     ) { }
 
     @Get()
+    @Permissions('policy:read')
     @ApiOperation({ summary: 'Get all policies' })
     @ApiQuery({ name: 'organizationId', required: false })
     @ApiQuery({ name: 'projectId', required: false })
@@ -41,6 +42,7 @@ export class PoliciesController {
 
     // Exceptions - must be before :id route to avoid being caught by it
     @Get('exceptions')
+    @Permissions('exception:read')
     @ApiOperation({ summary: 'Get all exceptions' })
     @ApiQuery({ name: 'status', required: false })
     async findExceptions(@Query('status') status?: string) {
@@ -48,6 +50,7 @@ export class PoliciesController {
     }
 
     @Get(':id')
+    @Permissions('policy:read')
     @ApiOperation({ summary: 'Get policy by ID' })
     async findById(@Param('id') id: string) {
         return this.policiesService.findById(id);
@@ -55,21 +58,21 @@ export class PoliciesController {
 
 
     @Post()
-    @Roles('ORG_ADMIN', 'PROJECT_ADMIN')
+    @Permissions('policy:create')
     @ApiOperation({ summary: 'Create a new policy' })
     async create(@Body() dto: CreatePolicyDto) {
         return this.policiesService.create(dto);
     }
 
     @Put(':id')
-    @Roles('ORG_ADMIN', 'PROJECT_ADMIN')
+    @Permissions('policy:update')
     @ApiOperation({ summary: 'Update a policy' })
     async update(@Param('id') id: string, @Body() dto: Partial<CreatePolicyDto>) {
         return this.policiesService.update(id, dto);
     }
 
     @Delete(':id')
-    @Roles('ORG_ADMIN')
+    @Permissions('policy:delete')
     @ApiOperation({ summary: 'Delete a policy' })
     async delete(@Param('id') id: string) {
         return this.policiesService.delete(id);
@@ -77,14 +80,14 @@ export class PoliciesController {
 
     // Policy Rules
     @Post(':id/rules')
-    @Roles('ORG_ADMIN', 'PROJECT_ADMIN')
+    @Permissions('policy:update')
     @ApiOperation({ summary: 'Add rule to policy' })
     async addRule(@Param('id') id: string, @Body() rule: CreatePolicyRuleDto) {
         return this.policiesService.addRule(id, rule);
     }
 
     @Delete('rules/:ruleId')
-    @Roles('ORG_ADMIN', 'PROJECT_ADMIN')
+    @Permissions('policy:update')
     @ApiOperation({ summary: 'Remove rule from policy' })
     async removeRule(@Param('ruleId') ruleId: string) {
         return this.policiesService.removeRule(ruleId);
@@ -92,13 +95,14 @@ export class PoliciesController {
 
     // Policy Evaluation
     @Post('evaluate')
+    @Permissions('policy:read')
     @ApiOperation({ summary: 'Evaluate policies against a scan result' })
     async evaluate(@Body() body: { projectId: string; scanResultId: string }) {
         return this.policyEngine.evaluate(body.projectId, body.scanResultId);
     }
 
     @Post(':id/exceptions')
-
+    @Permissions('exception:request')
     @ApiOperation({ summary: 'Request an exception' })
     async requestException(
         @Param('id') policyId: string,
@@ -122,14 +126,14 @@ export class PoliciesController {
     }
 
     @Put('exceptions/:id/approve')
-    @Roles('ORG_ADMIN', 'PROJECT_ADMIN')
+    @Permissions('exception:approve')
     @ApiOperation({ summary: 'Approve an exception' })
     async approveException(@Param('id') id: string, @CurrentUser() user: any) {
         return this.policiesService.approveException(id, user.id);
     }
 
     @Put('exceptions/:id/reject')
-    @Roles('ORG_ADMIN', 'PROJECT_ADMIN')
+    @Permissions('exception:approve')
     @ApiOperation({ summary: 'Reject an exception' })
     async rejectException(@Param('id') id: string, @CurrentUser() user: any) {
         return this.policiesService.rejectException(id, user.id);

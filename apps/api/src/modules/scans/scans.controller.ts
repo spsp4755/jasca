@@ -8,12 +8,12 @@ import {
     Query,
     UseGuards,
     UseInterceptors,
-    UploadedFile,
+    UploadedFiles,
     BadRequestException,
     Req,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import {
     ApiTags,
     ApiBearerAuth,
@@ -25,7 +25,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ScansService } from './scans.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
 
@@ -35,7 +35,8 @@ export class ScansController {
     constructor(private readonly scansService: ScansService) { }
 
     @Get()
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Permissions('scan:read')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Get all scan results' })
     @ApiQuery({ name: 'projectId', required: false, description: 'Project ID - if not provided, projectName and organizationId in body will be used to find/create project' })
@@ -53,7 +54,8 @@ export class ScansController {
     }
 
     @Get(':id')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Permissions('scan:read')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Get scan result by ID' })
     async findById(@Param('id') id: string) {
@@ -66,13 +68,15 @@ export class ScansController {
      */
     @Post('upload')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN')
+    @Permissions('scan:create')
     @ApiBearerAuth()
     @ApiSecurity('api-key')
     @ApiOperation({ summary: 'Upload a Trivy scan result directly as JSON body' })
     @ApiQuery({ name: 'projectId', required: false, description: 'Project ID' })
     @ApiQuery({ name: 'projectName', required: false, description: 'Project name (auto-create if not exists)' })
     @ApiQuery({ name: 'organizationId', required: false, description: 'Organization ID for auto-create (auto-filled from API token)' })
+    @ApiQuery({ name: 'displayName', required: false, description: 'Display name to show when artifact metadata is unclear' })
+    @ApiQuery({ name: 'description', required: false, description: 'Description for distinguishing similar or unknown uploads' })
     @ApiQuery({ name: 'imageRef', required: false, description: 'Image reference' })
     @ApiQuery({ name: 'tag', required: false, description: 'Image tag' })
     @ApiBody({ description: 'Trivy JSON scan result' })
@@ -80,6 +84,8 @@ export class ScansController {
         @Query('projectId') projectId: string | undefined,
         @Query('projectName') projectName: string | undefined,
         @Query('organizationId') organizationIdParam: string | undefined,
+        @Query('displayName') displayName: string | undefined,
+        @Query('description') description: string | undefined,
         @Query('imageRef') imageRef: string | undefined,
         @Query('tag') tag: string | undefined,
         @Body() body: any,
@@ -95,6 +101,8 @@ export class ScansController {
             sourceType: 'TRIVY_JSON',
             projectName: projectName,
             organizationId: organizationId,
+            displayName,
+            description,
             imageRef: imageRef,
             tag: tag,
         };
@@ -124,20 +132,21 @@ export class ScansController {
      */
     @Post('upload/file')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN')
+    @Permissions('scan:create')
     @ApiBearerAuth()
     @ApiSecurity('api-key')
     @ApiOperation({ summary: 'Upload a Trivy scan result as multipart file' })
     @ApiQuery({ name: 'projectId', required: false, description: 'Project ID - if not provided, use projectName & organizationId in body' })
     @ApiConsumes('multipart/form-data')
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(AnyFilesInterceptor())
     async uploadFile(
         @Query('projectId') projectId: string | undefined,
         @Body() body: any,
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() files: Express.Multer.File[],
         @Req() req: Request,
     ) {
-        if (!file) {
+        const uploadedFiles = (files || []).filter((file) => ['file', 'files'].includes(file.fieldname));
+        if (uploadedFiles.length === 0) {
             throw new BadRequestException('No file uploaded');
         }
 
@@ -146,6 +155,8 @@ export class ScansController {
             sourceType: body.sourceType || 'TRIVY_JSON',
             projectName: body.projectName,
             organizationId: body.organizationId,
+            displayName: body.displayName,
+            description: body.description,
             imageRef: body.imageRef,
             imageDigest: body.imageDigest,
             tag: body.tag,
@@ -167,8 +178,20 @@ export class ScansController {
         const userAgent = req.headers['user-agent'] || 'Browser Upload';
         const uploadedById = (req as any).user?.id;
 
-        const rawResult = JSON.parse(file.buffer.toString('utf-8'));
-        return this.scansService.uploadScan(projectId, dto, rawResult, {
+        let entries: Array<{ fileName?: string; displayName?: string; description?: string }> | undefined;
+        if (body.entries) {
+            try {
+                const parsed = JSON.parse(body.entries);
+                if (!Array.isArray(parsed)) {
+                    throw new BadRequestException('entries must be an array');
+                }
+                entries = parsed;
+            } catch (error) {
+                throw new BadRequestException('entries must be valid JSON');
+            }
+        }
+
+        return this.scansService.uploadScanBatch(projectId, dto, uploadedFiles, entries, {
             uploaderIp,
             userAgent,
             uploadedById,
@@ -177,7 +200,7 @@ export class ScansController {
 
     @Post('upload/json')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN')
+    @Permissions('scan:create')
     @ApiBearerAuth()
     @ApiSecurity('api-key')
     @ApiOperation({ summary: 'Upload a Trivy scan result with metadata wrapper' })
@@ -208,7 +231,7 @@ export class ScansController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('PROJECT_ADMIN', 'ORG_ADMIN')
+    @Permissions('scan:delete')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Delete a scan result' })
     async delete(@Param('id') id: string) {
@@ -216,7 +239,8 @@ export class ScansController {
     }
 
     @Get(':id/compare/:compareId')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Permissions('scan:read')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Compare two scans and get diff' })
     async compareScan(

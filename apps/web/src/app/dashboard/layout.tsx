@@ -29,6 +29,7 @@ import { useHasMounted } from '@/hooks/use-has-mounted';
 import { Breadcrumb } from '@/components/breadcrumb';
 import { RecentProjects } from '@/components/recent-projects';
 import { ToastProvider } from '@/components/ui/toast';
+import { isAdminUser } from '@/lib/permissions';
 
 // Role types for navigation
 type NavRole = 'SYSTEM_ADMIN' | 'ORG_ADMIN' | 'SECURITY_ADMIN' | 'PROJECT_ADMIN' | 'DEVELOPER' | 'VIEWER';
@@ -94,20 +95,33 @@ export default function DashboardLayout({
         if (accessToken && refreshTokenParam) {
             // Store tokens from SSO callback
             setTokens(accessToken, refreshTokenParam);
-
-            // Decode JWT to get user info
-            try {
-                const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                setUser({
-                    id: payload.sub,
-                    email: payload.email,
-                    name: payload.email?.split('@')[0] || 'User',
-                    organizationId: payload.organizationId,
-                    roles: payload.roles || [],
+            authApi.getProfile()
+                .then((profile) => {
+                    setUser({
+                        id: profile.id,
+                        email: profile.email,
+                        name: profile.name || profile.email?.split('@')[0] || 'User',
+                        organizationId: profile.organization?.id || profile.organizationId,
+                        roles: profile.roles || (profile.role ? [profile.role] : []),
+                        permissions: profile.permissions || [],
+                    });
+                })
+                .catch((error) => {
+                    console.error('Failed to load profile after SSO login:', error);
+                    try {
+                        const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                        setUser({
+                            id: payload.sub,
+                            email: payload.email,
+                            name: payload.email?.split('@')[0] || 'User',
+                            organizationId: payload.organizationId,
+                            roles: payload.roles || [],
+                            permissions: payload.permissions || [],
+                        });
+                    } catch (decodeError) {
+                        console.error('Failed to decode JWT:', decodeError);
+                    }
                 });
-            } catch (e) {
-                console.error('Failed to decode JWT:', e);
-            }
 
             // Clean URL by removing token params
             const url = new URL(window.location.href);
@@ -240,7 +254,7 @@ export default function DashboardLayout({
                                 </Link>
                             )}
                             {/* Admin link - only for admin users */}
-                            {(userRoles.includes('SYSTEM_ADMIN') || userRoles.includes('ORG_ADMIN')) && (
+                            {isAdminUser(user) && (
                                 <Link
                                     href="/admin"
                                     className="flex items-center gap-2 px-3 py-2 text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 transition-colors rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 border border-purple-200 dark:border-purple-800"

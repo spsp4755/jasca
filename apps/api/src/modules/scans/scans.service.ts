@@ -38,8 +38,11 @@ export class ScansService {
         const transformedResults = results.map(scan => ({
             id: scan.id,
             projectId: scan.projectId,
-            targetName: scan.artifactName || scan.imageRef || 'Unknown',
+            targetName: scan.displayName || scan.artifactName || scan.imageRef || 'Unknown',
+            displayName: scan.displayName,
+            description: scan.description,
             scanType: scan.sourceType || 'UNKNOWN',
+            sourceType: scan.sourceType || 'UNKNOWN',
             status: scan.summary ? 'COMPLETED' : 'PENDING',
             startedAt: scan.scannedAt?.toISOString() || scan.createdAt.toISOString(),
             completedAt: scan.summary ? scan.createdAt.toISOString() : undefined,
@@ -47,6 +50,9 @@ export class ScansService {
             imageRef: scan.imageRef,
             imageDigest: scan.imageDigest,
             tag: scan.tag,
+            artifactName: scan.artifactName,
+            artifactType: scan.artifactType,
+            uploaderIp: scan.uploaderIp,
             summary: scan.summary ? {
                 critical: scan.summary.critical,
                 high: scan.summary.high,
@@ -93,8 +99,11 @@ export class ScansService {
         return {
             id: scan.id,
             projectId: scan.projectId,
-            targetName: scan.artifactName || scan.imageRef || 'Unknown',
+            targetName: scan.displayName || scan.artifactName || scan.imageRef || 'Unknown',
+            displayName: scan.displayName,
+            description: scan.description,
             scanType: scan.sourceType || 'UNKNOWN',
+            sourceType: scan.sourceType || 'UNKNOWN',
             status: scan.summary ? 'COMPLETED' : 'PENDING',
             startedAt: scan.scannedAt?.toISOString() || scan.createdAt.toISOString(),
             completedAt: scan.summary ? scan.createdAt.toISOString() : undefined,
@@ -102,6 +111,11 @@ export class ScansService {
             imageRef: scan.imageRef,
             imageDigest: scan.imageDigest,
             tag: scan.tag,
+            artifactName: scan.artifactName,
+            artifactType: scan.artifactType,
+            uploaderIp: scan.uploaderIp,
+            userAgent: scan.userAgent,
+            ciPipeline: scan.ciPipeline,
             summary: scan.summary ? {
                 critical: scan.summary.critical,
                 high: scan.summary.high,
@@ -149,6 +163,50 @@ export class ScansService {
         };
     }
 
+    async uploadScanBatch(
+        projectId: string | undefined,
+        dto: UploadScanDto,
+        files: Express.Multer.File[],
+        entries?: Array<{ fileName?: string; displayName?: string; description?: string }>,
+        sourceInfo?: { uploaderIp?: string; userAgent?: string; uploadedById?: string },
+    ) {
+        const uploaded: any[] = [];
+        const failed: Array<{ fileName: string; message: string }> = [];
+        const indexedEntries = entries || [];
+        const entryMap = new Map(
+            (entries || []).map((entry, index) => [entry.fileName || `index:${index}`, entry]),
+        );
+
+        for (const [index, file] of files.entries()) {
+            try {
+                const entry = indexedEntries[index] || entryMap.get(file.originalname) || entryMap.get(`index:${index}`);
+                const rawResult = JSON.parse(file.buffer.toString('utf-8'));
+                const result = await this.uploadScan(
+                    projectId,
+                    {
+                        ...dto,
+                        displayName: entry?.displayName || dto.displayName,
+                        description: entry?.description || dto.description,
+                    },
+                    rawResult,
+                    sourceInfo,
+                );
+                uploaded.push(result);
+            } catch (error) {
+                failed.push({
+                    fileName: file.originalname,
+                    message: error instanceof Error ? error.message : 'Failed to process file',
+                });
+            }
+        }
+
+        return {
+            uploaded,
+            failed,
+            total: files.length,
+        };
+    }
+
     async uploadScan(
         projectId: string | undefined,
         dto: UploadScanDto,
@@ -157,15 +215,18 @@ export class ScansService {
     ) {
         // Parse the scan result first to get artifact info
         const parsed = this.trivyParser.parse(rawResult, dto.sourceType);
+        const resolvedArtifactName = parsed.artifactName || dto.displayName;
 
         // Resolve project - either use provided projectId or auto-create
-        const resolvedProjectId = await this.resolveProject(projectId, dto, parsed.artifactName);
+        const resolvedProjectId = await this.resolveProject(projectId, dto, resolvedArtifactName);
 
         // Create the scan result
         const scanResult = await this.prisma.scanResult.create({
             data: {
                 projectId: resolvedProjectId,
-                imageRef: dto.imageRef || parsed.artifactName || 'unknown',
+                displayName: dto.displayName,
+                description: dto.description,
+                imageRef: dto.imageRef || parsed.artifactName || dto.displayName || 'unknown',
                 imageDigest: dto.imageDigest,
                 tag: dto.tag,
                 commitHash: dto.commitHash,
@@ -275,7 +336,7 @@ export class ScansService {
         }
 
         // Case 3: Use artifactName from scan result to create project
-        if (artifactName && dto.organizationId) {
+        if (artifactName && artifactName !== 'unknown' && dto.organizationId) {
             // Extract a project name from artifact (e.g., 'registry.com/my-app:v1' -> 'my-app')
             const projectName = this.extractProjectNameFromArtifact(artifactName);
 
@@ -308,8 +369,38 @@ export class ScansService {
             return newProject.id;
         }
 
+        if (dto.displayName && dto.organizationId) {
+            const projectName = dto.displayName.trim();
+            const existingProject = await this.prisma.project.findFirst({
+                where: {
+                    name: projectName,
+                    organizationId: dto.organizationId,
+                },
+            });
+
+            if (existingProject) {
+                return existingProject.id;
+            }
+
+            const slug = projectName
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '');
+
+            const newProject = await this.prisma.project.create({
+                data: {
+                    name: projectName,
+                    slug: slug || `project-${Date.now()}`,
+                    description: dto.description,
+                    organizationId: dto.organizationId,
+                },
+            });
+
+            return newProject.id;
+        }
+
         throw new BadRequestException(
-            'Either projectId, projectName with organizationId, or organizationId (for auto-create from artifact) is required',
+            'Either projectId, projectName with organizationId, displayName with organizationId, or organizationId (for auto-create from artifact) is required',
         );
     }
 

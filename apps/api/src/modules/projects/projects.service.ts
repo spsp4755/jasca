@@ -1,12 +1,19 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
+
+type RequestUser = {
+    id: string;
+    organizationId?: string | null;
+    roles?: Array<{ role: string } | string>;
+};
 
 @Injectable()
 export class ProjectsService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async findAll(organizationId?: string, options?: {
+    async findAll(actor: RequestUser | undefined, organizationId?: string, options?: {
         limit?: number;
         offset?: number;
         search?: string;
@@ -15,8 +22,9 @@ export class ProjectsService {
         riskLevel?: string;
     }) {
         const where: any = {};
-        if (organizationId) {
-            where.organizationId = organizationId;
+        const scopedOrganizationId = this.resolveScopedOrganizationId(actor, organizationId);
+        if (scopedOrganizationId) {
+            where.organizationId = scopedOrganizationId;
         }
         // Search filter for name and slug
         if (options?.search) {
@@ -99,7 +107,7 @@ export class ProjectsService {
         return { data: filteredData, total };
     }
 
-    async findById(id: string) {
+    async findById(id: string, actor?: RequestUser) {
         const project = await this.prisma.project.findUnique({
             where: { id },
             include: {
@@ -119,6 +127,8 @@ export class ProjectsService {
         if (!project) {
             throw new NotFoundException('Project not found');
         }
+
+        this.assertProjectScope(actor, project.organizationId);
 
         // Calculate stats from the latest scan result
         const latestScan = project.scanResults[0];
@@ -150,10 +160,15 @@ export class ProjectsService {
         };
     }
 
-    async create(organizationId: string, dto: CreateProjectDto) {
+    async create(actor: RequestUser, organizationId: string, dto: CreateProjectDto) {
+        const scopedOrganizationId = this.resolveScopedOrganizationId(actor, organizationId);
+        if (!scopedOrganizationId) {
+            throw new ForbiddenException('organizationId is required');
+        }
+
         const existing = await this.prisma.project.findFirst({
             where: {
-                organizationId,
+                organizationId: scopedOrganizationId,
                 slug: dto.slug,
             },
         });
@@ -167,13 +182,13 @@ export class ProjectsService {
                 name: dto.name,
                 slug: dto.slug,
                 description: dto.description,
-                organizationId,
+                organizationId: scopedOrganizationId,
             },
         });
     }
 
-    async update(id: string, data: Partial<CreateProjectDto>) {
-        await this.findById(id);
+    async update(actor: RequestUser, id: string, data: Partial<CreateProjectDto>) {
+        await this.findById(id, actor);
 
         return this.prisma.project.update({
             where: { id },
@@ -181,15 +196,17 @@ export class ProjectsService {
         });
     }
 
-    async delete(id: string) {
-        await this.findById(id);
+    async delete(actor: RequestUser, id: string) {
+        await this.findById(id, actor);
 
         return this.prisma.project.delete({
             where: { id },
         });
     }
 
-    async getVulnerabilityTrend(projectId: string, days: number) {
+    async getVulnerabilityTrend(projectId: string, days: number, actor?: RequestUser) {
+        await this.findById(projectId, actor);
+
         // Get scan results with summaries for the last N days
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
@@ -234,6 +251,37 @@ export class ProjectsService {
         }
         // Return just the trend array (frontend expects array directly)
         return trend;
+    }
+
+    private isSystemAdmin(actor?: RequestUser) {
+        const roles = (actor?.roles || []).map((role) => (typeof role === 'string' ? role : role.role));
+        return roles.includes(Role.SYSTEM_ADMIN);
+    }
+
+    private resolveScopedOrganizationId(actor?: RequestUser, organizationId?: string) {
+        if (!actor || this.isSystemAdmin(actor)) {
+            return organizationId;
+        }
+
+        if (!actor.organizationId) {
+            return organizationId;
+        }
+
+        if (organizationId && organizationId !== actor.organizationId) {
+            throw new ForbiddenException('You can only access projects in your organization');
+        }
+
+        return actor.organizationId;
+    }
+
+    private assertProjectScope(actor: RequestUser | undefined, organizationId: string) {
+        if (!actor || this.isSystemAdmin(actor)) {
+            return;
+        }
+
+        if (actor.organizationId && actor.organizationId !== organizationId) {
+            throw new ForbiddenException('You can only access projects in your organization');
+        }
     }
 }
 

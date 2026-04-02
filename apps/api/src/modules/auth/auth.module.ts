@@ -35,7 +35,7 @@ import { LdapService } from './services/ldap.service';
             }),
             inject: [ConfigService],
         }),
-        UsersModule,
+        forwardRef(() => UsersModule),
         forwardRef(() => SettingsModule),
     ],
     controllers: [AuthController, ApiTokenController],

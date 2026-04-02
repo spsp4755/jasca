@@ -119,13 +119,13 @@ export class WorkflowService {
     private checkRolePermission(userRole: string, requiredRole?: string): boolean {
         if (!requiredRole) return true;
 
-        // Role hierarchy: ORG_ADMIN > PROJECT_ADMIN > SECURITY_ENGINEER > DEVELOPER
+        // Role hierarchy: SYSTEM_ADMIN > ORG_ADMIN > PROJECT_ADMIN > SECURITY_ADMIN > DEVELOPER
         const roleHierarchy: Record<string, number> = {
             DEVELOPER: 1,
-            SECURITY_ENGINEER: 2,
+            SECURITY_ADMIN: 2,
             PROJECT_ADMIN: 3,
             ORG_ADMIN: 4,
-            SUPER_ADMIN: 5,
+            SYSTEM_ADMIN: 5,
         };
 
         const userLevel = roleHierarchy[userRole] || 0;

@@ -195,6 +195,8 @@ model ScanResult {
   projectId       String
   project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   
+  displayName     String?
+  description     String?
   imageRef        String    // registry/repo:tag
   imageDigest     String?
   tag             String?

@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { clonePermissionMatrix } from '../../common/authorization/permissions';
 
 // Default settings for each category
 const defaultSettings: Record<string, unknown> = {
+    permissions: clonePermissionMatrix(),
     workflows: {
         states: [
             { id: 'OPEN', name: '미해결', color: 'bg-red-500', description: '새로 발견된 취약점' },
@@ -13,11 +15,11 @@ const defaultSettings: Record<string, unknown> = {
         ],
         transitions: [
             { from: 'OPEN', to: 'IN_PROGRESS', requiredRole: 'DEVELOPER' },
-            { from: 'OPEN', to: 'FALSE_POSITIVE', requiredRole: 'SECURITY_ENGINEER' },
+            { from: 'OPEN', to: 'FALSE_POSITIVE', requiredRole: 'SECURITY_ADMIN' },
             { from: 'OPEN', to: 'ACCEPTED', requiredRole: 'ORG_ADMIN' },
             { from: 'IN_PROGRESS', to: 'RESOLVED', requiredRole: 'DEVELOPER' },
             { from: 'IN_PROGRESS', to: 'OPEN', requiredRole: 'DEVELOPER' },
-            { from: 'RESOLVED', to: 'OPEN', requiredRole: 'SECURITY_ENGINEER' },
+            { from: 'RESOLVED', to: 'OPEN', requiredRole: 'SECURITY_ADMIN' },
         ],
     },
     trivy: {
