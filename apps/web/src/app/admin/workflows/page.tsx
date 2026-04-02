@@ -46,11 +46,11 @@ const defaultStates: WorkflowState[] = [
 
 const defaultTransitions: WorkflowTransition[] = [
     { from: 'OPEN', to: 'IN_PROGRESS', requiredRole: 'DEVELOPER' },
-    { from: 'OPEN', to: 'FALSE_POSITIVE', requiredRole: 'SECURITY_ENGINEER' },
+    { from: 'OPEN', to: 'FALSE_POSITIVE', requiredRole: 'SECURITY_ADMIN' },
     { from: 'OPEN', to: 'ACCEPTED', requiredRole: 'ORG_ADMIN' },
     { from: 'IN_PROGRESS', to: 'RESOLVED', requiredRole: 'DEVELOPER' },
     { from: 'IN_PROGRESS', to: 'OPEN', requiredRole: 'DEVELOPER' },
-    { from: 'RESOLVED', to: 'OPEN', requiredRole: 'SECURITY_ENGINEER' },
+    { from: 'RESOLVED', to: 'OPEN', requiredRole: 'SECURITY_ADMIN' },
 ];
 
 const colorOptions = [
@@ -65,7 +65,7 @@ const colorOptions = [
 
 const roleOptions = [
     { value: 'DEVELOPER', label: '개발자' },
-    { value: 'SECURITY_ENGINEER', label: '보안 엔지니어' },
+    { value: 'SECURITY_ADMIN', label: '보안 관리자' },
     { value: 'PROJECT_ADMIN', label: '프로젝트 관리자' },
     { value: 'ORG_ADMIN', label: '조직 관리자' },
 ];

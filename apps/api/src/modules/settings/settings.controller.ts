@@ -9,7 +9,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { SettingsService } from './settings.service';
 
 @ApiTags('Settings')
@@ -20,21 +20,21 @@ export class SettingsController {
     constructor(private readonly settingsService: SettingsService) { }
 
     @Get()
-    @Roles('SYSTEM_ADMIN', 'ORG_ADMIN')
+    @Permissions('settings:read')
     @ApiOperation({ summary: 'Get all settings' })
     async getAll() {
         return this.settingsService.getAll();
     }
 
     @Get(':key')
-    @Roles('SYSTEM_ADMIN', 'ORG_ADMIN')
+    @Permissions('settings:read')
     @ApiOperation({ summary: 'Get setting by key' })
     async get(@Param('key') key: string) {
         return this.settingsService.get(key);
     }
 
     @Put(':key')
-    @Roles('SYSTEM_ADMIN')
+    @Permissions('settings:update')
     @ApiOperation({ summary: 'Update setting' })
     async update(
         @Param('key') key: string,

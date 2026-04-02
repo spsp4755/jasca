@@ -1,14 +1,14 @@
-import { Controller, Get, Put, Delete, Param, Body, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { UsersService } from './users.service';
 
 @ApiTags('Users')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('users')
 export class UsersController {
     constructor(private readonly usersService: UsersService) { }
@@ -46,7 +46,7 @@ export class UsersController {
 
     // Admin endpoints
     @Get()
-    @UseGuards(RolesGuard)
+    @Permissions('user:read')
     @ApiOperation({ summary: 'Get all users' })
     @ApiQuery({ name: 'organizationId', required: false })
     @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -61,8 +61,9 @@ export class UsersController {
         @Query('search') search?: string,
         @Query('role') role?: string,
         @Query('status') status?: string,
+        @CurrentUser() user?: any,
     ) {
-        return this.usersService.findAll(organizationId, {
+        return this.usersService.findAll(user, organizationId, {
             limit: limit ? parseInt(limit, 10) : undefined,
             offset: offset ? parseInt(offset, 10) : undefined,
             search,
@@ -71,28 +72,38 @@ export class UsersController {
         });
     }
 
+    @Post()
+    @Permissions('user:create')
+    @ApiOperation({ summary: 'Create user by admin' })
+    async create(
+        @CurrentUser() user: any,
+        @Body() dto: { email: string; name: string; password: string; role?: string; status?: string; organizationId?: string },
+    ) {
+        return this.usersService.createUser(user, dto);
+    }
+
     @Get(':id')
+    @Permissions('user:read')
     @ApiOperation({ summary: 'Get user by ID' })
-    async findById(@Param('id') id: string) {
-        return this.usersService.findById(id);
+    async findById(@Param('id') id: string, @CurrentUser() user: any) {
+        return this.usersService.findById(id, user);
     }
 
     @Put(':id')
-    @UseGuards(RolesGuard)
-    @Roles('SYSTEM_ADMIN', 'ORG_ADMIN')
+    @Permissions('user:update')
     @ApiOperation({ summary: 'Update user' })
     async update(
         @Param('id') id: string,
-        @Body() dto: { name?: string; role?: string; status?: string },
+        @CurrentUser() user: any,
+        @Body() dto: { name?: string; role?: string; status?: string; organizationId?: string },
     ) {
-        return this.usersService.updateUser(id, dto);
+        return this.usersService.updateUser(user, id, dto);
     }
 
     @Delete(':id')
-    @UseGuards(RolesGuard)
-    @Roles('SYSTEM_ADMIN', 'ORG_ADMIN')
+    @Permissions('user:delete')
     @ApiOperation({ summary: 'Delete user' })
-    async delete(@Param('id') id: string) {
-        return this.usersService.deleteUser(id);
+    async delete(@Param('id') id: string, @CurrentUser() user: any) {
+        return this.usersService.deleteUser(user, id);
     }
 }

@@ -24,7 +24,7 @@ ENV LC_ALL=ko_KR.UTF-8
 ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Install Node.js 20
+# Install Node.js 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g pnpm
@@ -53,9 +53,9 @@ RUN pnpm install --frozen-lockfile
 # Generate prisma
 RUN pnpm -r run prisma:generate
 # Build API
-RUN pnpm --filter api build
+RUN pnpm --filter @jasca/api build
 # Build Web
-RUN pnpm --filter web build
+RUN pnpm --filter @jasca/web build
 # Compile seed.ts to JavaScript for offline execution (using project tsconfig)
 RUN cd apps/api && npx tsc prisma/seed.ts --outDir prisma --skipLibCheck
 

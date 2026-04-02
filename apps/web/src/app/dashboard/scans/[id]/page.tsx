@@ -123,8 +123,13 @@ export default function ScanDetailPage() {
                         스캔 상세 정보
                     </h2>
                     <p className="text-slate-600 dark:text-slate-400 mt-1">
-                        {(scan as any).artifactName || (scan as any).imageRef || 'Unknown'}
+                        {(scan as any).targetName || (scan as any).displayName || (scan as any).artifactName || (scan as any).imageRef || 'Unknown'}
                     </p>
+                    {(scan as any).description && (
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                            {(scan as any).description}
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -172,7 +177,7 @@ export default function ScanDetailPage() {
                         <FileSearch className="w-5 h-5 text-slate-400" />
                     </div>
                     <p className="text-2xl font-bold text-slate-900 dark:text-white mt-2">
-                        {summary.totalVulns || vulnerabilities.length || 0}
+                        {summary.total || summary.totalVulns || vulnerabilities.length || 0}
                     </p>
                 </div>
             </div>

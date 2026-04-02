@@ -288,16 +288,27 @@ export interface Scan {
     id: string;
     projectId: string;
     scanType: string;
+    sourceType?: string;
     targetName: string;
+    displayName?: string;
+    description?: string;
     status: string;
     startedAt: string;
     completedAt?: string;
     createdAt?: string;
+    imageRef?: string;
+    artifactName?: string;
+    artifactType?: string;
+    uploaderIp?: string;
+    userAgent?: string;
+    ciPipeline?: string;
     summary?: {
         critical: number;
         high: number;
         medium: number;
         low: number;
+        unknown?: number;
+        total?: number;
     };
     project?: {
         name: string;
@@ -329,6 +340,8 @@ export interface UploadScanDto {
     sourceType: 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CI_BAMBOO' | 'CI_GITLAB' | 'CI_JENKINS' | 'CI_GITHUB_ACTIONS' | 'MANUAL';
     projectName?: string;
     organizationId?: string;
+    displayName?: string;
+    description?: string;
     imageRef?: string;
     imageDigest?: string;
     tag?: string;
@@ -338,27 +351,46 @@ export interface UploadScanDto {
     ciJobUrl?: string;
 }
 
+export interface UploadScanEntry {
+    fileName?: string;
+    displayName?: string;
+    description?: string;
+}
+
 export function useUploadScan() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async ({
             projectId,
             file,
+            files,
             metadata,
+            entries,
         }: {
             projectId?: string; // Now optional - can use projectName + organizationId in metadata instead
-            file: File;
+            file?: File;
+            files?: File[];
             metadata: UploadScanDto;
+            entries?: UploadScanEntry[];
         }) => {
             const token = useAuthStore.getState().accessToken;
             const formData = new FormData();
-            formData.append('file', file);
+            const uploadFiles = files?.length ? files : file ? [file] : [];
+            if (uploadFiles.length === 0) {
+                throw new Error('Upload file is required');
+            }
+            uploadFiles.forEach((uploadFile) => {
+                formData.append('files', uploadFile);
+            });
             // Append metadata fields
             Object.entries(metadata).forEach(([key, value]) => {
                 if (value !== undefined && value !== null) {
                     formData.append(key, String(value));
                 }
             });
+            if (entries?.length) {
+                formData.append('entries', JSON.stringify(entries));
+            }
 
             // Build URL - projectId is now optional, use /upload/file for multipart form
             const url = projectId
@@ -943,6 +975,8 @@ export interface User {
     email: string;
     name: string;
     role: 'SYSTEM_ADMIN' | 'ORG_ADMIN' | 'SECURITY_ADMIN' | 'PROJECT_ADMIN' | 'DEVELOPER' | 'VIEWER';
+    roles?: string[];
+    permissions?: string[];
     status: 'ACTIVE' | 'INACTIVE' | 'PENDING';
     mfaEnabled: boolean;
     organizationId?: string;
@@ -994,7 +1028,7 @@ export function useCreateUser() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (data: { email: string; name: string; password: string; role?: string; status?: string; organizationId?: string }) =>
-            authFetch(`${API_BASE}/auth/register`, {
+            authFetch(`${API_BASE}/users`, {
                 method: 'POST',
                 body: JSON.stringify(data),
             }),
@@ -1889,6 +1923,8 @@ export interface UserProfile {
     name: string;
     email: string;
     role: string;
+    roles?: string[];
+    permissions?: string[];
     status: string;
     mfaEnabled: boolean;
     organization?: { id: string; name: string };

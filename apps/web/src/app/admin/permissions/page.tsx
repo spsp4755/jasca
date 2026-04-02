@@ -1,133 +1,34 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import {
-    Shield,
-    Save,
-    CheckCircle,
-    X,
-    Info,
-    Loader2,
-    AlertTriangle,
-    RefreshCw,
-} from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { CheckCircle, Info, Loader2, RefreshCw, Save, X } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth-store';
 
 const API_BASE = '/api';
-
-const roles = [
-    { id: 'SYSTEM_ADMIN', name: 'System Admin', description: '전체 시스템 관리자' },
-    { id: 'ORG_ADMIN', name: 'Org Admin', description: '조직 관리자' },
-    { id: 'SECURITY_ADMIN', name: 'Security Admin', description: '보안 관리자' },
-    { id: 'PROJECT_ADMIN', name: 'Project Admin', description: '프로젝트 관리자' },
-    { id: 'DEVELOPER', name: 'Developer', description: '개발자' },
-    { id: 'VIEWER', name: 'Viewer', description: '읽기 전용' },
-];
+const roles = ['SYSTEM_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN', 'PROJECT_ADMIN', 'DEVELOPER', 'VIEWER'] as const;
 
 const permissionGroups = [
-    {
-        name: '취약점',
-        permissions: [
-            { id: 'vuln:read', label: '취약점 조회' },
-            { id: 'vuln:update', label: '취약점 상태 변경' },
-            { id: 'vuln:assign', label: '취약점 할당' },
-        ],
-    },
-    {
-        name: '스캔',
-        permissions: [
-            { id: 'scan:read', label: '스캔 조회' },
-            { id: 'scan:create', label: '스캔 실행' },
-            { id: 'scan:delete', label: '스캔 삭제' },
-        ],
-    },
-    {
-        name: '정책',
-        permissions: [
-            { id: 'policy:read', label: '정책 조회' },
-            { id: 'policy:create', label: '정책 생성' },
-            { id: 'policy:update', label: '정책 수정' },
-            { id: 'policy:delete', label: '정책 삭제' },
-        ],
-    },
-    {
-        name: '예외',
-        permissions: [
-            { id: 'exception:read', label: '예외 조회' },
-            { id: 'exception:request', label: '예외 요청' },
-            { id: 'exception:approve', label: '예외 승인' },
-        ],
-    },
-    {
-        name: '사용자',
-        permissions: [
-            { id: 'user:read', label: '사용자 조회' },
-            { id: 'user:create', label: '사용자 생성' },
-            { id: 'user:update', label: '사용자 수정' },
-            { id: 'user:delete', label: '사용자 삭제' },
-        ],
-    },
-    {
-        name: '조직',
-        permissions: [
-            { id: 'org:read', label: '조직 조회' },
-            { id: 'org:create', label: '조직 생성' },
-            { id: 'org:update', label: '조직 수정' },
-            { id: 'org:delete', label: '조직 삭제' },
-        ],
-    },
-];
-
-// Default permission matrix
-const defaultMatrix: Record<string, string[]> = {
-    SYSTEM_ADMIN: permissionGroups.flatMap(g => g.permissions.map(p => p.id)),
-    ORG_ADMIN: [
-        'vuln:read', 'vuln:update', 'vuln:assign',
-        'scan:read', 'scan:create', 'scan:delete',
-        'policy:read', 'policy:create', 'policy:update', 'policy:delete',
-        'exception:read', 'exception:request', 'exception:approve',
-        'user:read', 'user:create', 'user:update',
-        'org:read', 'org:update',
-    ],
-    SECURITY_ADMIN: [
-        'vuln:read', 'vuln:update', 'vuln:assign',
-        'scan:read', 'scan:create', 'scan:delete',
-        'policy:read', 'policy:create', 'policy:update',
-        'exception:read', 'exception:request', 'exception:approve',
-        'user:read',
-    ],
-    PROJECT_ADMIN: [
-        'vuln:read', 'vuln:update', 'vuln:assign',
-        'scan:read', 'scan:create',
-        'policy:read',
-        'exception:read', 'exception:request',
-        'user:read',
-    ],
-    DEVELOPER: [
-        'vuln:read',
-        'scan:read', 'scan:create',
-        'policy:read',
-        'exception:read', 'exception:request',
-    ],
-    VIEWER: [
-        'vuln:read',
-        'scan:read',
-        'policy:read',
-        'exception:read',
-    ],
-};
+    { name: '스캔', permissions: [['scan:read', '조회'], ['scan:create', '업로드'], ['scan:delete', '삭제']] },
+    { name: '취약점', permissions: [['vuln:read', '조회'], ['vuln:update', '상태 변경'], ['vuln:assign', '담당자 지정']] },
+    { name: '프로젝트', permissions: [['project:read', '조회'], ['project:create', '생성'], ['project:update', '수정'], ['project:delete', '삭제']] },
+    { name: '정책', permissions: [['policy:read', '조회'], ['policy:create', '생성'], ['policy:update', '수정'], ['policy:delete', '삭제']] },
+    { name: '예외', permissions: [['exception:read', '조회'], ['exception:request', '요청'], ['exception:approve', '승인']] },
+    { name: '사용자', permissions: [['user:read', '조회'], ['user:create', '생성'], ['user:update', '수정'], ['user:delete', '삭제']] },
+    { name: '조직', permissions: [['org:read', '조회'], ['org:create', '생성'], ['org:update', '수정'], ['org:delete', '삭제']] },
+    { name: '설정', permissions: [['settings:read', '조회'], ['settings:update', '수정']] },
+] as const;
 
 async function authFetch(url: string, options: RequestInit = {}) {
     const token = useAuthStore.getState().accessToken;
-    const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-    };
-    if (token) {
-        (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-    }
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(options.headers || {}),
+        },
+    });
     if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Request failed' }));
         throw new Error(error.message || 'Request failed');
@@ -137,17 +38,15 @@ async function authFetch(url: string, options: RequestInit = {}) {
 
 export default function PermissionsPage() {
     const queryClient = useQueryClient();
-    const [matrix, setMatrix] = useState<Record<string, string[]>>(defaultMatrix);
+    const [matrix, setMatrix] = useState<Record<string, string[]>>({});
     const [saved, setSaved] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
 
-    // Fetch permissions from settings API
-    const { data: settings, isLoading, error, refetch } = useQuery({
+    const { data, isLoading, isError, refetch } = useQuery({
         queryKey: ['settings', 'permissions'],
         queryFn: () => authFetch(`${API_BASE}/settings/permissions`),
     });
 
-    // Update mutation
     const updateMutation = useMutation({
         mutationFn: (value: Record<string, string[]>) =>
             authFetch(`${API_BASE}/settings/permissions`, {
@@ -159,174 +58,134 @@ export default function PermissionsPage() {
         },
     });
 
-    // Load settings from API
     useEffect(() => {
-        if (settings?.value) {
-            setMatrix(settings.value);
+        if (data) {
+            setMatrix(data);
+            setHasChanges(false);
         }
-    }, [settings]);
+    }, [data]);
 
-    const hasPermission = (roleId: string, permId: string) => {
-        return matrix[roleId]?.includes(permId) || false;
-    };
+    const totalPermissions = useMemo(
+        () => permissionGroups.reduce((total, group) => total + group.permissions.length, 0),
+        [],
+    );
 
-    const togglePermission = (roleId: string, permId: string) => {
-        setMatrix(prev => {
-            const current = prev[roleId] || [];
-            if (current.includes(permId)) {
-                return { ...prev, [roleId]: current.filter(p => p !== permId) };
-            } else {
-                return { ...prev, [roleId]: [...current, permId] };
-            }
+    const togglePermission = (role: string, permission: string) => {
+        if (role === 'SYSTEM_ADMIN') return;
+        setMatrix((current) => {
+            const currentPermissions = current[role] || [];
+            const nextPermissions = currentPermissions.includes(permission)
+                ? currentPermissions.filter((item) => item !== permission)
+                : [...currentPermissions, permission];
+            return { ...current, [role]: nextPermissions };
         });
         setHasChanges(true);
     };
 
     const handleSave = async () => {
-        try {
-            await updateMutation.mutateAsync(matrix);
-            setSaved(true);
-            setHasChanges(false);
-            setTimeout(() => setSaved(false), 3000);
-        } catch (err) {
-            console.error('Failed to save permissions:', err);
-        }
+        await updateMutation.mutateAsync(matrix);
+        setSaved(true);
+        setHasChanges(false);
+        window.setTimeout(() => setSaved(false), 2500);
     };
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            </div>
-        );
+        return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>;
     }
 
-    if (error) {
+    if (isError) {
         return (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center">
-                <AlertTriangle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-                <h3 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">오류 발생</h3>
-                <p className="text-red-600 dark:text-red-300 mb-4">권한 설정을 불러오는데 실패했습니다.</p>
-                <button
-                    onClick={() => refetch()}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                    다시 시도
-                </button>
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
+                <p>권한 설정을 불러오지 못했습니다.</p>
+                <button type="button" onClick={() => refetch()} className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white">다시 시도</button>
             </div>
         );
     }
 
     return (
         <div className="space-y-6">
-            {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white">권한 관리</h1>
-                    <p className="text-slate-600 dark:text-slate-400 mt-1">
-                        역할별 권한을 설정합니다
-                    </p>
+                    <p className="mt-1 text-slate-600 dark:text-slate-400">역할별 실제 API 권한을 여기서 조정할 수 있습니다.</p>
                 </div>
-                <div className="flex items-center gap-4">
-                    {saved && (
-                        <span className="flex items-center gap-2 text-green-600">
-                            <CheckCircle className="h-5 w-5" />
-                            저장됨
-                        </span>
-                    )}
-                    {hasChanges && (
-                        <span className="text-sm text-orange-600">변경사항 있음</span>
-                    )}
-                    <button
-                        onClick={() => refetch()}
-                        disabled={isLoading}
-                        className="flex items-center gap-2 px-4 py-2 text-sm border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                    >
-                        <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={updateMutation.isPending || !hasChanges}
-                        className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                        {updateMutation.isPending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Save className="h-4 w-4" />
-                        )}
-                        저장
+                <div className="flex items-center gap-3">
+                    {saved && <span className="flex items-center gap-2 text-green-600"><CheckCircle className="h-4 w-4" />저장됨</span>}
+                    {hasChanges && <span className="text-sm text-amber-600">변경사항 있음</span>}
+                    <button type="button" onClick={() => refetch()} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"><RefreshCw className="h-4 w-4" /></button>
+                    <button type="button" onClick={handleSave} disabled={!hasChanges || updateMutation.isPending} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                        {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}저장
                     </button>
                 </div>
             </div>
 
-            {/* Info */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 flex items-start gap-3">
-                <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-blue-800 dark:text-blue-200">
-                    System Admin은 모든 권한을 가지며 수정할 수 없습니다. 다른 역할의 권한은 조직 정책에 맞게 조정하세요.
-                </p>
+            <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
+                <Info className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                <div>
+                    <p>System Admin은 항상 전체 권한을 가집니다.</p>
+                    <p className="mt-1">저장한 권한 키는 스캔 업로드, 사용자 관리, 프로젝트 관리 등 실제 API 검사에 바로 사용됩니다.</p>
+                    <p className="mt-1">현재 관리 항목은 총 {totalPermissions}개입니다.</p>
+                </div>
             </div>
 
-            {/* Matrix Table */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto">
-                <table className="w-full">
-                    <thead>
-                        <tr className="bg-slate-50 dark:bg-slate-700/50">
-                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky left-0 bg-slate-50 dark:bg-slate-700/50">
-                                권한
-                            </th>
-                            {roles.map((role) => (
-                                <th
-                                    key={role.id}
-                                    className="px-4 py-3 text-center text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[100px]"
-                                >
-                                    <div>{role.name}</div>
-                                    <div className="font-normal normal-case text-xs mt-0.5">{role.description}</div>
-                                </th>
-                            ))}
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                <table className="w-full border-collapse">
+                    <thead className="bg-slate-50 dark:bg-slate-800/70">
+                        <tr>
+                            <th className="sticky left-0 bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">권한</th>
+                            {roles.map((role) => <th key={role} className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{role}</th>)}
                         </tr>
                     </thead>
                     <tbody>
                         {permissionGroups.map((group) => (
-                            <>
-                                <tr key={group.name} className="bg-slate-100 dark:bg-slate-700">
-                                    <td
-                                        colSpan={roles.length + 1}
-                                        className="px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300"
-                                    >
-                                        {group.name}
-                                    </td>
-                                </tr>
-                                {group.permissions.map((perm) => (
-                                    <tr key={perm.id} className="border-b border-slate-100 dark:border-slate-700">
-                                        <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300 sticky left-0 bg-white dark:bg-slate-800">
-                                            {perm.label}
-                                        </td>
-                                        {roles.map((role) => (
-                                            <td key={`${role.id}-${perm.id}`} className="px-4 py-3 text-center">
-                                                <button
-                                                    onClick={() => role.id !== 'SYSTEM_ADMIN' && togglePermission(role.id, perm.id)}
-                                                    disabled={role.id === 'SYSTEM_ADMIN'}
-                                                    className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${hasPermission(role.id, perm.id)
-                                                        ? 'bg-green-500 text-white'
-                                                        : 'bg-slate-200 dark:bg-slate-700 text-slate-400'
-                                                        } ${role.id === 'SYSTEM_ADMIN' ? 'cursor-not-allowed' : 'hover:opacity-80'}`}
-                                                >
-                                                    {hasPermission(role.id, perm.id) ? (
-                                                        <CheckCircle className="h-4 w-4" />
-                                                    ) : (
-                                                        <X className="h-4 w-4" />
-                                                    )}
-                                                </button>
-                                            </td>
-                                        ))}
-                                    </tr>
-                                ))}
-                            </>
+                            <FragmentGroup key={group.name} group={group} matrix={matrix} onToggle={togglePermission} />
                         ))}
                     </tbody>
                 </table>
             </div>
         </div>
+    );
+}
+
+function FragmentGroup({
+    group,
+    matrix,
+    onToggle,
+}: {
+    group: typeof permissionGroups[number];
+    matrix: Record<string, string[]>;
+    onToggle: (role: string, permission: string) => void;
+}) {
+    return (
+        <>
+            <tr className="bg-slate-100 dark:bg-slate-800">
+                <td colSpan={roles.length + 1} className="px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300">{group.name}</td>
+            </tr>
+            {group.permissions.map(([permission, label]) => (
+                <tr key={permission} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="sticky left-0 bg-white px-4 py-3 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                        <div className="font-medium">{label}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-500">{permission}</div>
+                    </td>
+                    {roles.map((role) => {
+                        const enabled = role === 'SYSTEM_ADMIN' || (matrix[role] || []).includes(permission);
+                        return (
+                            <td key={`${role}:${permission}`} className="px-4 py-3 text-center">
+                                <button
+                                    type="button"
+                                    onClick={() => onToggle(role, permission)}
+                                    disabled={role === 'SYSTEM_ADMIN'}
+                                    className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                                        enabled ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
+                                    } ${role === 'SYSTEM_ADMIN' ? 'cursor-not-allowed opacity-80' : 'hover:opacity-80'}`}
+                                >
+                                    {enabled ? <CheckCircle className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                                </button>
+                            </td>
+                        );
+                    })}
+                </tr>
+            ))}
+        </>
     );
 }

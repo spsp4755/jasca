@@ -1,13 +1,27 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
+
+type RequestUser = {
+    id: string;
+    organizationId?: string | null;
+    roles?: Array<{ role: string } | string>;
+};
 
 @Injectable()
 export class OrganizationsService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async findAll() {
+    async findAll(actor?: RequestUser) {
+        const where = this.isSystemAdmin(actor)
+            ? undefined
+            : actor?.organizationId
+                ? { id: actor.organizationId }
+                : undefined;
+
         return this.prisma.organization.findMany({
+            where,
             include: {
                 _count: {
                     select: { projects: true, users: true },
@@ -17,7 +31,8 @@ export class OrganizationsService {
         });
     }
 
-    async findById(id: string) {
+    async findById(id: string, actor?: RequestUser) {
+        this.assertOrganizationScope(actor, id);
         const org = await this.prisma.organization.findUnique({
             where: { id },
             include: {
@@ -57,8 +72,8 @@ export class OrganizationsService {
         });
     }
 
-    async update(id: string, data: Partial<CreateOrganizationDto>) {
-        await this.findById(id);
+    async update(id: string, data: Partial<CreateOrganizationDto>, actor?: RequestUser) {
+        await this.findById(id, actor);
 
         return this.prisma.organization.update({
             where: { id },
@@ -66,11 +81,26 @@ export class OrganizationsService {
         });
     }
 
-    async delete(id: string) {
-        await this.findById(id);
+    async delete(id: string, actor?: RequestUser) {
+        await this.findById(id, actor);
 
         return this.prisma.organization.delete({
             where: { id },
         });
+    }
+
+    private isSystemAdmin(actor?: RequestUser) {
+        const roles = (actor?.roles || []).map((role) => (typeof role === 'string' ? role : role.role));
+        return roles.includes(Role.SYSTEM_ADMIN);
+    }
+
+    private assertOrganizationScope(actor: RequestUser | undefined, organizationId: string) {
+        if (!actor || this.isSystemAdmin(actor)) {
+            return;
+        }
+
+        if (actor.organizationId && actor.organizationId !== organizationId) {
+            throw new ForbiddenException('You can only access your organization');
+        }
     }
 }

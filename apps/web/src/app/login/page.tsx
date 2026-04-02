@@ -41,6 +41,33 @@ export default function LoginPage() {
     const [ssoSettings, setSsoSettings] = useState<PublicSsoSettings | null>(null);
     const [ssoLoading, setSsoLoading] = useState(true);
 
+    const syncUserProfile = async (fallbackAccessToken: string) => {
+        try {
+            const profile = await authApi.getProfile();
+            setUser({
+                id: profile.id,
+                email: profile.email,
+                name: profile.name || profile.email?.split('@')[0] || 'User',
+                organizationId: profile.organization?.id || profile.organizationId,
+                roles: profile.roles || (profile.role ? [profile.role] : []),
+                permissions: profile.permissions || [],
+            });
+            return;
+        } catch (profileError) {
+            console.warn('Failed to fetch profile after login, falling back to JWT payload', profileError);
+        }
+
+        const payload = JSON.parse(atob(fallbackAccessToken.split('.')[1]));
+        setUser({
+            id: payload.sub,
+            email: payload.email,
+            name: payload.email.split('@')[0],
+            organizationId: payload.organizationId,
+            roles: payload.roles || [],
+            permissions: payload.permissions || [],
+        });
+    };
+
     // SSO 설정 조회
     useEffect(() => {
         const fetchSsoSettings = async () => {
@@ -100,16 +127,7 @@ export default function LoginPage() {
             }
 
             setTokens(response.accessToken, response.refreshToken);
-
-            // Decode JWT to get user info (simple decode, not verification)
-            const payload = JSON.parse(atob(response.accessToken.split('.')[1]));
-            setUser({
-                id: payload.sub,
-                email: payload.email,
-                name: payload.email.split('@')[0], // Temporary name from email
-                organizationId: payload.organizationId,
-                roles: payload.roles || [],
-            });
+            await syncUserProfile(response.accessToken);
 
             router.push('/dashboard');
         } catch (err: any) {
@@ -129,15 +147,7 @@ export default function LoginPage() {
         try {
             const response = await authApi.verifyMfa({ mfaToken, code: mfaCode });
             setTokens(response.accessToken, response.refreshToken);
-
-            const payload = JSON.parse(atob(response.accessToken.split('.')[1]));
-            setUser({
-                id: payload.sub,
-                email: payload.email,
-                name: payload.email.split('@')[0],
-                organizationId: payload.organizationId,
-                roles: payload.roles || [],
-            });
+            await syncUserProfile(response.accessToken);
 
             router.push('/dashboard');
         } catch (err: any) {
