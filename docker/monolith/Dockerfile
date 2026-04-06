@@ -84,8 +84,8 @@ COPY --from=builder /app/apps/web/.next/static ./.next/static
 # Preserve standalone's node_modules (contains 'next' and required deps)
 RUN mv node_modules node_modules_web
 
-# Copy production node_modules from prod-deps (for API)
-COPY --from=prod-deps /app/node_modules ./node_modules
+# Copy builder node_modules so Prisma CLI is available for offline upgrades
+COPY --from=builder /app/node_modules ./node_modules
 
 # Merge web's node_modules into main node_modules (copy missing modules)
 RUN cp -rn node_modules_web/* node_modules/ 2>/dev/null || true && \
