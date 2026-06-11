@@ -8,7 +8,8 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "clean": "turbo run clean && rimraf node_modules"
+    "clean": "turbo run clean && rimraf node_modules",
+    "bundle:offline": "powershell -ExecutionPolicy Bypass -File script/build-offline-bundle.ps1"
   },
   "devDependencies": {
     "rimraf": "^5.0.5",

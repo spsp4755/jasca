@@ -1,13 +1,26 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
+import {
+    RequestUser,
+    assertOrganizationAccess,
+    assertOrganizationManager,
+    getScopedOrganizationIds,
+    isSystemAdmin,
+} from '../../common/authz/access-control';
 
 @Injectable()
 export class OrganizationsService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async findAll() {
+    async findAll(currentUser?: RequestUser) {
+        const scopedOrganizationIds = currentUser ? getScopedOrganizationIds(currentUser) : undefined;
+        const where = scopedOrganizationIds
+            ? { id: { in: scopedOrganizationIds } }
+            : {};
+
         return this.prisma.organization.findMany({
+            where,
             include: {
                 _count: {
                     select: { projects: true, users: true },
@@ -17,7 +30,11 @@ export class OrganizationsService {
         });
     }
 
-    async findById(id: string) {
+    async findById(id: string, currentUser?: RequestUser) {
+        if (currentUser && !isSystemAdmin(currentUser)) {
+            assertOrganizationAccess(currentUser, id);
+        }
+
         const org = await this.prisma.organization.findUnique({
             where: { id },
             include: {
@@ -57,8 +74,11 @@ export class OrganizationsService {
         });
     }
 
-    async update(id: string, data: Partial<CreateOrganizationDto>) {
-        await this.findById(id);
+    async update(id: string, data: Partial<CreateOrganizationDto>, currentUser?: RequestUser) {
+        await this.findById(id, currentUser);
+        if (currentUser) {
+            assertOrganizationManager(currentUser, id, ['ORG_ADMIN']);
+        }
 
         return this.prisma.organization.update({
             where: { id },

@@ -11,6 +11,8 @@ $ErrorActionPreference = "Stop"
 # Configuration
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $DataDir = Join-Path $ProjectRoot "trivy-db"
+$DataDbDir = Join-Path $DataDir "db"
+$DataJavaDbDir = Join-Path $DataDir "java-db"
 $TrivyCacheDir = "$env:LOCALAPPDATA\trivy"
 
 function Write-ColorOutput($Color, $Message) {
@@ -35,6 +37,8 @@ if (-not (Test-Path $DataDir)) {
     Write-ColorOutput "Yellow" "[INFO] Creating data directory: $DataDir"
     New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
 }
+New-Item -ItemType Directory -Path $DataDbDir -Force | Out-Null
+New-Item -ItemType Directory -Path $DataJavaDbDir -Force | Out-Null
 
 # Update Trivy DB first
 Write-ColorOutput "Cyan" "[INFO] Updating Trivy vulnerability database..."
@@ -57,7 +61,11 @@ $filesToCopy = @(
     @{ Source = "$TrivyCacheDir\db\trivy.db"; Dest = "$DataDir\trivy.db"; Name = "Vulnerability DB" },
     @{ Source = "$TrivyCacheDir\db\metadata.json"; Dest = "$DataDir\metadata.json"; Name = "DB Metadata" },
     @{ Source = "$TrivyCacheDir\java-db\trivy-java.db"; Dest = "$DataDir\trivy-java.db"; Name = "Java DB" },
-    @{ Source = "$TrivyCacheDir\java-db\metadata.json"; Dest = "$DataDir\java-metadata.json"; Name = "Java Metadata" }
+    @{ Source = "$TrivyCacheDir\java-db\metadata.json"; Dest = "$DataDir\java-metadata.json"; Name = "Java Metadata" },
+    @{ Source = "$TrivyCacheDir\db\trivy.db"; Dest = "$DataDbDir\trivy.db"; Name = "CLI Cache Vulnerability DB" },
+    @{ Source = "$TrivyCacheDir\db\metadata.json"; Dest = "$DataDbDir\metadata.json"; Name = "CLI Cache DB Metadata" },
+    @{ Source = "$TrivyCacheDir\java-db\trivy-java.db"; Dest = "$DataJavaDbDir\trivy-java.db"; Name = "CLI Cache Java DB" },
+    @{ Source = "$TrivyCacheDir\java-db\metadata.json"; Dest = "$DataJavaDbDir\metadata.json"; Name = "CLI Cache Java Metadata" }
 )
 
 foreach ($file in $filesToCopy) {
@@ -100,7 +108,7 @@ if (Test-Path $metadataPath) {
 
 # Calculate total size
 $totalSize = 0
-Get-ChildItem $DataDir -File | ForEach-Object { $totalSize += $_.Length }
+Get-ChildItem $DataDir -Recurse -File | ForEach-Object { $totalSize += $_.Length }
 Write-Host ""
 Write-ColorOutput "White" "  Location:      $DataDir"
 Write-ColorOutput "White" "  Total Size:    {0:N2} MB" -f ($totalSize / 1MB)

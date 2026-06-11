@@ -113,6 +113,7 @@ const OPERATORS = [
 const ACTIONS = [
     { value: 'BLOCK', label: '차단', color: 'red', icon: XCircle, description: '빌드/배포 중단' },
     { value: 'WARN', label: '경고', color: 'yellow', icon: AlertCircle, description: '경고만 표시, 진행 허용' },
+    { value: 'INFO', label: '정보', color: 'blue', icon: Info, description: '정책 결과에 정보로 기록' },
     { value: 'AUDIT', label: '감사', color: 'blue', icon: FileText, description: '로그에 기록' },
     { value: 'ALLOW', label: '허용', color: 'green', icon: CheckCircle, description: '예외적 허용' },
 ];

@@ -5,6 +5,15 @@ import { VulnSyncService } from './services/vuln-sync.service';
 import { LicenseParserService } from '../licenses/services/license-parser.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
 import * as crypto from 'crypto';
+import { PolicyEngineService } from '../policies/policy-engine.service';
+import {
+    RequestUser,
+    assertOrganizationAccess,
+    assertProjectAccess,
+    getScopedOrganizationIds,
+    getUserRoles,
+    isSystemAdmin,
+} from '../../common/authz/access-control';
 
 @Injectable()
 export class ScansService {
@@ -15,10 +24,42 @@ export class ScansService {
         private readonly trivyParser: TrivyParserService,
         private readonly licenseParser: LicenseParserService,
         private readonly vulnSyncService: VulnSyncService,
+        private readonly policyEngine: PolicyEngineService,
     ) { }
 
-    async findAll(projectId?: string, options?: { limit?: number; offset?: number }) {
-        const where = projectId ? { projectId } : undefined;
+    private buildScanAccessWhere(currentUser?: RequestUser, projectId?: string) {
+        if (projectId) {
+            return { projectId };
+        }
+
+        if (!currentUser || isSystemAdmin(currentUser)) {
+            return undefined;
+        }
+
+        const organizationIds = getScopedOrganizationIds(currentUser) || [];
+        const projectIds = getUserRoles(currentUser)
+            .filter((role) => role.scope === 'PROJECT' && role.scopeId)
+            .map((role) => role.scopeId as string);
+        const filters: any[] = [];
+
+        if (organizationIds.length > 0) {
+            filters.push({ project: { organizationId: { in: organizationIds } } });
+        }
+        if (projectIds.length > 0) {
+            filters.push({ projectId: { in: projectIds } });
+        }
+
+        return filters.length > 0 ? { OR: filters } : { id: '__no_access__' };
+    }
+
+    async findAll(projectId?: string, options?: { limit?: number; offset?: number }, currentUser?: RequestUser) {
+        if (projectId && currentUser) {
+            const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+            if (!project) throw new NotFoundException('Project not found');
+            assertProjectAccess(currentUser, project);
+        }
+
+        const where = this.buildScanAccessWhere(currentUser, projectId);
 
         const [results, total] = await Promise.all([
             this.prisma.scanResult.findMany({
@@ -66,7 +107,7 @@ export class ScansService {
         return { results: transformedResults, total };
     }
 
-    async findById(id: string) {
+    async findById(id: string, currentUser?: RequestUser) {
         const scan = await this.prisma.scanResult.findUnique({
             where: { id },
             include: {
@@ -87,6 +128,10 @@ export class ScansService {
 
         if (!scan) {
             throw new NotFoundException('Scan result not found');
+        }
+
+        if (currentUser) {
+            assertProjectAccess(currentUser, scan.project);
         }
 
         // Transform to match frontend interface
@@ -153,13 +198,14 @@ export class ScansService {
         projectId: string | undefined,
         dto: UploadScanDto,
         rawResult: any,
-        sourceInfo?: { uploaderIp?: string; userAgent?: string; uploadedById?: string }
+        sourceInfo?: { uploaderIp?: string; userAgent?: string; uploadedById?: string },
+        currentUser?: RequestUser,
     ) {
         // Parse the scan result first to get artifact info
         const parsed = this.trivyParser.parse(rawResult, dto.sourceType);
 
         // Resolve project - either use provided projectId or auto-create
-        const resolvedProjectId = await this.resolveProject(projectId, dto, parsed.artifactName);
+        const resolvedProjectId = await this.resolveProject(projectId, dto, parsed.artifactName, currentUser);
 
         // Create the scan result
         const scanResult = await this.prisma.scanResult.create({
@@ -215,7 +261,18 @@ export class ScansService {
         // Create summary
         await this.createSummary(scanResult.id);
 
-        return this.findById(scanResult.id);
+        let policyEvaluation;
+        try {
+            policyEvaluation = await this.policyEngine.evaluate(resolvedProjectId, scanResult.id, undefined, currentUser);
+        } catch (error) {
+            this.logger.warn(`Failed to evaluate policies for scan ${scanResult.id}: ${error.message}`);
+        }
+
+        const savedScan = await this.findById(scanResult.id, currentUser);
+        return {
+            ...savedScan,
+            policyEvaluation,
+        };
     }
 
     /**
@@ -225,6 +282,7 @@ export class ScansService {
         projectId: string | undefined,
         dto: UploadScanDto,
         artifactName?: string,
+        currentUser?: RequestUser,
     ): Promise<string> {
         // Case 1: projectId is provided - use it directly
         if (projectId) {
@@ -234,28 +292,36 @@ export class ScansService {
             if (!project) {
                 throw new BadRequestException(`Project with ID ${projectId} not found`);
             }
+            if (currentUser) {
+                assertProjectAccess(currentUser, project);
+            }
             return projectId;
         }
 
+        const fallbackOrganizationId = dto.organizationId || currentUser?.organizationId || undefined;
+
         // Case 2: projectName is provided - find or create
         if (dto.projectName) {
+            if (!fallbackOrganizationId) {
+                throw new BadRequestException(
+                    'organizationId is required when using projectName',
+                );
+            }
+
+            if (fallbackOrganizationId && currentUser) {
+                assertOrganizationAccess(currentUser, fallbackOrganizationId);
+            }
+
             // Try to find existing project by name
             const existingProject = await this.prisma.project.findFirst({
                 where: {
                     name: dto.projectName,
-                    ...(dto.organizationId ? { organizationId: dto.organizationId } : {}),
+                    ...(fallbackOrganizationId ? { organizationId: fallbackOrganizationId } : {}),
                 },
             });
 
             if (existingProject) {
                 return existingProject.id;
-            }
-
-            // Create new project - organizationId is required for creation
-            if (!dto.organizationId) {
-                throw new BadRequestException(
-                    'organizationId is required when creating a new project via projectName',
-                );
             }
 
             const slug = dto.projectName
@@ -267,7 +333,7 @@ export class ScansService {
                 data: {
                     name: dto.projectName,
                     slug: slug || `project-${Date.now()}`,
-                    organizationId: dto.organizationId,
+                    organizationId: fallbackOrganizationId,
                 },
             });
 
@@ -275,7 +341,11 @@ export class ScansService {
         }
 
         // Case 3: Use artifactName from scan result to create project
-        if (artifactName && dto.organizationId) {
+        if (artifactName && fallbackOrganizationId) {
+            if (currentUser) {
+                assertOrganizationAccess(currentUser, fallbackOrganizationId);
+            }
+
             // Extract a project name from artifact (e.g., 'registry.com/my-app:v1' -> 'my-app')
             const projectName = this.extractProjectNameFromArtifact(artifactName);
 
@@ -283,7 +353,7 @@ export class ScansService {
             const existingProject = await this.prisma.project.findFirst({
                 where: {
                     name: projectName,
-                    organizationId: dto.organizationId,
+                    organizationId: fallbackOrganizationId,
                 },
             });
 
@@ -301,7 +371,7 @@ export class ScansService {
                 data: {
                     name: projectName,
                     slug: slug || `project-${Date.now()}`,
-                    organizationId: dto.organizationId,
+                    organizationId: fallbackOrganizationId,
                 },
             });
 
@@ -461,15 +531,15 @@ export class ScansService {
         });
     }
 
-    async delete(id: string) {
-        await this.findById(id);
+    async delete(id: string, currentUser?: RequestUser) {
+        await this.findById(id, currentUser);
         return this.prisma.scanResult.delete({ where: { id } });
     }
 
     /**
      * Compare two scans and return added/removed vulnerabilities
      */
-    async compareScan(baseScanId: string, compareScanId: string) {
+    async compareScan(baseScanId: string, compareScanId: string, currentUser?: RequestUser) {
         // Get both scans with their vulnerabilities
         const [baseScan, compareScan] = await Promise.all([
             this.prisma.scanResult.findUnique({
@@ -501,6 +571,14 @@ export class ScansService {
         }
         if (!compareScan) {
             throw new NotFoundException(`Compare scan ${compareScanId} not found`);
+        }
+        if (currentUser) {
+            const [baseProject, compareProject] = await Promise.all([
+                this.prisma.project.findUnique({ where: { id: baseScan.projectId } }),
+                this.prisma.project.findUnique({ where: { id: compareScan.projectId } }),
+            ]);
+            assertProjectAccess(currentUser, baseProject);
+            assertProjectAccess(currentUser, compareProject);
         }
 
         // Create sets of vulnerability hashes for comparison

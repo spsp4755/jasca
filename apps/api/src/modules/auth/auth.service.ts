@@ -87,7 +87,8 @@ export class AuthService {
                 roles: {
                     create: {
                         role: dto.role || 'VIEWER',
-                        scope: 'ORGANIZATION',
+                        scope: dto.role === 'SYSTEM_ADMIN' ? 'SYSTEM' : 'ORGANIZATION',
+                        scopeId: dto.role === 'SYSTEM_ADMIN' ? undefined : dto.organizationId,
                     },
                 },
             },

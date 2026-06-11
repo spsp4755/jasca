@@ -1,0 +1,43 @@
+FROM jasca-offline:latest
+
+WORKDIR /app
+
+# Refresh the standalone web server and static assets from the host build.
+COPY apps/web/.next/standalone/ ./
+COPY apps/web/.next/static ./.next/static
+
+# Refresh the API build and Prisma assets from the host build.
+COPY apps/api/dist ./apps/api/dist
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/api/prisma ./apps/api/prisma
+
+# Refresh runtime configuration and startup scripts.
+COPY docker/monolith/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/monolith/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Older offline images can miss root package symlinks after pnpm pruning.
+# Keep Node's normal module resolution working for Prisma seed/runtime code.
+RUN mkdir -p /app/node_modules/@prisma /app/node_modules/.bin && \
+    if [ -d /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client ]; then \
+      ln -sfn /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client /app/node_modules/@prisma/client; \
+    fi && \
+    if [ -d /app/node_modules/.pnpm/prisma@5.22.0/node_modules/prisma ]; then \
+      ln -sfn /app/node_modules/.pnpm/prisma@5.22.0/node_modules/prisma /app/node_modules/prisma; \
+      ln -sfn ../prisma/build/index.js /app/node_modules/.bin/prisma; \
+    fi && \
+    if [ -d /app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs ]; then \
+      ln -sfn /app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs /app/node_modules/bcryptjs; \
+    fi
+
+# Ensure Trivy CLI cache layout exists even when only root DB files were copied.
+RUN mkdir -p /app/trivy-db/db /app/trivy-db/java-db && \
+    if [ -f /app/trivy-db/trivy.db ] && [ ! -f /app/trivy-db/db/trivy.db ]; then cp /app/trivy-db/trivy.db /app/trivy-db/db/trivy.db; fi && \
+    if [ -f /app/trivy-db/metadata.json ] && [ ! -f /app/trivy-db/db/metadata.json ]; then cp /app/trivy-db/metadata.json /app/trivy-db/db/metadata.json; fi && \
+    if [ -f /app/trivy-db/trivy-java.db ] && [ ! -f /app/trivy-db/java-db/trivy-java.db ]; then cp /app/trivy-db/trivy-java.db /app/trivy-db/java-db/trivy-java.db; fi && \
+    if [ -f /app/trivy-db/java-metadata.json ] && [ ! -f /app/trivy-db/java-db/metadata.json ]; then cp /app/trivy-db/java-metadata.json /app/trivy-db/java-db/metadata.json; fi
+
+ENV TRIVY_CACHE_DIR=/app/trivy-db
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

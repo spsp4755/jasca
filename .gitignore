@@ -1,4 +1,5 @@
 node_modules
+.corepack
 dist
 .next
 .turbo
@@ -18,3 +19,4 @@ trivy-db/java-db
 trivy-db/policy
 apps/web/tsc-errors.txt
 apps/web/build-errors.txt
+apps/api/prisma/seed.js

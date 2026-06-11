@@ -59,6 +59,23 @@ const roleColors: Record<string, string> = {
     VIEWER: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
 };
 
+function getRoleScopeLabel(user: User) {
+    const primaryRole = user.roles?.find((role) => role.role === user.role) || user.roles?.[0];
+    const scope = primaryRole?.scope || user.roleScope;
+
+    if (scope === 'SYSTEM' || scope === 'GLOBAL' || user.role === 'SYSTEM_ADMIN') {
+        return 'System-wide';
+    }
+    if (scope === 'PROJECT') {
+        return primaryRole?.scopeId ? `Project scope: ${primaryRole.scopeId}` : 'Project scope';
+    }
+    if (scope === 'ORGANIZATION') {
+        return user.organization?.name ? `Organization scope: ${user.organization.name}` : 'Organization scope';
+    }
+
+    return user.organization?.name ? `Organization: ${user.organization.name}` : 'Scope not set';
+}
+
 const statusLabels: Record<string, { label: string; color: string; icon: typeof CheckCircle }> = {
     ACTIVE: { label: '활성', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', icon: CheckCircle },
     INACTIVE: { label: '비활성', color: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300', icon: XCircle },
@@ -209,6 +226,10 @@ export default function AdminUsersPage() {
     const handleCreate = async () => {
         try {
             setFormError(null);
+            if (formData.role !== 'SYSTEM_ADMIN' && !formData.organizationId) {
+                setFormError('Organization is required for organization-scoped roles.');
+                return;
+            }
             await createMutation.mutateAsync(formData);
             closeModals();
         } catch (err: any) {
@@ -223,6 +244,10 @@ export default function AdminUsersPage() {
         if (!editingUser) return;
         try {
             setFormError(null);
+            if (formData.role !== 'SYSTEM_ADMIN' && !formData.organizationId) {
+                setFormError('Organization is required for organization-scoped roles.');
+                return;
+            }
             await updateMutation.mutateAsync({ 
                 id: editingUser.id, 
                 name: formData.name, 
@@ -510,6 +535,9 @@ export default function AdminUsersPage() {
                                         <span className={`px-2 py-1 rounded text-xs font-medium ${roleColors[user.role] || 'bg-slate-100 text-slate-700'}`}>
                                             {roleLabels[user.role] || user.role}
                                         </span>
+                                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                            {getRoleScopeLabel(user)}
+                                        </p>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
                                         {user.organization?.name || <span className="text-slate-400">-</span>}
@@ -695,6 +723,9 @@ export default function AdminUsersPage() {
                                             <option key={value} value={value}>{label}</option>
                                         ))}
                                     </select>
+                                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                        SYSTEM_ADMIN is system-wide; other roles apply only to the selected organization.
+                                    </p>
                                 </div>
                                 {editingUser && (
                                     <div>
@@ -789,6 +820,9 @@ export default function AdminUsersPage() {
                                     <span className={`inline-flex px-2 py-1 rounded text-xs font-medium ${roleColors[viewingUser.role] || ''}`}>
                                         {roleLabels[viewingUser.role] || viewingUser.role}
                                     </span>
+                                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                        {getRoleScopeLabel(viewingUser)}
+                                    </p>
                                 </div>
                                 <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3">
                                     <p className="text-xs text-slate-500 mb-1">상태</p>

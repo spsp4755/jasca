@@ -30,6 +30,7 @@ const SOURCE_TYPES: { value: UploadScanDto['sourceType']; label: string }[] = [
 ];
 
 type ProjectMode = 'existing' | 'new';
+type UploadMode = 'scan-target' | 'json-result';
 
 export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
     const { data: projectsData, isLoading: projectsLoading } = useProjects();
@@ -38,6 +39,7 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
 
     // Mode selection
     const [projectMode, setProjectMode] = useState<ProjectMode>('existing');
+    const [uploadMode, setUploadMode] = useState<UploadMode>('scan-target');
 
     // Existing project mode
     const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -74,11 +76,11 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
         const files = e.dataTransfer.files;
         if (files.length > 0) {
             const file = files[0];
-            if (file.type === 'application/json' || file.name.endsWith('.json')) {
+            if (uploadMode === 'scan-target' || file.type === 'application/json' || file.name.endsWith('.json')) {
                 setSelectedFile(file);
             }
         }
-    }, []);
+    }, [uploadMode]);
 
     const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -103,8 +105,9 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                 await uploadMutation.mutateAsync({
                     projectId: selectedProjectId,
                     file: selectedFile!,
+                    scanTarget: uploadMode === 'scan-target',
                     metadata: {
-                        sourceType,
+                        sourceType: uploadMode === 'scan-target' ? 'TRIVY_JSON' : sourceType,
                         imageRef: imageRef || undefined,
                         tag: tag || undefined,
                     },
@@ -113,8 +116,9 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                 // Create new project
                 await uploadMutation.mutateAsync({
                     file: selectedFile!,
+                    scanTarget: uploadMode === 'scan-target',
                     metadata: {
-                        sourceType,
+                        sourceType: uploadMode === 'scan-target' ? 'TRIVY_JSON' : sourceType,
                         projectName: newProjectName.trim(),
                         organizationId: selectedOrganizationId,
                         imageRef: imageRef || undefined,
@@ -133,6 +137,7 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
 
     const handleClose = () => {
         setProjectMode('existing');
+        setUploadMode('scan-target');
         setSelectedProjectId('');
         setNewProjectName('');
         setSelectedOrganizationId('');
@@ -153,7 +158,7 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
                     <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-                        Trivy 스캔 결과 업로드
+                        Trivy 스캔
                     </h2>
                     <button
                         onClick={handleClose}
@@ -174,11 +179,48 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                                 업로드 완료!
                             </p>
                             <p className="text-slate-600 dark:text-slate-400 text-center">
-                                {projectMode === 'new' ? '프로젝트가 생성되고 ' : ''}스캔 결과가 성공적으로 업로드되었습니다.
+                                {projectMode === 'new' ? '프로젝트가 생성되고 ' : ''}
+                                {uploadMode === 'scan-target' ? 'Trivy 검사가 완료되었습니다.' : '스캔 결과가 성공적으로 업로드되었습니다.'}
                             </p>
                         </div>
                     ) : (
                         <>
+                            {/* Upload Mode Tabs */}
+                            <div className="flex rounded-lg bg-slate-100 dark:bg-slate-700 p-1">
+                                <button
+                                    onClick={() => {
+                                        setUploadMode('scan-target');
+                                        setSelectedFile(null);
+                                    }}
+                                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors ${uploadMode === 'scan-target'
+                                            ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                        }`}
+                                >
+                                    <Upload className="h-4 w-4" />
+                                    파일 직접 검사
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setUploadMode('json-result');
+                                        setSelectedFile(null);
+                                    }}
+                                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors ${uploadMode === 'json-result'
+                                            ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                        }`}
+                                >
+                                    <FileJson className="h-4 w-4" />
+                                    JSON 결과 업로드
+                                </button>
+                            </div>
+
+                            <div className="rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 px-4 py-3 text-sm text-blue-800 dark:text-blue-300">
+                                {uploadMode === 'scan-target'
+                                    ? '검사 대상 파일을 업로드하면 서버에서 Trivy로 검사한 뒤 결과를 저장합니다. 업로드 파일은 검사 후 자동 삭제됩니다.'
+                                    : '이미 Trivy로 생성한 JSON/SARIF 결과 파일을 그대로 업로드합니다.'}
+                            </div>
+
                             {/* Project Mode Tabs */}
                             <div className="flex rounded-lg bg-slate-100 dark:bg-slate-700 p-1">
                                 <button
@@ -271,6 +313,7 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                             )}
 
                             {/* Source Type Selection */}
+                            {uploadMode === 'json-result' && (
                             <div className="space-y-2">
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                                     소스 타입
@@ -290,6 +333,7 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
                                 </div>
                             </div>
+                            )}
 
                             {/* Optional Fields */}
                             <div className="grid grid-cols-2 gap-4">
@@ -322,7 +366,7 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                             {/* File Upload Area */}
                             <div className="space-y-2">
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                                    JSON 파일 업로드 <span className="text-red-500">*</span>
+                                    {uploadMode === 'scan-target' ? '검사 대상 파일' : 'JSON/SARIF 결과 파일'} <span className="text-red-500">*</span>
                                 </label>
                                 <div
                                     onDragOver={handleDragOver}
@@ -339,7 +383,7 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                                     <input
                                         ref={fileInputRef}
                                         type="file"
-                                        accept=".json,application/json"
+                                        accept={uploadMode === 'json-result' ? '.json,.sarif,application/json' : undefined}
                                         onChange={handleFileSelect}
                                         className="hidden"
                                     />
@@ -368,7 +412,9 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                                                         파일을 드래그하거나 클릭하여 선택
                                                     </p>
                                                     <p className="text-sm text-slate-500">
-                                                        JSON 파일만 지원됩니다
+                                                        {uploadMode === 'scan-target'
+                                                            ? 'package-lock.json, pom.xml, requirements.txt, Dockerfile 등 Trivy 지원 파일'
+                                                            : 'JSON/SARIF 결과 파일만 지원됩니다'}
                                                     </p>
                                                 </div>
                                             </>
@@ -405,12 +451,14 @@ export function UploadScanModal({ isOpen, onClose }: UploadScanModalProps) {
                             {uploadMutation.isPending ? (
                                 <>
                                     <Loader2 className="h-4 w-4 animate-spin" />
-                                    업로드 중...
+                                    {uploadMode === 'scan-target' ? '검사 중...' : '업로드 중...'}
                                 </>
                             ) : (
                                 <>
                                     <Upload className="h-4 w-4" />
-                                    {projectMode === 'new' ? '프로젝트 생성 및 업로드' : '업로드'}
+                                    {uploadMode === 'scan-target'
+                                        ? (projectMode === 'new' ? '프로젝트 생성 및 검사' : '검사 시작')
+                                        : (projectMode === 'new' ? '프로젝트 생성 및 업로드' : '업로드')}
                                 </>
                             )}
                         </button>

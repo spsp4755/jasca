@@ -14,6 +14,12 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
+import { SourceType } from '@prisma/client';
 import {
     ApiTags,
     ApiBearerAuth,
@@ -28,11 +34,43 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ScansService } from './scans.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
+import { TrivyScanService } from './services/trivy-scan.service';
+
+const TRIVY_UPLOAD_ROOT = path.join(os.tmpdir(), 'jasca-trivy-uploads');
+const MAX_TRIVY_UPLOAD_BYTES = Number(process.env.TRIVY_UPLOAD_MAX_BYTES || 200 * 1024 * 1024);
+
+function sanitizeUploadName(originalName: string): string {
+    const baseName = path.basename(originalName || 'upload.bin');
+    return baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function parseUploadedJson(buffer: Buffer): any {
+    const contents = buffer.toString('utf-8').replace(/^\uFEFF/, '');
+    try {
+        return JSON.parse(contents);
+    } catch {
+        throw new BadRequestException('Uploaded file must be a valid JSON document');
+    }
+}
+
+const trivyUploadStorage = diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = path.join(TRIVY_UPLOAD_ROOT, randomUUID());
+        fs.mkdirSync(uploadDir, { recursive: true });
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        cb(null, sanitizeUploadName(file.originalname));
+    },
+});
 
 @ApiTags('Scans')
 @Controller('scans')
 export class ScansController {
-    constructor(private readonly scansService: ScansService) { }
+    constructor(
+        private readonly scansService: ScansService,
+        private readonly trivyScanService: TrivyScanService,
+    ) { }
 
     @Get()
     @UseGuards(JwtAuthGuard)
@@ -42,6 +80,7 @@ export class ScansController {
     @ApiQuery({ name: 'limit', required: false, type: Number })
     @ApiQuery({ name: 'offset', required: false, type: Number })
     async findAll(
+        @Req() req: Request,
         @Query('projectId') projectId?: string,
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
@@ -49,15 +88,15 @@ export class ScansController {
         return this.scansService.findAll(projectId, {
             limit: limit ? parseInt(limit, 10) : undefined,
             offset: offset ? parseInt(offset, 10) : undefined,
-        });
+        }, (req as any).user);
     }
 
     @Get(':id')
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Get scan result by ID' })
-    async findById(@Param('id') id: string) {
-        return this.scansService.findById(id);
+    async findById(@Param('id') id: string, @Req() req: Request) {
+        return this.scansService.findById(id, (req as any).user);
     }
 
     /**
@@ -66,7 +105,7 @@ export class ScansController {
      */
     @Post('upload')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN')
+    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
     @ApiBearerAuth()
     @ApiSecurity('api-key')
     @ApiOperation({ summary: 'Upload a Trivy scan result directly as JSON body' })
@@ -92,7 +131,7 @@ export class ScansController {
 
         // Build DTO from query params
         const dto: UploadScanDto = {
-            sourceType: 'TRIVY_JSON',
+            sourceType: SourceType.TRIVY_JSON,
             projectName: projectName,
             organizationId: organizationId,
             imageRef: imageRef,
@@ -116,7 +155,7 @@ export class ScansController {
             uploaderIp,
             userAgent,
             uploadedById,
-        });
+        }, user);
     }
 
     /**
@@ -124,7 +163,7 @@ export class ScansController {
      */
     @Post('upload/file')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN')
+    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
     @ApiBearerAuth()
     @ApiSecurity('api-key')
     @ApiOperation({ summary: 'Upload a Trivy scan result as multipart file' })
@@ -143,7 +182,7 @@ export class ScansController {
 
         // Build DTO from form fields (multipart form sends fields individually)
         const dto: UploadScanDto = {
-            sourceType: body.sourceType || 'TRIVY_JSON',
+            sourceType: body.sourceType || SourceType.TRIVY_JSON,
             projectName: body.projectName,
             organizationId: body.organizationId,
             imageRef: body.imageRef,
@@ -167,17 +206,71 @@ export class ScansController {
         const userAgent = req.headers['user-agent'] || 'Browser Upload';
         const uploadedById = (req as any).user?.id;
 
-        const rawResult = JSON.parse(file.buffer.toString('utf-8'));
+        const rawResult = parseUploadedJson(file.buffer);
         return this.scansService.uploadScan(projectId, dto, rawResult, {
             uploaderIp,
             userAgent,
             uploadedById,
-        });
+        }, (req as any).user);
+    }
+
+    /**
+     * Scan an uploaded target file with Trivy, then store the generated Trivy JSON result.
+     */
+    @Post('scan/file')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
+    @ApiBearerAuth()
+    @ApiSecurity('api-key')
+    @ApiOperation({ summary: 'Upload a target file and scan it with Trivy' })
+    @ApiQuery({ name: 'projectId', required: false, description: 'Project ID - if not provided, use projectName & organizationId in body' })
+    @ApiConsumes('multipart/form-data')
+    @UseInterceptors(FileInterceptor('file', {
+        storage: trivyUploadStorage,
+        limits: { fileSize: MAX_TRIVY_UPLOAD_BYTES },
+    }))
+    async scanUploadedFile(
+        @Query('projectId') projectId: string | undefined,
+        @Body() body: any,
+        @UploadedFile() file: Express.Multer.File,
+        @Req() req: Request,
+    ) {
+        if (!file) {
+            throw new BadRequestException('No file uploaded');
+        }
+
+        const user = (req as any).user;
+        const rawResult = await this.trivyScanService.scanUploadedFile(file.path);
+        const dto: UploadScanDto = {
+            sourceType: SourceType.TRIVY_JSON,
+            projectName: body.projectName,
+            organizationId: body.organizationId || user?.organizationId,
+            imageRef: body.imageRef || file.originalname,
+            imageDigest: body.imageDigest,
+            tag: body.tag,
+            commitHash: body.commitHash,
+            branch: body.branch,
+            ciPipeline: body.ciPipeline,
+            ciJobUrl: body.ciJobUrl,
+        };
+
+        const forwarded = req.headers['x-forwarded-for'];
+        const forwardedIp = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+        let uploaderIp = forwardedIp || req.ip || req.socket?.remoteAddress;
+        if (uploaderIp === '::1' || uploaderIp === '::ffff:127.0.0.1') {
+            uploaderIp = '127.0.0.1';
+        }
+
+        return this.scansService.uploadScan(projectId, dto, rawResult, {
+            uploaderIp: uploaderIp || 'unknown',
+            userAgent: req.headers['user-agent'] || 'Browser Trivy Scan',
+            uploadedById: user?.id,
+        }, user);
     }
 
     @Post('upload/json')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN')
+    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
     @ApiBearerAuth()
     @ApiSecurity('api-key')
     @ApiOperation({ summary: 'Upload a Trivy scan result with metadata wrapper' })
@@ -203,7 +296,7 @@ export class ScansController {
             uploaderIp,
             userAgent,
             uploadedById,
-        });
+        }, (req as any).user);
     }
 
     @Delete(':id')
@@ -211,8 +304,8 @@ export class ScansController {
     @Roles('PROJECT_ADMIN', 'ORG_ADMIN')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Delete a scan result' })
-    async delete(@Param('id') id: string) {
-        return this.scansService.delete(id);
+    async delete(@Param('id') id: string, @Req() req: Request) {
+        return this.scansService.delete(id, (req as any).user);
     }
 
     @Get(':id/compare/:compareId')
@@ -222,8 +315,9 @@ export class ScansController {
     async compareScan(
         @Param('id') baseScanId: string,
         @Param('compareId') compareScanId: string,
+        @Req() req: Request,
     ) {
-        return this.scansService.compareScan(baseScanId, compareScanId);
+        return this.scansService.compareScan(baseScanId, compareScanId, (req as any).user);
     }
 }
 

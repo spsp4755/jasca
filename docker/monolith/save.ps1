@@ -1,3 +1,10 @@
-Write-Host "Saving image to jasca-offline.tar..."
-docker save jasca-offline -o jasca-offline.tar
-Write-Host "Done. You can transfer jasca-offline.tar to your offline environment."
+param(
+    [string]$DockerContext = $env:DOCKER_CONTEXT
+)
+
+Write-Host "Creating offline bundle..."
+$args = @("-SkipBuild")
+if ($DockerContext) {
+    $args += @("-DockerContext", $DockerContext)
+}
+& (Join-Path $PSScriptRoot "..\..\script\build-offline-bundle.ps1") @args

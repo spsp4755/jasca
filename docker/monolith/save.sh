@@ -1,5 +1,7 @@
-#!/bin/bash
-echo "Saving image to jasca-offline.tar..."
-docker save jasca-offline -o jasca-offline.tar
-tar cvfz jasca.tar.gz jasca-offline.tar
-echo "Done. You can transfer jasca-offline.tar to your offline environment."
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+PROJECT_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
+
+SKIP_BUILD=1 sh "$PROJECT_ROOT/script/build-offline-bundle.sh"

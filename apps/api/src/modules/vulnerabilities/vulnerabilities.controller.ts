@@ -45,6 +45,7 @@ export class VulnerabilitiesController {
         @Query('sortBy') sortBy?: 'severity' | 'cveId' | 'pkgName' | 'status' | 'createdAt',
         @Query('sortOrder') sortOrder?: 'asc' | 'desc',
         @Query('latestScanOnly') latestScanOnly?: string,
+        @CurrentUser() user?: any,
     ) {
         const severityArr = severity
             ? Array.isArray(severity)
@@ -66,26 +67,27 @@ export class VulnerabilitiesController {
                 sortOrder,
                 latestScanOnly: latestScanOnly === 'true',
             },
+            user,
         );
     }
 
 
     @Get(':id')
     @ApiOperation({ summary: 'Get vulnerability by ID' })
-    async findById(@Param('id') id: string) {
-        return this.vulnService.findById(id);
+    async findById(@Param('id') id: string, @CurrentUser() user?: any) {
+        return this.vulnService.findById(id, user);
     }
 
     @Get('cve/:cveId')
     @ApiOperation({ summary: 'Get CVE details' })
-    async findByCveId(@Param('cveId') cveId: string) {
-        return this.vulnService.findByCveId(cveId);
+    async findByCveId(@Param('cveId') cveId: string, @CurrentUser() user?: any) {
+        return this.vulnService.findByCveId(cveId, user);
     }
 
     @Get('cve/:cveId/affected')
     @ApiOperation({ summary: 'Get all services affected by a CVE' })
-    async findAffected(@Param('cveId') cveId: string) {
-        return this.vulnService.findAffectedByVuln(cveId);
+    async findAffected(@Param('cveId') cveId: string, @CurrentUser() user?: any) {
+        return this.vulnService.findAffectedByVuln(cveId, user);
     }
 
     @Put(':id/status')
@@ -98,7 +100,7 @@ export class VulnerabilitiesController {
         if (!user?.id) {
             throw new BadRequestException('User authentication required');
         }
-        return this.vulnService.updateStatus(id, body.status, user.id, user.role);
+        return this.vulnService.updateStatus(id, body.status, user.id, user.role, user);
     }
 
     @Get(':id/available-transitions')
@@ -107,7 +109,7 @@ export class VulnerabilitiesController {
         @Param('id') id: string,
         @CurrentUser() user: any,
     ) {
-        return this.vulnService.getAvailableTransitions(id, user.role);
+        return this.vulnService.getAvailableTransitions(id, user.role, user);
     }
 
     @Put(':id/assign')
@@ -115,8 +117,9 @@ export class VulnerabilitiesController {
     async assign(
         @Param('id') id: string,
         @Body() body: { assigneeId: string | null },
+        @CurrentUser() user?: any,
     ) {
-        return this.vulnService.assignUser(id, body.assigneeId);
+        return this.vulnService.assignUser(id, body.assigneeId, user);
     }
 
     @Post(':id/comments')
@@ -129,13 +132,13 @@ export class VulnerabilitiesController {
         if (!user?.id) {
             throw new BadRequestException('User authentication required');
         }
-        return this.vulnService.addComment(id, user.id, body.content);
+        return this.vulnService.addComment(id, user.id, body.content, user);
     }
 
     @Get(':id/history')
     @ApiOperation({ summary: 'Get vulnerability history (status changes (& comments)' })
-    async getHistory(@Param('id') id: string) {
-        return this.vulnService.getHistory(id);
+    async getHistory(@Param('id') id: string, @CurrentUser() user?: any) {
+        return this.vulnService.getHistory(id, user);
     }
 }
 
