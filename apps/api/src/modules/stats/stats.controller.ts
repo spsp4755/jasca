@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { StatsService } from './stats.service';
 
 @ApiTags('Statistics')
@@ -13,15 +14,15 @@ export class StatsController {
     @Get('overview')
     @ApiOperation({ summary: 'Get vulnerability overview statistics' })
     @ApiQuery({ name: 'organizationId', required: false })
-    async getOverview(@Query('organizationId') organizationId?: string) {
-        return this.statsService.getOverview(organizationId);
+    async getOverview(@Query('organizationId') organizationId?: string, @CurrentUser() user?: any) {
+        return this.statsService.getOverview(organizationId, user);
     }
 
     @Get('by-project')
     @ApiOperation({ summary: 'Get statistics by project' })
     @ApiQuery({ name: 'organizationId', required: false })
-    async getByProject(@Query('organizationId') organizationId?: string) {
-        return this.statsService.getByProject(organizationId);
+    async getByProject(@Query('organizationId') organizationId?: string, @CurrentUser() user?: any) {
+        return this.statsService.getByProject(organizationId, user);
     }
 
     @Get('trend')
@@ -31,10 +32,12 @@ export class StatsController {
     async getTrend(
         @Query('organizationId') organizationId?: string,
         @Query('days') days?: string,
+        @CurrentUser() user?: any,
     ) {
         return this.statsService.getTrend(
             organizationId,
             days ? parseInt(days, 10) : 30,
+            user,
         );
     }
 }

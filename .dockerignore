@@ -2,12 +2,16 @@
 **/dist
 **/build
 **/.next
+!apps/api/dist/**
+!apps/web/.next/standalone/**
+!apps/web/.next/static/**
 
 .turbo
 .cache
 .vscode
 coverage
 local-data
+trivy-db
 *.log
 .env.local
 .env.development.local

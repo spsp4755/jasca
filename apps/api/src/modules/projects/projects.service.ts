@@ -1,12 +1,47 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
+import {
+    RequestUser,
+    assertOrganizationManager,
+    assertProjectAccess,
+    assertProjectManager,
+    getScopedOrganizationIds,
+    getUserRoles,
+    isSystemAdmin,
+} from '../../common/authz/access-control';
 
 @Injectable()
 export class ProjectsService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async findAll(organizationId?: string, options?: {
+    private buildProjectAccessWhere(currentUser: RequestUser, organizationId?: string) {
+        if (isSystemAdmin(currentUser)) {
+            return organizationId ? { organizationId } : {};
+        }
+
+        const organizationIds = getScopedOrganizationIds(currentUser) || [];
+        const projectIds = getUserRoles(currentUser)
+            .filter((role) => role.scope === 'PROJECT' && role.scopeId)
+            .map((role) => role.scopeId as string);
+
+        const accessFilters: any[] = [];
+        if (organizationIds.length > 0) accessFilters.push({ organizationId: { in: organizationIds } });
+        if (projectIds.length > 0) accessFilters.push({ id: { in: projectIds } });
+
+        if (accessFilters.length === 0) {
+            return { id: '__no_access__' };
+        }
+
+        const accessWhere = { OR: accessFilters };
+        if (organizationId) {
+            return { AND: [{ organizationId }, accessWhere] };
+        }
+
+        return accessWhere;
+    }
+
+    async findAll(currentUser: RequestUser, organizationId?: string, options?: {
         limit?: number;
         offset?: number;
         search?: string;
@@ -14,16 +49,16 @@ export class ProjectsService {
         sortOrder?: 'asc' | 'desc';
         riskLevel?: string;
     }) {
-        const where: any = {};
-        if (organizationId) {
-            where.organizationId = organizationId;
-        }
+        const where: any = this.buildProjectAccessWhere(currentUser, organizationId);
         // Search filter for name and slug
         if (options?.search) {
-            where.OR = [
-                { name: { contains: options.search, mode: 'insensitive' } },
-                { slug: { contains: options.search, mode: 'insensitive' } },
-            ];
+            const searchWhere = {
+                OR: [
+                    { name: { contains: options.search, mode: 'insensitive' } },
+                    { slug: { contains: options.search, mode: 'insensitive' } },
+                ],
+            };
+            where.AND = where.AND ? [...where.AND, searchWhere] : [searchWhere];
         }
 
         // Build dynamic orderBy
@@ -99,7 +134,7 @@ export class ProjectsService {
         return { data: filteredData, total };
     }
 
-    async findById(id: string) {
+    async findById(id: string, currentUser?: RequestUser) {
         const project = await this.prisma.project.findUnique({
             where: { id },
             include: {
@@ -118,6 +153,10 @@ export class ProjectsService {
 
         if (!project) {
             throw new NotFoundException('Project not found');
+        }
+
+        if (currentUser) {
+            assertProjectAccess(currentUser, project);
         }
 
         // Calculate stats from the latest scan result
@@ -150,10 +189,19 @@ export class ProjectsService {
         };
     }
 
-    async create(organizationId: string, dto: CreateProjectDto) {
+    async create(organizationId: string | undefined, dto: CreateProjectDto, currentUser?: RequestUser) {
+        const resolvedOrganizationId = organizationId || currentUser?.organizationId;
+        if (!resolvedOrganizationId) {
+            throw new BadRequestException('organizationId is required to create a project');
+        }
+
+        if (currentUser) {
+            assertOrganizationManager(currentUser, resolvedOrganizationId, ['ORG_ADMIN']);
+        }
+
         const existing = await this.prisma.project.findFirst({
             where: {
-                organizationId,
+                organizationId: resolvedOrganizationId,
                 slug: dto.slug,
             },
         });
@@ -167,13 +215,19 @@ export class ProjectsService {
                 name: dto.name,
                 slug: dto.slug,
                 description: dto.description,
-                organizationId,
+                organizationId: resolvedOrganizationId,
             },
         });
     }
 
-    async update(id: string, data: Partial<CreateProjectDto>) {
-        await this.findById(id);
+    async update(id: string, data: Partial<CreateProjectDto>, currentUser?: RequestUser) {
+        const project = await this.prisma.project.findUnique({ where: { id } });
+        if (!project) {
+            throw new NotFoundException('Project not found');
+        }
+        if (currentUser) {
+            assertProjectManager(currentUser, project, ['ORG_ADMIN', 'PROJECT_ADMIN']);
+        }
 
         return this.prisma.project.update({
             where: { id },
@@ -181,15 +235,25 @@ export class ProjectsService {
         });
     }
 
-    async delete(id: string) {
-        await this.findById(id);
+    async delete(id: string, currentUser?: RequestUser) {
+        const project = await this.prisma.project.findUnique({ where: { id } });
+        if (!project) {
+            throw new NotFoundException('Project not found');
+        }
+        if (currentUser) {
+            assertProjectManager(currentUser, project, ['ORG_ADMIN']);
+        }
 
         return this.prisma.project.delete({
             where: { id },
         });
     }
 
-    async getVulnerabilityTrend(projectId: string, days: number) {
+    async getVulnerabilityTrend(projectId: string, days: number, currentUser?: RequestUser) {
+        if (currentUser) {
+            await this.findById(projectId, currentUser);
+        }
+
         // Get scan results with summaries for the last N days
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);

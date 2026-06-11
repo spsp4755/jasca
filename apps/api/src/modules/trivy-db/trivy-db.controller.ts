@@ -68,7 +68,7 @@ export class TrivyDbController {
 
   constructor(private readonly settingsService: SettingsService) {
     // Resolve path relative to project root (apps/api is two levels deep)
-    this.dbPath = path.resolve(process.cwd(), '..', '..', 'trivy-db');
+    this.dbPath = process.env.TRIVY_CACHE_DIR || path.resolve(process.cwd(), '..', '..', 'trivy-db');
   }
 
   /**
@@ -138,6 +138,17 @@ export class TrivyDbController {
     }
   }
 
+  private firstExistingPath(...segmentsList: string[][]): string | null {
+    for (const segments of segmentsList) {
+      const candidate = path.join(this.dbPath, ...segments);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
   @Get('info')
   @ApiOperation({ summary: 'Get Trivy DB information and metadata' })
   @ApiResponse({ status: 200, description: 'Trivy DB info retrieved successfully' })
@@ -162,10 +173,10 @@ export class TrivyDbController {
     let metadata: TrivyDbMetadata | null = null;
     let javaMetadata: TrivyDbMetadata | null = null;
 
-    const metadataPath = path.join(this.dbPath, 'metadata.json');
-    const javaMetadataPath = path.join(this.dbPath, 'java-metadata.json');
+    const metadataPath = this.firstExistingPath(['metadata.json'], ['db', 'metadata.json']);
+    const javaMetadataPath = this.firstExistingPath(['java-metadata.json'], ['java-db', 'metadata.json']);
 
-    if (fs.existsSync(metadataPath)) {
+    if (metadataPath) {
       try {
         metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
       } catch (e) {
@@ -173,7 +184,7 @@ export class TrivyDbController {
       }
     }
 
-    if (fs.existsSync(javaMetadataPath)) {
+    if (javaMetadataPath) {
       try {
         javaMetadata = JSON.parse(fs.readFileSync(javaMetadataPath, 'utf-8'));
       } catch (e) {
@@ -185,7 +196,16 @@ export class TrivyDbController {
     const files: { name: string; size: number; lastModified: string }[] = [];
     let totalSize = 0;
 
-    const fileNames = ['trivy.db', 'trivy-java.db', 'metadata.json', 'java-metadata.json'];
+    const fileNames = [
+      'trivy.db',
+      'trivy-java.db',
+      'metadata.json',
+      'java-metadata.json',
+      'db/trivy.db',
+      'db/metadata.json',
+      'java-db/trivy-java.db',
+      'java-db/metadata.json',
+    ];
 
     for (const fileName of fileNames) {
       const filePath = path.join(this.dbPath, fileName);
@@ -201,8 +221,8 @@ export class TrivyDbController {
     }
 
     // Check if DB is healthy (has main db and metadata)
-    const hasMainDb = files.some((f) => f.name === 'trivy.db');
-    const hasMetadata = files.some((f) => f.name === 'metadata.json');
+    const hasMainDb = files.some((f) => f.name === 'trivy.db' || f.name === 'db/trivy.db');
+    const hasMetadata = files.some((f) => f.name === 'metadata.json' || f.name === 'db/metadata.json');
     const isHealthy = hasMainDb && hasMetadata;
 
     return {
@@ -232,10 +252,10 @@ export class TrivyDbController {
       { name: 'Go Vulnerability DB', count: 0 },
     ];
 
-    const metadataPath = path.join(this.dbPath, 'metadata.json');
+    const metadataPath = this.firstExistingPath(['metadata.json'], ['db', 'metadata.json']);
     let lastUpdated: string | null = null;
 
-    if (fs.existsSync(metadataPath)) {
+    if (metadataPath) {
       try {
         const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
         lastUpdated = metadata.UpdatedAt;
@@ -253,8 +273,8 @@ export class TrivyDbController {
           }
         } catch {
           // CLI not available or failed, use estimated counts based on DB size
-          const dbPath = path.join(this.dbPath, 'trivy.db');
-          if (fs.existsSync(dbPath)) {
+          const dbPath = this.firstExistingPath(['trivy.db'], ['db', 'trivy.db']);
+          if (dbPath) {
             const stats = fs.statSync(dbPath);
             const dbSizeMB = stats.size / (1024 * 1024);
             // Rough estimation based on typical DB size

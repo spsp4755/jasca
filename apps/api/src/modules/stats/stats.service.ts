@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+    RequestUser,
+    assertOrganizationAccess,
+    getScopedOrganizationIds,
+    getUserRoles,
+    isSystemAdmin,
+} from '../../common/authz/access-control';
 
 export interface SeverityCounts {
     critical: number;
@@ -13,28 +20,57 @@ export interface SeverityCounts {
 export class StatsService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async getOverview(organizationId?: string) {
-        const projectFilter = organizationId
-            ? { project: { organizationId } }
-            : {};
+    private buildProjectWhere(organizationId?: string, currentUser?: RequestUser) {
+        if (organizationId && currentUser) {
+            assertOrganizationAccess(currentUser, organizationId);
+        }
+
+        if (!currentUser || isSystemAdmin(currentUser)) {
+            return organizationId ? { organizationId } : {};
+        }
+
+        const organizationIds = getScopedOrganizationIds(currentUser) || [];
+        const projectIds = getUserRoles(currentUser)
+            .filter((role) => role.scope === 'PROJECT' && role.scopeId)
+            .map((role) => role.scopeId as string);
+        const filters: any[] = [];
+
+        if (organizationIds.length > 0) {
+            filters.push({ organizationId: { in: organizationIds } });
+        }
+        if (projectIds.length > 0) {
+            filters.push({ id: { in: projectIds } });
+        }
+
+        const accessWhere = filters.length > 0 ? { OR: filters } : { id: '__no_access__' };
+        return organizationId ? { AND: [{ organizationId }, accessWhere] } : accessWhere;
+    }
+
+    private buildScanResultWhere(organizationId?: string, currentUser?: RequestUser) {
+        const projectWhere = this.buildProjectWhere(organizationId, currentUser);
+        return Object.keys(projectWhere).length > 0 ? { project: projectWhere } : {};
+    }
+
+    async getOverview(organizationId?: string, currentUser?: RequestUser) {
+        const scanResultFilter = this.buildScanResultWhere(organizationId, currentUser);
 
         const [totalScans, totalVulns, statusCounts] = await Promise.all([
             this.prisma.scanResult.count({
-                where: projectFilter,
+                where: scanResultFilter,
             }),
             this.prisma.scanVulnerability.count({
-                where: { scanResult: projectFilter },
+                where: { scanResult: scanResultFilter },
             }),
             this.prisma.scanVulnerability.groupBy({
                 by: ['status'],
-                where: { scanResult: projectFilter },
+                where: { scanResult: scanResultFilter },
                 _count: true,
             }),
         ]);
 
         // Get severity counts
         const vulnsWithSeverity = await this.prisma.scanVulnerability.findMany({
-            where: { scanResult: projectFilter },
+            where: { scanResult: scanResultFilter },
             include: { vulnerability: { select: { severity: true } } },
         });
 
@@ -68,8 +104,8 @@ export class StatsService {
         };
     }
 
-    async getByProject(organizationId?: string) {
-        const where = organizationId ? { organizationId } : {};
+    async getByProject(organizationId?: string, currentUser?: RequestUser) {
+        const where = this.buildProjectWhere(organizationId, currentUser);
 
         const projects = await this.prisma.project.findMany({
             where,
@@ -100,17 +136,15 @@ export class StatsService {
         }));
     }
 
-    async getTrend(organizationId?: string, days: number = 30) {
+    async getTrend(organizationId?: string, days: number = 30, currentUser?: RequestUser) {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
-        const projectFilter = organizationId
-            ? { project: { organizationId } }
-            : {};
+        const scanResultFilter = this.buildScanResultWhere(organizationId, currentUser);
 
         const scans = await this.prisma.scanResult.findMany({
             where: {
-                ...projectFilter,
+                ...scanResultFilter,
                 createdAt: { gte: startDate },
             },
             include: {

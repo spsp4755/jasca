@@ -289,6 +289,8 @@ export interface Scan {
     projectId: string;
     scanType: string;
     targetName: string;
+    imageRef?: string;
+    artifactName?: string;
     status: string;
     startedAt: string;
     completedAt?: string;
@@ -345,10 +347,12 @@ export function useUploadScan() {
             projectId,
             file,
             metadata,
+            scanTarget,
         }: {
             projectId?: string; // Now optional - can use projectName + organizationId in metadata instead
             file: File;
             metadata: UploadScanDto;
+            scanTarget?: boolean;
         }) => {
             const token = useAuthStore.getState().accessToken;
             const formData = new FormData();
@@ -360,16 +364,10 @@ export function useUploadScan() {
                 }
             });
 
-            // Build URL - projectId is now optional, use /upload/file for multipart form
+            const endpoint = scanTarget ? 'scan/file' : 'upload/file';
             const url = projectId
-                ? `${API_BASE}/scans/upload/file?projectId=${projectId}`
-                : `${API_BASE}/scans/upload/file`;
-
-            console.log('[Upload Debug] URL:', url);
-            console.log('[Upload Debug] FormData entries:');
-            for (const [key, value] of formData.entries()) {
-                console.log(`  ${key}:`, value);
-            }
+                ? `${API_BASE}/scans/${endpoint}?projectId=${projectId}`
+                : `${API_BASE}/scans/${endpoint}`;
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -378,8 +376,6 @@ export function useUploadScan() {
                 },
                 body: formData,
             });
-
-            console.log('[Upload Debug] Response status:', response.status);
 
             if (!response.ok) {
                 const error = await response.json().catch(() => ({ message: 'Upload failed' }));
@@ -681,6 +677,40 @@ export interface PolicyRule {
     sendNotification?: boolean;
 }
 
+export interface PolicyEvaluationResult {
+    allowed: boolean;
+    blockedBy?: { policyId: string; policyName: string; ruleId: string };
+    violations: Array<{
+        policyId: string;
+        policyName: string;
+        ruleId: string;
+        ruleName: string;
+        action: string;
+        message?: string;
+        severity: string;
+        count: number;
+        cveIds: string[];
+    }>;
+    warnings: Array<{
+        policyId: string;
+        policyName: string;
+        ruleId: string;
+        ruleName: string;
+        action: string;
+        message?: string;
+        severity: string;
+        count: number;
+        cveIds: string[];
+    }>;
+    appliedExceptions: Array<{
+        id: string;
+        exceptionType: string;
+        targetValue: string;
+        status: string;
+        expiresAt?: string | null;
+    }>;
+}
+
 export function usePolicies(organizationId?: string, projectId?: string) {
     return useQuery<Policy[]>({
         queryKey: ['policies', organizationId, projectId],
@@ -737,6 +767,18 @@ export function useDeletePolicy() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['policies'] });
         },
+    });
+}
+
+export function usePolicyEvaluation(projectId?: string, scanResultId?: string) {
+    return useQuery<PolicyEvaluationResult>({
+        queryKey: ['policy-evaluation', projectId, scanResultId],
+        enabled: !!projectId && !!scanResultId,
+        queryFn: () =>
+            authFetch(`${API_BASE}/policies/evaluate`, {
+                method: 'POST',
+                body: JSON.stringify({ projectId, scanResultId }),
+            }),
     });
 }
 
@@ -943,10 +985,19 @@ export interface User {
     email: string;
     name: string;
     role: 'SYSTEM_ADMIN' | 'ORG_ADMIN' | 'SECURITY_ADMIN' | 'PROJECT_ADMIN' | 'DEVELOPER' | 'VIEWER';
+    roleScope?: 'GLOBAL' | 'SYSTEM' | 'ORGANIZATION' | 'PROJECT' | null;
+    roleScopeId?: string | null;
+    roles?: Array<{
+        id: string;
+        role: User['role'];
+        scope: 'GLOBAL' | 'SYSTEM' | 'ORGANIZATION' | 'PROJECT';
+        scopeId?: string | null;
+        createdAt?: string;
+    }>;
     status: 'ACTIVE' | 'INACTIVE' | 'PENDING';
     mfaEnabled: boolean;
     organizationId?: string;
-    organization?: { name: string };
+    organization?: { id?: string; name: string };
     createdAt: string;
     lastLoginAt?: string;
 }

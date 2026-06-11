@@ -1,48 +1,79 @@
 #!/bin/bash
+set -euo pipefail
 
-# Script to load and run JASCA in an offline environment
+# Load and run JASCA in an offline environment.
+# Usage: ./start.sh [bundle-image.tar.gz|bundle-image.tar]
 
+IMAGE_ARCHIVE="${1:-jasca-offline.tar.gz}"
 IMAGE_TAR="jasca-offline.tar"
-IMAGE_NAME="jasca-offline:latest"
-CONTAINER_NAME="jasca"
+IMAGE_NAME="${IMAGE_NAME:-jasca-offline:latest}"
+CONTAINER_NAME="${CONTAINER_NAME:-jasca}"
+WEB_PORT="${WEB_PORT:-3000}"
+API_PORT="${API_PORT:-3001}"
+TRIVY_CACHE_MOUNT="${TRIVY_CACHE_MOUNT:-}"
 
-# 1. Load the image
-if [ -f "$IMAGE_TAR" ]; then
-    echo "removing old image..."
-    docker rmi $IMAGE_NAME || true
-    echo "Loading Docker image from $IMAGE_TAR..."
-    docker load -i "$IMAGE_TAR"
-else
-    echo "Error: $IMAGE_TAR not found!"
+if ! command -v docker >/dev/null 2>&1; then
+    echo "Error: docker command not found."
     exit 1
 fi
 
-# 2. Prepare volumes (Clean old data to prevent auth errors from failed installs)
-echo "Cleaning up old data volumes..."
-docker volume rm jasca_postgres_data jasca_redis_data || true
-
-echo "Creating volumes..."
-docker volume create jasca_postgres_data
-docker volume create jasca_redis_data
-
-# 3. Stop and remove existing container if it exists
-if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
-    echo "Stopping and removing existing container..."
-    docker stop $CONTAINER_NAME
-    docker rm $CONTAINER_NAME
+if [ ! -f "$IMAGE_ARCHIVE" ]; then
+    if [ -f "$IMAGE_TAR" ]; then
+        IMAGE_ARCHIVE="$IMAGE_TAR"
+    else
+        echo "Error: image archive not found: $IMAGE_ARCHIVE"
+        exit 1
+    fi
 fi
 
-# 4. Run the container
-echo "Starting JASCA container..."
-docker run -d \
-  --name $CONTAINER_NAME \
-  --restart unless-stopped \
-  -p 3000:3000 \
-  -p 3001:3001 \
-  -v jasca_postgres_data:/var/lib/postgresql/data \
-  -v jasca_redis_data:/var/lib/redis \
-  $IMAGE_NAME
+case "$IMAGE_ARCHIVE" in
+    *.tar.gz|*.tgz)
+        echo "Loading Docker image from compressed archive: $IMAGE_ARCHIVE"
+        gzip -dc "$IMAGE_ARCHIVE" | docker load
+        ;;
+    *.tar)
+        echo "Loading Docker image from archive: $IMAGE_ARCHIVE"
+        docker load -i "$IMAGE_ARCHIVE"
+        ;;
+    *)
+        echo "Error: unsupported archive extension. Use .tar or .tar.gz"
+        exit 1
+        ;;
+esac
 
-echo "JASCA is running!"
-echo "Web: http://localhost:3000"
-echo "API: http://localhost:3001"
+echo "Ensuring persistent Docker volumes exist..."
+docker volume create jasca_postgres_data >/dev/null
+docker volume create jasca_redis_data >/dev/null
+
+if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then
+    echo "Replacing existing container: $CONTAINER_NAME"
+    docker stop "$CONTAINER_NAME" >/dev/null || true
+    docker rm "$CONTAINER_NAME" >/dev/null || true
+fi
+
+echo "Starting JASCA container..."
+DOCKER_RUN_ARGS=(
+  -d
+  --name "$CONTAINER_NAME"
+  --restart unless-stopped
+  -p "${WEB_PORT}:3000"
+  -p "${API_PORT}:3001"
+  -v jasca_postgres_data:/var/lib/postgresql/data
+  -v jasca_redis_data:/var/lib/redis
+)
+
+if [ -n "$TRIVY_CACHE_MOUNT" ]; then
+    if [ ! -d "$TRIVY_CACHE_MOUNT" ]; then
+        echo "Error: TRIVY_CACHE_MOUNT does not exist or is not a directory: $TRIVY_CACHE_MOUNT"
+        exit 1
+    fi
+    echo "Mounting host Trivy cache: $TRIVY_CACHE_MOUNT -> /app/trivy-db"
+    DOCKER_RUN_ARGS+=(-v "${TRIVY_CACHE_MOUNT}:/app/trivy-db:ro")
+fi
+
+docker run "${DOCKER_RUN_ARGS[@]}" "$IMAGE_NAME"
+
+echo "JASCA is running."
+echo "Web: http://localhost:${WEB_PORT}"
+echo "API: http://localhost:${API_PORT}"
+echo "Logs: docker logs -f ${CONTAINER_NAME}"

@@ -2,6 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Severity, VulnStatus } from '@prisma/client';
 import { WorkflowService } from './services/workflow.service';
+import {
+    RequestUser,
+    assertProjectAccess,
+    getScopedOrganizationIds,
+    getUserRoles,
+    isSystemAdmin,
+} from '../../common/authz/access-control';
 
 export interface VulnFilter {
     severity?: Severity[];
@@ -19,13 +26,38 @@ export class VulnerabilitiesService {
         private readonly workflowService: WorkflowService,
     ) { }
 
+    private buildScanResultAccessWhere(currentUser?: RequestUser, projectId?: string) {
+        if (projectId) {
+            return { projectId };
+        }
+
+        if (!currentUser || isSystemAdmin(currentUser)) {
+            return {};
+        }
+
+        const organizationIds = getScopedOrganizationIds(currentUser) || [];
+        const projectIds = getUserRoles(currentUser)
+            .filter((role) => role.scope === 'PROJECT' && role.scopeId)
+            .map((role) => role.scopeId as string);
+        const filters: any[] = [];
+
+        if (organizationIds.length > 0) {
+            filters.push({ project: { organizationId: { in: organizationIds } } });
+        }
+        if (projectIds.length > 0) {
+            filters.push({ projectId: { in: projectIds } });
+        }
+
+        return filters.length > 0 ? { OR: filters } : { id: '__no_access__' };
+    }
+
     async findAll(filter: VulnFilter = {}, options?: { 
         limit?: number; 
         offset?: number;
         sortBy?: 'severity' | 'cveId' | 'pkgName' | 'status' | 'createdAt';
         sortOrder?: 'asc' | 'desc';
         latestScanOnly?: boolean;
-    }) {
+    }, currentUser?: RequestUser) {
         const where: any = {};
 
         // If latestScanOnly is true, we need to filter by the latest scan per project
@@ -52,7 +84,14 @@ export class VulnerabilitiesService {
         }
 
         if (filter.projectId) {
-            where.scanResult = { projectId: filter.projectId };
+            const project = await this.prisma.project.findUnique({ where: { id: filter.projectId } });
+            if (!project) throw new NotFoundException('Project not found');
+            if (currentUser) assertProjectAccess(currentUser, project);
+        }
+
+        const scanResultAccessWhere = this.buildScanResultAccessWhere(currentUser, filter.projectId);
+        if (Object.keys(scanResultAccessWhere).length > 0) {
+            where.scanResult = { ...(where.scanResult || {}), ...scanResultAccessWhere };
         }
 
         if (filter.cveId) {
@@ -114,7 +153,7 @@ export class VulnerabilitiesService {
         return { results, total };
     }
 
-    async findById(id: string) {
+    async findById(id: string, currentUser?: RequestUser) {
         const vuln = await this.prisma.scanVulnerability.findUnique({
             where: { id },
             include: {
@@ -136,14 +175,22 @@ export class VulnerabilitiesService {
             throw new NotFoundException('Vulnerability not found');
         }
 
+        if (currentUser) {
+            assertProjectAccess(currentUser, vuln.scanResult.project);
+        }
+
         return vuln;
     }
 
-    async findByCveId(cveId: string) {
+    async findByCveId(cveId: string, currentUser?: RequestUser) {
+        const scanResultAccessWhere = this.buildScanResultAccessWhere(currentUser);
         const vuln = await this.prisma.vulnerability.findUnique({
             where: { cveId },
             include: {
                 scanResults: {
+                    where: Object.keys(scanResultAccessWhere).length > 0
+                        ? { scanResult: scanResultAccessWhere }
+                        : undefined,
                     include: {
                         scanResult: {
                             include: { project: true },
@@ -159,11 +206,15 @@ export class VulnerabilitiesService {
             throw new NotFoundException('CVE not found');
         }
 
+        if (currentUser && !isSystemAdmin(currentUser) && vuln.scanResults.length === 0) {
+            throw new NotFoundException('CVE not found');
+        }
+
         return vuln;
     }
 
-    async updateStatus(id: string, status: VulnStatus, userId: string, userRole?: string) {
-        const vuln = await this.findById(id);
+    async updateStatus(id: string, status: VulnStatus, userId: string, userRole?: string, currentUser?: RequestUser) {
+        const vuln = await this.findById(id, currentUser);
         const currentStatus = vuln.status as string;
 
         // Use WorkflowService for validation and history tracking
@@ -172,16 +223,16 @@ export class VulnerabilitiesService {
             to: status as any,
         }, userRole);
 
-        return this.findById(id);
+        return this.findById(id, currentUser);
     }
 
-    async getAvailableTransitions(id: string, userRole?: string) {
-        const vuln = await this.findById(id);
+    async getAvailableTransitions(id: string, userRole?: string, currentUser?: RequestUser) {
+        const vuln = await this.findById(id, currentUser);
         return this.workflowService.getAvailableTransitions(vuln.status as any, userRole);
     }
 
-    async assignUser(id: string, assigneeId: string | null) {
-        await this.findById(id);
+    async assignUser(id: string, assigneeId: string | null, currentUser?: RequestUser) {
+        await this.findById(id, currentUser);
 
         return this.prisma.scanVulnerability.update({
             where: { id },
@@ -189,8 +240,8 @@ export class VulnerabilitiesService {
         });
     }
 
-    async addComment(id: string, authorId: string, content: string) {
-        await this.findById(id);
+    async addComment(id: string, authorId: string, content: string, currentUser?: RequestUser) {
+        await this.findById(id, currentUser);
 
         return this.prisma.vulnerabilityComment.create({
             data: {
@@ -205,11 +256,15 @@ export class VulnerabilitiesService {
     }
 
     // Find all affected services for a specific CVE
-    async findAffectedByVuln(cveId: string) {
+    async findAffectedByVuln(cveId: string, currentUser?: RequestUser) {
+        const scanResultAccessWhere = this.buildScanResultAccessWhere(currentUser);
         return this.prisma.scanVulnerability.findMany({
             where: {
                 vulnerability: { cveId },
                 status: { notIn: ['FIXED', 'FALSE_POSITIVE'] },
+                ...(Object.keys(scanResultAccessWhere).length > 0
+                    ? { scanResult: scanResultAccessWhere }
+                    : {}),
             },
             include: {
                 scanResult: {
@@ -223,8 +278,8 @@ export class VulnerabilitiesService {
     }
 
     // Get vulnerability history (workflow changes)
-    async getHistory(id: string) {
-        const vuln = await this.findById(id);
+    async getHistory(id: string, currentUser?: RequestUser) {
+        const vuln = await this.findById(id, currentUser);
 
         // Get workflow history
         const workflowHistory = await this.prisma.vulnerabilityWorkflow.findMany({

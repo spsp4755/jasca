@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Delete, Param, Body, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -47,6 +47,7 @@ export class UsersController {
     // Admin endpoints
     @Get()
     @UseGuards(RolesGuard)
+    @Roles('SYSTEM_ADMIN', 'ORG_ADMIN')
     @ApiOperation({ summary: 'Get all users' })
     @ApiQuery({ name: 'organizationId', required: false })
     @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -61,8 +62,9 @@ export class UsersController {
         @Query('search') search?: string,
         @Query('role') role?: string,
         @Query('status') status?: string,
+        @CurrentUser() user?: any,
     ) {
-        return this.usersService.findAll(organizationId, {
+        return this.usersService.findAll(user, organizationId, {
             limit: limit ? parseInt(limit, 10) : undefined,
             offset: offset ? parseInt(offset, 10) : undefined,
             search,
@@ -71,10 +73,21 @@ export class UsersController {
         });
     }
 
+    @Post()
+    @UseGuards(RolesGuard)
+    @Roles('SYSTEM_ADMIN', 'ORG_ADMIN')
+    @ApiOperation({ summary: 'Create user' })
+    async create(
+        @Body() dto: { email: string; name: string; password: string; role?: string; status?: string; organizationId?: string },
+        @CurrentUser() user?: any,
+    ) {
+        return this.usersService.createUser(dto, user);
+    }
+
     @Get(':id')
     @ApiOperation({ summary: 'Get user by ID' })
-    async findById(@Param('id') id: string) {
-        return this.usersService.findById(id);
+    async findById(@Param('id') id: string, @CurrentUser() user: any) {
+        return this.usersService.findById(id, user);
     }
 
     @Put(':id')
@@ -83,16 +96,17 @@ export class UsersController {
     @ApiOperation({ summary: 'Update user' })
     async update(
         @Param('id') id: string,
-        @Body() dto: { name?: string; role?: string; status?: string },
+        @Body() dto: { name?: string; role?: string; status?: string; organizationId?: string },
+        @CurrentUser() user?: any,
     ) {
-        return this.usersService.updateUser(id, dto);
+        return this.usersService.updateUser(id, dto, user);
     }
 
     @Delete(':id')
     @UseGuards(RolesGuard)
     @Roles('SYSTEM_ADMIN', 'ORG_ADMIN')
     @ApiOperation({ summary: 'Delete user' })
-    async delete(@Param('id') id: string) {
-        return this.usersService.deleteUser(id);
+    async delete(@Param('id') id: string, @CurrentUser() user?: any) {
+        return this.usersService.deleteUser(id, user);
     }
 }

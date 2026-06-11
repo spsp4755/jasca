@@ -24,7 +24,7 @@ ENV LC_ALL=ko_KR.UTF-8
 ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Install Node.js 20
+# Install Node.js 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g pnpm
@@ -40,7 +40,7 @@ COPY . .
 RUN echo "shamefully-hoist=true" > .npmrc
 RUN pnpm install --frozen-lockfile
 # Generate prisma client (requires dev deps)
-RUN pnpm -r run prisma:generate
+RUN pnpm --filter @jasca/api prisma:generate
 # Prune to production deps only (removes prisma CLI but keeps generated client)
 RUN pnpm prune --prod
 
@@ -51,11 +51,11 @@ COPY . .
 # Standard install for build
 RUN pnpm install --frozen-lockfile
 # Generate prisma
-RUN pnpm -r run prisma:generate
+RUN pnpm --filter @jasca/api prisma:generate
 # Build API
-RUN pnpm --filter api build
+RUN pnpm --filter @jasca/api build
 # Build Web
-RUN pnpm --filter web build
+RUN pnpm --filter @jasca/web build
 # Compile seed.ts to JavaScript for offline execution (using project tsconfig)
 RUN cd apps/api && npx tsc prisma/seed.ts --outDir prisma --skipLibCheck
 
@@ -70,10 +70,15 @@ RUN apt-get update && apt-get install -y wget lsb-release \
     && apt-get update && apt-get install -y trivy \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Trivy DB for offline usage (optional - create empty dir if not present)
-# For offline usage, mount the trivy-db at runtime: -v /path/to/trivy-db:/app/trivy-db
+# Prepare Trivy DB mount point for offline usage.
+# Recommended: mount the target server's Trivy cache at runtime:
+#   -v /path/to/trivy-cache:/app/trivy-db:ro
 RUN mkdir -p /app/trivy-db
-COPY trivy-d[b] /app/trivy-db/
+RUN mkdir -p /app/trivy-db/db /app/trivy-db/java-db && \
+    if [ -f /app/trivy-db/trivy.db ] && [ ! -f /app/trivy-db/db/trivy.db ]; then cp /app/trivy-db/trivy.db /app/trivy-db/db/trivy.db; fi && \
+    if [ -f /app/trivy-db/metadata.json ] && [ ! -f /app/trivy-db/db/metadata.json ]; then cp /app/trivy-db/metadata.json /app/trivy-db/db/metadata.json; fi && \
+    if [ -f /app/trivy-db/trivy-java.db ] && [ ! -f /app/trivy-db/java-db/trivy-java.db ]; then cp /app/trivy-db/trivy-java.db /app/trivy-db/java-db/trivy-java.db; fi && \
+    if [ -f /app/trivy-db/java-metadata.json ] && [ ! -f /app/trivy-db/java-db/metadata.json ]; then cp /app/trivy-db/java-metadata.json /app/trivy-db/java-db/metadata.json; fi
 ENV TRIVY_CACHE_DIR=/app/trivy-db
 
 # Copy Web artifacts (Standalone) FIRST to avoid node_modules conflicts
@@ -109,6 +114,18 @@ COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 # Copy compiled seed.js
 COPY --from=builder /app/apps/api/prisma/seed.js ./apps/api/prisma/seed.js
 
+# Keep Node's normal module resolution working for Prisma seed/runtime code.
+RUN mkdir -p /app/node_modules/@prisma /app/node_modules/.bin && \
+    if [ -d /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client ]; then \
+      ln -sfn /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client /app/node_modules/@prisma/client; \
+    fi && \
+    if [ -d /app/node_modules/.pnpm/prisma@5.22.0/node_modules/prisma ]; then \
+      ln -sfn /app/node_modules/.pnpm/prisma@5.22.0/node_modules/prisma /app/node_modules/prisma; \
+      ln -sfn ../prisma/build/index.js /app/node_modules/.bin/prisma; \
+    fi && \
+    if [ -d /app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs ]; then \
+      ln -sfn /app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs /app/node_modules/bcryptjs; \
+    fi
 
 # Copy Configs
 COPY docker/monolith/supervisord.conf /etc/supervisor/conf.d/supervisord.conf

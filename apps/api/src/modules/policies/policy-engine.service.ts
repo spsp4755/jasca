@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Environment as PolicyEnvironment, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RequestUser, assertProjectAccess } from '../../common/authz/access-control';
 
 type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
 
@@ -20,7 +22,16 @@ interface PolicyExceptionType {
     expiresAt: Date | null;
 }
 
+type PolicyWithEvaluationRelations = Prisma.PolicyGetPayload<{
+    include: {
+        rules: true;
+        exceptions: true;
+    };
+}>;
+
 export interface PolicyViolation {
+    policyId: string;
+    policyName: string;
     ruleId: string;
     ruleName: string;
     action: string;
@@ -38,8 +49,6 @@ export interface PolicyEvaluation {
     appliedExceptions: PolicyExceptionType[];
 }
 
-type Environment = 'DEVELOPMENT' | 'STAGING' | 'PRODUCTION' | 'ALL';
-
 @Injectable()
 export class PolicyEngineService {
     constructor(private readonly prisma: PrismaService) { }
@@ -53,7 +62,8 @@ export class PolicyEngineService {
     async evaluate(
         projectId: string,
         scanResultId: string,
-        environment?: Environment,
+        environment?: PolicyEnvironment,
+        currentUser?: RequestUser,
     ): Promise<PolicyEvaluation> {
         // Get project and organization
         const project = await this.prisma.project.findUnique({
@@ -62,22 +72,43 @@ export class PolicyEngineService {
         });
 
         if (!project) {
-            return { allowed: true, violations: [], warnings: [], appliedExceptions: [] };
+            throw new NotFoundException('Project not found');
+        }
+
+        if (currentUser) {
+            assertProjectAccess(currentUser, project);
+        }
+
+        const scan = await this.prisma.scanResult.findUnique({
+            where: { id: scanResultId },
+            select: { projectId: true },
+        });
+
+        if (!scan) {
+            throw new NotFoundException('Scan result not found');
+        }
+
+        if (scan.projectId !== projectId) {
+            throw new BadRequestException('Scan result does not belong to the specified project');
         }
 
         // Get applicable policies (project-level and org-level)
         // Filter by environment if specified (Phase 2)
-        const environmentFilter = environment
-            ? { OR: [{ environment: environment }, { environment: 'ALL' }] }
+        const environmentFilter: Prisma.PolicyWhereInput = environment
+            ? { OR: [{ environment }, { environment: PolicyEnvironment.ALL }] }
             : {};
 
-        const policies = await this.prisma.policy.findMany({
+        const policies: PolicyWithEvaluationRelations[] = await this.prisma.policy.findMany({
             where: {
                 isActive: true,
-                ...environmentFilter,
-                OR: [
-                    { projectId },
-                    { organizationId: project.organizationId, projectId: null },
+                AND: [
+                    environmentFilter,
+                    {
+                        OR: [
+                            { projectId },
+                            { organizationId: project.organizationId, projectId: null },
+                        ],
+                    },
                 ],
             },
             include: {
@@ -114,6 +145,8 @@ export class PolicyEngineService {
 
                 if (matchedVulns.length > 0) {
                     const violation: PolicyViolation = {
+                        policyId: policy.id,
+                        policyName: policy.name,
                         ruleId: rule.id,
                         ruleName: `${policy.name} - ${rule.ruleType}`,
                         action: rule.action,
@@ -148,19 +181,22 @@ export class PolicyEngineService {
 
     private evaluateRule(
         rule: PolicyRuleType,
-        vulns: Array<{ vulnerability: { cveId: string; severity: Severity; cvssV3Score?: number | null } }>,
+        vulns: Array<{
+            pkgName: string;
+            pkgVersion: string;
+            fixedVersion?: string | null;
+            vulnerability: {
+                cveId: string;
+                severity: Severity;
+                cvssV3Score?: number | null;
+                publishedAt?: Date | null;
+            };
+        }>,
         exceptions: PolicyExceptionType[],
     ) {
         const conditions = rule.conditions as any;
 
-        // Filter out excepted CVEs
-        const exceptedCves = new Set(
-            exceptions
-                .filter((e) => e.exceptionType === 'CVE')
-                .map((e) => e.targetValue),
-        );
-
-        let filtered = vulns.filter((v) => !exceptedCves.has(v.vulnerability.cveId));
+        let filtered = vulns.filter((v) => !this.isExcepted(v, exceptions));
 
         switch (rule.ruleType) {
             case 'SEVERITY_THRESHOLD':
@@ -186,8 +222,43 @@ export class PolicyEngineService {
 
             case 'CVE_BLOCKLIST':
                 if (conditions.cveIds) {
-                    const blockedCves = new Set(conditions.cveIds);
-                    filtered = filtered.filter((v) => blockedCves.has(v.vulnerability.cveId));
+                    const blockedCves = new Set(
+                        (conditions.cveIds as string[]).map((cveId) => cveId.toUpperCase()),
+                    );
+                    filtered = filtered.filter((v) => blockedCves.has(v.vulnerability.cveId.toUpperCase()));
+                } else if (conditions.cvePatterns) {
+                    filtered = filtered.filter((v) =>
+                        this.matchesAnyPattern(v.vulnerability.cveId, conditions.cvePatterns, conditions.patternMode),
+                    );
+                } else {
+                    filtered = [];
+                }
+                break;
+
+            case 'PACKAGE_BLOCKLIST':
+                if (conditions.packageNames) {
+                    const packageNames = new Set(
+                        (conditions.packageNames as string[]).map((pkgName) => pkgName.toLowerCase()),
+                    );
+                    filtered = filtered.filter((v) => packageNames.has(v.pkgName.toLowerCase()));
+                } else if (conditions.packagePatterns) {
+                    filtered = filtered.filter((v) =>
+                        this.matchesAnyPattern(v.pkgName, conditions.packagePatterns, conditions.patternMode),
+                    );
+                } else {
+                    filtered = [];
+                }
+                break;
+
+            case 'CVE_AGE':
+                if (conditions.cveAge?.days !== undefined) {
+                    const maxPublishedAt = new Date();
+                    maxPublishedAt.setDate(maxPublishedAt.getDate() - Number(conditions.cveAge.days));
+                    filtered = filtered.filter((v) =>
+                        !!v.vulnerability.publishedAt && v.vulnerability.publishedAt <= maxPublishedAt,
+                    );
+                } else {
+                    filtered = [];
                 }
                 break;
 
@@ -196,6 +267,42 @@ export class PolicyEngineService {
         }
 
         return filtered;
+    }
+
+    private isExcepted(
+        vuln: {
+            pkgName: string;
+            vulnerability: { cveId: string; severity: Severity };
+        },
+        exceptions: PolicyExceptionType[],
+    ): boolean {
+        return exceptions.some((exception) => {
+            const targetValue = exception.targetValue.toLowerCase();
+            switch (exception.exceptionType) {
+                case 'CVE':
+                    return vuln.vulnerability.cveId.toLowerCase() === targetValue;
+                case 'PACKAGE':
+                    return vuln.pkgName.toLowerCase() === targetValue;
+                case 'SEVERITY':
+                    return vuln.vulnerability.severity.toLowerCase() === targetValue;
+                default:
+                    return false;
+            }
+        });
+    }
+
+    private matchesAnyPattern(value: string, patterns: string[], mode?: string): boolean {
+        return patterns.some((pattern) => {
+            if (mode === 'REGEX') {
+                try {
+                    return new RegExp(pattern, 'i').test(value);
+                } catch {
+                    return false;
+                }
+            }
+
+            return value.toLowerCase().includes(String(pattern).toLowerCase());
+        });
     }
 
     private getPrimarySeverity(

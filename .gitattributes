@@ -1,0 +1,2 @@
+*.sh text eol=lf
+docker/monolith/entrypoint.sh text eol=lf
