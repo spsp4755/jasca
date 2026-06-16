@@ -7,7 +7,8 @@ This bundle is intended for closed-network deployment. It contains a Docker imag
 - `jasca-offline.tar.gz`: Docker image archive.
 - `start.sh`: Linux startup script.
 - `start.ps1`: Windows PowerShell startup script.
-- `deploy-existing-layout.sh`: Linux startup script for the existing `/app/jasca` host-path layout.
+- `deploy-existing-layout.sh`: Linux startup script for editable host-path deployments.
+- `deploy-existing-layout.env.example`: Editable deployment configuration template.
 - `manifest.json`: Bundle metadata.
 - `README-OFFLINE.md`: This file.
 
@@ -83,23 +84,37 @@ trivy image --download-java-db-only
 
 ```bash
 chmod +x start.sh
-./start.sh
+JWT_SECRET=replace-with-a-long-random-secret DB_PASSWORD=replace-with-db-password ./start.sh
 ```
 
-## Deploy Using the Existing `/app/jasca` Server Layout
+## Deploy Using an Editable Host-Path Server Layout
 
-Use this path when replacing the currently deployed container that uses `/app/jasca/pgdata`, `/app/jasca/redis`, host port `3005`, and `https://jasca.koreacb.com`.
+Use this path when replacing an existing container that uses bind-mounted host data directories such as `/app/jasca/pgdata` and `/app/jasca/redis`.
 
 ```bash
 mkdir -p /app/jasca
-tar -xzf jasca-offline-koreacb-20260616-bundle.tar.gz
-cd jasca-offline-koreacb-20260616
+tar -xzf jasca-offline-release-safe-20260616-bundle.tar.gz
+cd jasca-offline-release-safe-20260616
 chmod +x deploy-existing-layout.sh
-TRIVY_CACHE_MOUNT=/root/.cache/trivy ./deploy-existing-layout.sh
+cp deploy-existing-layout.env.example deploy-existing-layout.env
+vi deploy-existing-layout.env
+./deploy-existing-layout.sh
 docker logs -f jasca
 ```
 
-The script runs the equivalent of:
+Edit at least these values in `deploy-existing-layout.env` before running:
+
+```bash
+CORS_ORIGIN=https://your-jasca.example.com
+JWT_SECRET=replace-with-a-long-random-secret
+DB_PASSWORD=replace-with-existing-or-new-db-password
+DATABASE_URL=postgresql://jasca:${DB_PASSWORD}@localhost:5432/jasca
+TRIVY_CACHE_MOUNT=/root/.cache/trivy
+```
+
+When replacing an existing deployment, keep `DB_PASSWORD` compatible with the existing PostgreSQL data directory. If the current server already uses a known database password, put that same value in `deploy-existing-layout.env`.
+
+The script then runs the equivalent of:
 
 ```bash
 docker stop jasca || true
@@ -108,11 +123,12 @@ docker run -d \
   --name jasca \
   --restart unless-stopped \
   -p 3005:3000 \
-  -e CORS_ORIGIN="https://jasca.koreacb.com" \
+  -e CORS_ORIGIN="$CORS_ORIGIN" \
   -e PORT=3001 \
-  -e JWT_SECRET="jasca_offline_secret" \
+  -e JWT_SECRET="$JWT_SECRET" \
+  -e DB_PASSWORD="$DB_PASSWORD" \
   -e REDIS_URL="redis://localhost:6379" \
-  -e DATABASE_URL="postgresql://jasca:jasca_secret@localhost:5432/jasca" \
+  -e DATABASE_URL="postgresql://jasca:${DB_PASSWORD}@localhost:5432/jasca" \
   -v /app/jasca/pgdata:/var/lib/postgresql/data \
   -v /app/jasca/redis:/var/lib/redis \
   -v /etc/hosts:/etc/hosts:ro \
@@ -123,19 +139,19 @@ docker run -d \
 If the Trivy cache is in another location, change only `TRIVY_CACHE_MOUNT`:
 
 ```bash
-TRIVY_CACHE_MOUNT=/app/trivy-cache ./deploy-existing-layout.sh
+TRIVY_CACHE_MOUNT=/app/trivy-cache
 ```
 
 If you need to expose the API port for temporary diagnostics:
 
 ```bash
-EXPOSE_API_PORT=1 TRIVY_CACHE_MOUNT=/root/.cache/trivy ./deploy-existing-layout.sh
+EXPOSE_API_PORT=1
 ```
 
 ## Deploy on a Closed-Network Windows Server
 
 ```powershell
-.\start.ps1
+.\start.ps1 -JwtSecret "replace-with-a-long-random-secret" -DbPassword "replace-with-db-password"
 ```
 
 ## Ports
@@ -149,13 +165,13 @@ To change ports:
 Linux:
 
 ```bash
-WEB_PORT=8080 API_PORT=8081 ./start.sh
+WEB_PORT=8080 API_PORT=8081 JWT_SECRET=replace-with-a-long-random-secret DB_PASSWORD=replace-with-db-password ./start.sh
 ```
 
 Windows:
 
 ```powershell
-.\start.ps1 -WebPort 8080 -ApiPort 8081
+.\start.ps1 -WebPort 8080 -ApiPort 8081 -JwtSecret "replace-with-a-long-random-secret" -DbPassword "replace-with-db-password"
 ```
 
 ## Data Persistence
@@ -193,5 +209,5 @@ docker run -d --name jasca --restart unless-stopped \
 Windows PowerShell:
 
 ```powershell
-.\start.ps1
+.\start.ps1 -JwtSecret "replace-with-a-long-random-secret" -DbPassword "replace-with-db-password"
 ```

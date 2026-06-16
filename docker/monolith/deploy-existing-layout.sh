@@ -1,11 +1,31 @@
 #!/bin/bash
 set -euo pipefail
 
-# Deploy JASCA using the same host-path layout as the existing closed-network server.
-# Defaults intentionally match the current production-like command:
-#   /app/jasca data directory, web port 3005, and https://jasca.koreacb.com CORS origin.
+# Deploy JASCA using an editable host-path layout config.
+# Copy deploy-existing-layout.env.example to deploy-existing-layout.env, edit values,
+# then run this script.
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/deploy-existing-layout.env}"
+ENV_EXAMPLE="${ENV_EXAMPLE:-$SCRIPT_DIR/deploy-existing-layout.env.example}"
+
+if [ ! -f "$ENV_FILE" ]; then
+    if [ -f "$ENV_EXAMPLE" ]; then
+        cp "$ENV_EXAMPLE" "$ENV_FILE"
+        echo "Created editable config: $ENV_FILE"
+        echo "Edit this file for your server, then run this script again."
+        exit 1
+    fi
+
+    echo "Error: config file not found: $ENV_FILE"
+    echo "Create it from deploy-existing-layout.env.example and run again."
+    exit 1
+fi
+
+set -a
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+set +a
 
 APP_DIR="${APP_DIR:-/app/jasca}"
 IMAGE_ARCHIVE="${IMAGE_ARCHIVE:-$SCRIPT_DIR/jasca-offline.tar.gz}"
@@ -15,12 +35,30 @@ CONTAINER_NAME="${CONTAINER_NAME:-jasca}"
 WEB_PORT="${WEB_PORT:-3005}"
 API_PORT="${API_PORT:-3001}"
 EXPOSE_API_PORT="${EXPOSE_API_PORT:-0}"
-CORS_ORIGIN="${CORS_ORIGIN:-https://jasca.koreacb.com}"
-JWT_SECRET="${JWT_SECRET:-jasca_offline_secret}"
-DATABASE_URL="${DATABASE_URL:-postgresql://jasca:jasca_secret@localhost:5432/jasca}"
+CORS_ORIGIN="${CORS_ORIGIN:-}"
+JWT_SECRET="${JWT_SECRET:-}"
+DB_PASSWORD="${DB_PASSWORD:-}"
+DATABASE_URL="${DATABASE_URL:-}"
 REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
 TRIVY_CACHE_MOUNT="${TRIVY_CACHE_MOUNT:-}"
 HOSTS_MOUNT="${HOSTS_MOUNT:-/etc/hosts}"
+
+if [ -z "$CORS_ORIGIN" ]; then
+    echo "Error: CORS_ORIGIN must be set in $ENV_FILE"
+    exit 1
+fi
+
+if [ -z "$JWT_SECRET" ]; then
+    echo "Error: JWT_SECRET must be set in $ENV_FILE"
+    exit 1
+fi
+
+if [ -z "$DB_PASSWORD" ]; then
+    echo "Error: DB_PASSWORD must be set in $ENV_FILE"
+    exit 1
+fi
+
+DATABASE_URL="${DATABASE_URL:-postgresql://jasca:${DB_PASSWORD}@localhost:5432/jasca}"
 
 if ! command -v docker >/dev/null 2>&1; then
     echo "Error: docker command not found."
@@ -67,6 +105,7 @@ DOCKER_RUN_ARGS=(
   -e "CORS_ORIGIN=${CORS_ORIGIN}"
   -e "PORT=${API_PORT}"
   -e "JWT_SECRET=${JWT_SECRET}"
+  -e "DB_PASSWORD=${DB_PASSWORD}"
   -e "REDIS_URL=${REDIS_URL}"
   -e "DATABASE_URL=${DATABASE_URL}"
   -v "${APP_DIR}/pgdata:/var/lib/postgresql/data"
@@ -94,7 +133,7 @@ echo "Starting JASCA container with existing server layout..."
 docker run "${DOCKER_RUN_ARGS[@]}" "$IMAGE_NAME"
 
 echo "JASCA is running."
-echo "Web: https://jasca.koreacb.com or http://localhost:${WEB_PORT}"
+echo "Web: ${CORS_ORIGIN} or http://localhost:${WEB_PORT}"
 echo "Container API port: ${API_PORT} (set EXPOSE_API_PORT=1 to publish it on the host)"
 echo "Data directory: ${APP_DIR}"
 echo "Logs: docker logs -f ${CONTAINER_NAME}"

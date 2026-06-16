@@ -11,6 +11,19 @@ CONTAINER_NAME="${CONTAINER_NAME:-jasca}"
 WEB_PORT="${WEB_PORT:-3000}"
 API_PORT="${API_PORT:-3001}"
 TRIVY_CACHE_MOUNT="${TRIVY_CACHE_MOUNT:-}"
+JWT_SECRET="${JWT_SECRET:-}"
+DB_PASSWORD="${DB_PASSWORD:-}"
+CORS_ORIGIN="${CORS_ORIGIN:-http://localhost:${WEB_PORT}}"
+
+if [ -z "$JWT_SECRET" ]; then
+    echo "Error: JWT_SECRET must be set, for example: JWT_SECRET='<long-random-secret>' ./start.sh"
+    exit 1
+fi
+
+if [ -z "$DB_PASSWORD" ]; then
+    echo "Error: DB_PASSWORD must be set, for example: DB_PASSWORD='<database-password>' ./start.sh"
+    exit 1
+fi
 
 if ! command -v docker >/dev/null 2>&1; then
     echo "Error: docker command not found."
@@ -58,6 +71,9 @@ DOCKER_RUN_ARGS=(
   --restart unless-stopped
   -p "${WEB_PORT}:3000"
   -p "${API_PORT}:3001"
+  -e "JWT_SECRET=${JWT_SECRET}"
+  -e "DB_PASSWORD=${DB_PASSWORD}"
+  -e "CORS_ORIGIN=${CORS_ORIGIN}"
   -v jasca_postgres_data:/var/lib/postgresql/data
   -v jasca_redis_data:/var/lib/redis
 )

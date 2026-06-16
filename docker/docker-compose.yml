@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_DB: jasca
       POSTGRES_USER: jasca
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-jasca_secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -44,11 +44,11 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      DATABASE_URL: postgresql://jasca:${DB_PASSWORD:-jasca_secret}@postgres:5432/jasca
+      DATABASE_URL: postgresql://jasca:${DB_PASSWORD:?DB_PASSWORD must be set}@postgres:5432/jasca
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-jasca_offline_secret}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       JWT_EXPIRES_IN: 1d
-      CORS_ORIGIN: ${CORS_ORIGIN:-https://jasca.koreacb.com}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     depends_on:
       postgres:
         condition: service_healthy
