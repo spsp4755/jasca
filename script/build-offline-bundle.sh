@@ -55,8 +55,10 @@ fi
 
 cp docker/monolith/start.sh "$BUNDLE_PATH/start.sh"
 cp docker/monolith/start.ps1 "$BUNDLE_PATH/start.ps1"
+cp docker/monolith/deploy-existing-layout.sh "$BUNDLE_PATH/deploy-existing-layout.sh"
 cp docker/monolith/README-OFFLINE.md "$BUNDLE_PATH/README-OFFLINE.md"
 chmod +x "$BUNDLE_PATH/start.sh"
+chmod +x "$BUNDLE_PATH/deploy-existing-layout.sh"
 
 cat > "$BUNDLE_PATH/manifest.json" <<EOF
 {
@@ -74,6 +76,7 @@ cat > "$BUNDLE_PATH/manifest.json" <<EOF
     "Transfer this whole directory to the closed network.",
     "Run ./start.sh on Linux or .\\\\start.ps1 on Windows.",
     "If Trivy is already installed on the server, mount its cache with TRIVY_CACHE_MOUNT or -TrivyCacheMount.",
+    "For the existing /app/jasca host-path deployment layout, run ./deploy-existing-layout.sh.",
     "Docker must be installed on the target host.",
     "The container preserves Docker volumes jasca_postgres_data and jasca_redis_data."
   ]
