@@ -7,6 +7,7 @@ This bundle is intended for closed-network deployment. It contains a Docker imag
 - `jasca-offline.tar.gz`: Docker image archive.
 - `start.sh`: Linux startup script.
 - `start.ps1`: Windows PowerShell startup script.
+- `deploy-existing-layout.sh`: Linux startup script for the existing `/app/jasca` host-path layout.
 - `manifest.json`: Bundle metadata.
 - `README-OFFLINE.md`: This file.
 
@@ -83,6 +84,52 @@ trivy image --download-java-db-only
 ```bash
 chmod +x start.sh
 ./start.sh
+```
+
+## Deploy Using the Existing `/app/jasca` Server Layout
+
+Use this path when replacing the currently deployed container that uses `/app/jasca/pgdata`, `/app/jasca/redis`, host port `3005`, and `https://jasca.koreacb.com`.
+
+```bash
+mkdir -p /app/jasca
+tar -xzf jasca-offline-koreacb-20260616-bundle.tar.gz
+cd jasca-offline-koreacb-20260616
+chmod +x deploy-existing-layout.sh
+TRIVY_CACHE_MOUNT=/root/.cache/trivy ./deploy-existing-layout.sh
+docker logs -f jasca
+```
+
+The script runs the equivalent of:
+
+```bash
+docker stop jasca || true
+docker rm jasca || true
+docker run -d \
+  --name jasca \
+  --restart unless-stopped \
+  -p 3005:3000 \
+  -e CORS_ORIGIN="https://jasca.koreacb.com" \
+  -e PORT=3001 \
+  -e JWT_SECRET="jasca_offline_secret" \
+  -e REDIS_URL="redis://localhost:6379" \
+  -e DATABASE_URL="postgresql://jasca:jasca_secret@localhost:5432/jasca" \
+  -v /app/jasca/pgdata:/var/lib/postgresql/data \
+  -v /app/jasca/redis:/var/lib/redis \
+  -v /etc/hosts:/etc/hosts:ro \
+  -v /root/.cache/trivy:/app/trivy-db:ro \
+  jasca-offline:latest
+```
+
+If the Trivy cache is in another location, change only `TRIVY_CACHE_MOUNT`:
+
+```bash
+TRIVY_CACHE_MOUNT=/app/trivy-cache ./deploy-existing-layout.sh
+```
+
+If you need to expose the API port for temporary diagnostics:
+
+```bash
+EXPOSE_API_PORT=1 TRIVY_CACHE_MOUNT=/root/.cache/trivy ./deploy-existing-layout.sh
 ```
 
 ## Deploy on a Closed-Network Windows Server

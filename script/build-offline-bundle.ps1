@@ -108,6 +108,7 @@ try {
 
     Copy-Item -LiteralPath "docker/monolith/start.sh" -Destination (Join-Path $BundlePath "start.sh") -Force
     Copy-Item -LiteralPath "docker/monolith/start.ps1" -Destination (Join-Path $BundlePath "start.ps1") -Force
+    Copy-Item -LiteralPath "docker/monolith/deploy-existing-layout.sh" -Destination (Join-Path $BundlePath "deploy-existing-layout.sh") -Force
     Copy-Item -LiteralPath "docker/monolith/README-OFFLINE.md" -Destination (Join-Path $BundlePath "README-OFFLINE.md") -Force
 
     $manifest = [ordered]@{
@@ -125,6 +126,7 @@ try {
             "Transfer this whole directory to the closed network.",
             "Run ./start.sh on Linux or .\start.ps1 on Windows.",
             "If Trivy is already installed on the server, mount its cache with TRIVY_CACHE_MOUNT or -TrivyCacheMount.",
+            "For the existing /app/jasca host-path deployment layout, run ./deploy-existing-layout.sh.",
             "Docker must be installed on the target host.",
             "The container preserves Docker volumes jasca_postgres_data and jasca_redis_data."
         )
