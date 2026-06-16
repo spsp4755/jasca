@@ -8,6 +8,25 @@ REDIS_DATA="/var/lib/redis"
 echo "Initializing JASCA Monolithic Container..."
 echo "--- ENTRYPOINT V4 (UPGRADE SAFE) ---"
 
+DB_PASSWORD="${DB_PASSWORD:-}"
+REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379}"
+CORS_ORIGIN="${CORS_ORIGIN:-http://localhost:3000}"
+TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-/app/trivy-db}"
+
+if [ -z "${JWT_SECRET:-}" ]; then
+    echo "Error: JWT_SECRET must be provided with docker run -e JWT_SECRET=..."
+    exit 1
+fi
+
+if [ -z "$DB_PASSWORD" ]; then
+    echo "Error: DB_PASSWORD must be provided with docker run -e DB_PASSWORD=..."
+    exit 1
+fi
+
+DATABASE_URL="${DATABASE_URL:-postgresql://jasca:${DB_PASSWORD}@127.0.0.1:5432/jasca?sslmode=disable}"
+
+export DB_PASSWORD DATABASE_URL REDIS_URL CORS_ORIGIN TRIVY_CACHE_DIR JWT_SECRET
+
 # Ensure permissions
 chown -R postgres:postgres "$PG_DATA"
 chown -R redis:redis "$REDIS_DATA"
@@ -35,7 +54,7 @@ su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D $PG_DATA -w start"
 
 if [ "$FRESH_INSTALL" = "1" ]; then
     echo "Creating 'jasca' user and database..."
-    su - postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='jasca'\" | grep -q 1 || psql -c \"CREATE USER jasca WITH PASSWORD 'jasca_secret';\""
+    su - postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='jasca'\" | grep -q 1 || psql -c \"CREATE USER jasca WITH PASSWORD '$DB_PASSWORD';\""
     su - postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname='jasca'\" | grep -q 1 || psql -c \"CREATE DATABASE jasca OWNER jasca;\""
     su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE jasca TO jasca;\""
     su - postgres -c "psql -d jasca -c \"GRANT ALL ON SCHEMA public TO jasca;\""
@@ -49,7 +68,6 @@ done
 
 echo "Running Prisma migrations..."
 export CHECKPOINT_DISABLE=1
-export DATABASE_URL="postgresql://jasca:jasca_secret@127.0.0.1:5432/jasca?sslmode=disable"
 
 echo "Checking Prisma version..."
 /app/node_modules/.bin/prisma --version

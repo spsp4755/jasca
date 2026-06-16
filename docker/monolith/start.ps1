@@ -4,7 +4,10 @@ param(
     [string]$ContainerName = "jasca",
     [int]$WebPort = 3000,
     [int]$ApiPort = 3001,
-    [string]$TrivyCacheMount = ""
+    [string]$TrivyCacheMount = "",
+    [string]$JwtSecret = $env:JWT_SECRET,
+    [string]$DbPassword = $env:DB_PASSWORD,
+    [string]$CorsOrigin = $env:CORS_ORIGIN
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +38,18 @@ function Expand-GzipToTar {
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "docker command not found."
+}
+
+if (-not $JwtSecret) {
+    throw "JwtSecret must be provided, for example: .\start.ps1 -JwtSecret '<long-random-secret>' -DbPassword '<database-password>'"
+}
+
+if (-not $DbPassword) {
+    throw "DbPassword must be provided, for example: .\start.ps1 -JwtSecret '<long-random-secret>' -DbPassword '<database-password>'"
+}
+
+if (-not $CorsOrigin) {
+    $CorsOrigin = "http://localhost:$WebPort"
 }
 
 if (-not (Test-Path -LiteralPath $ImageArchive)) {
@@ -84,6 +99,9 @@ $dockerRunArgs = @(
     "--restart", "unless-stopped",
     "-p", "${WebPort}:3000",
     "-p", "${ApiPort}:3001",
+    "-e", "JWT_SECRET=$JwtSecret",
+    "-e", "DB_PASSWORD=$DbPassword",
+    "-e", "CORS_ORIGIN=$CorsOrigin",
     "-v", "jasca_postgres_data:/var/lib/postgresql/data",
     "-v", "jasca_redis_data:/var/lib/redis"
 )
