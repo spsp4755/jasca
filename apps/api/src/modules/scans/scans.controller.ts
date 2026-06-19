@@ -34,7 +34,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ScansService } from './scans.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
-import { TrivyScanService } from './services/trivy-scan.service';
+import { TrivyScanOptions, TrivyScanService } from './services/trivy-scan.service';
 
 const TRIVY_UPLOAD_ROOT = path.join(os.tmpdir(), 'jasca-trivy-uploads');
 const MAX_TRIVY_UPLOAD_BYTES = Number(process.env.TRIVY_UPLOAD_MAX_BYTES || 200 * 1024 * 1024);
@@ -51,6 +51,44 @@ function parseUploadedJson(buffer: Buffer): any {
     } catch {
         throw new BadRequestException('Uploaded file must be a valid JSON document');
     }
+}
+
+function parseBooleanField(value: unknown, defaultValue: boolean): boolean {
+    if (value === undefined || value === null || value === '') {
+        return defaultValue;
+    }
+
+    if (Array.isArray(value)) {
+        return parseBooleanField(value[0], defaultValue);
+    }
+
+    return String(value).toLowerCase() === 'true';
+}
+
+function parseListField(value: unknown): string[] | undefined {
+    if (value === undefined || value === null || value === '') {
+        return undefined;
+    }
+
+    const values = Array.isArray(value) ? value : String(value).split(',');
+    const normalized = values
+        .flatMap((item) => String(item).split(','))
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    return normalized.length ? normalized : undefined;
+}
+
+function parseTrivyScanOptions(body: any): TrivyScanOptions {
+    return {
+        offlineScan: parseBooleanField(body.offlineScan, true),
+        skipDbUpdate: parseBooleanField(body.skipDbUpdate, true),
+        skipJavaDbUpdate: parseBooleanField(body.skipJavaDbUpdate, true),
+        ignoreUnfixed: parseBooleanField(body.ignoreUnfixed, false),
+        severities: parseListField(body.severities),
+        scanners: parseListField(body.scanners),
+        timeout: typeof body.timeout === 'string' ? body.timeout : undefined,
+    };
 }
 
 const trivyUploadStorage = diskStorage({
@@ -222,7 +260,7 @@ export class ScansController {
     @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
     @ApiBearerAuth()
     @ApiSecurity('api-key')
-    @ApiOperation({ summary: 'Upload a target file and scan it with Trivy' })
+    @ApiOperation({ summary: 'Upload a target file or archive and scan it with Trivy' })
     @ApiQuery({ name: 'projectId', required: false, description: 'Project ID - if not provided, use projectName & organizationId in body' })
     @ApiConsumes('multipart/form-data')
     @UseInterceptors(FileInterceptor('file', {
@@ -240,7 +278,11 @@ export class ScansController {
         }
 
         const user = (req as any).user;
-        const rawResult = await this.trivyScanService.scanUploadedFile(file.path);
+        const rawResult = await this.trivyScanService.scanUploadedFile(
+            file.path,
+            parseTrivyScanOptions(body),
+            typeof body.scanOperationId === 'string' ? body.scanOperationId : undefined,
+        );
         const dto: UploadScanDto = {
             sourceType: SourceType.TRIVY_JSON,
             projectName: body.projectName,
@@ -266,6 +308,20 @@ export class ScansController {
             userAgent: req.headers['user-agent'] || 'Browser Trivy Scan',
             uploadedById: user?.id,
         }, user);
+    }
+
+    @Post('scan/cancel/:operationId')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
+    @ApiBearerAuth()
+    @ApiSecurity('api-key')
+    @ApiOperation({ summary: 'Cancel a running Trivy scan' })
+    async cancelTrivyScan(@Param('operationId') operationId: string) {
+        const cancelled = this.trivyScanService.cancelScan(operationId);
+        return {
+            cancelled,
+            message: cancelled ? 'Trivy scan cancellation requested' : 'No running Trivy scan found for the operation ID',
+        };
     }
 
     @Post('upload/json')

@@ -340,6 +340,16 @@ export interface UploadScanDto {
     ciJobUrl?: string;
 }
 
+export interface TrivyScanOptions {
+    offlineScan?: boolean;
+    skipDbUpdate?: boolean;
+    skipJavaDbUpdate?: boolean;
+    ignoreUnfixed?: boolean;
+    severities?: string[];
+    scanners?: string[];
+    timeout?: string;
+}
+
 export function useUploadScan() {
     const queryClient = useQueryClient();
     return useMutation({
@@ -348,11 +358,15 @@ export function useUploadScan() {
             file,
             metadata,
             scanTarget,
+            trivyOptions,
+            scanOperationId,
         }: {
             projectId?: string; // Now optional - can use projectName + organizationId in metadata instead
             file: File;
             metadata: UploadScanDto;
             scanTarget?: boolean;
+            trivyOptions?: TrivyScanOptions;
+            scanOperationId?: string;
         }) => {
             const token = useAuthStore.getState().accessToken;
             const formData = new FormData();
@@ -363,6 +377,17 @@ export function useUploadScan() {
                     formData.append(key, String(value));
                 }
             });
+
+            if (scanTarget && trivyOptions) {
+                Object.entries(trivyOptions).forEach(([key, value]) => {
+                    if (value === undefined || value === null) return;
+                    formData.append(key, Array.isArray(value) ? value.join(',') : String(value));
+                });
+            }
+
+            if (scanTarget && scanOperationId) {
+                formData.append('scanOperationId', scanOperationId);
+            }
 
             const endpoint = scanTarget ? 'scan/file' : 'upload/file';
             const url = projectId
@@ -390,6 +415,15 @@ export function useUploadScan() {
             queryClient.invalidateQueries({ queryKey: ['project-scans'], exact: false });
             queryClient.invalidateQueries({ queryKey: ['projects'], exact: false });
         },
+    });
+}
+
+export function useCancelTrivyScan() {
+    return useMutation({
+        mutationFn: (operationId: string) =>
+            authFetch(`${API_BASE}/scans/scan/cancel/${operationId}`, {
+                method: 'POST',
+            }),
     });
 }
 
@@ -779,6 +813,98 @@ export function usePolicyEvaluation(projectId?: string, scanResultId?: string) {
                 method: 'POST',
                 body: JSON.stringify({ projectId, scanResultId }),
             }),
+    });
+}
+
+// ============ Manual Advisories API ============
+
+export interface ManualAdvisory {
+    id: string;
+    advisoryId: string;
+    cveId?: string | null;
+    title: string;
+    description?: string | null;
+    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+    packageName: string;
+    affectedVersionRange: string;
+    fixedVersion?: string | null;
+    remediation?: string | null;
+    references: string[];
+    isActive: boolean;
+    organizationId?: string | null;
+    projectId?: string | null;
+    organization?: { id: string; name: string };
+    project?: { id: string; name: string };
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ManualAdvisoryInput {
+    advisoryId: string;
+    cveId?: string;
+    title: string;
+    description?: string;
+    severity: ManualAdvisory['severity'];
+    packageName: string;
+    affectedVersionRange?: string;
+    fixedVersion?: string;
+    remediation?: string;
+    references?: string[];
+    isActive?: boolean;
+    organizationId?: string;
+    projectId?: string;
+}
+
+export function useManualAdvisories(filters?: { organizationId?: string; projectId?: string; isActive?: boolean }) {
+    return useQuery<ManualAdvisory[]>({
+        queryKey: ['manual-advisories', filters],
+        queryFn: () => {
+            const params = new URLSearchParams();
+            if (filters?.organizationId) params.set('organizationId', filters.organizationId);
+            if (filters?.projectId) params.set('projectId', filters.projectId);
+            if (filters?.isActive !== undefined) params.set('isActive', String(filters.isActive));
+            const query = params.toString();
+            return authFetch(`${API_BASE}/manual-advisories${query ? `?${query}` : ''}`);
+        },
+    });
+}
+
+export function useCreateManualAdvisory() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (data: ManualAdvisoryInput) =>
+            authFetch(`${API_BASE}/manual-advisories`, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['manual-advisories'] });
+        },
+    });
+}
+
+export function useUpdateManualAdvisory() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, ...data }: { id: string } & Partial<ManualAdvisoryInput>) =>
+            authFetch(`${API_BASE}/manual-advisories/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data),
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['manual-advisories'] });
+        },
+    });
+}
+
+export function useDeleteManualAdvisory() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id: string) =>
+            authFetch(`${API_BASE}/manual-advisories/${id}`, { method: 'DELETE' }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['manual-advisories'] });
+        },
     });
 }
 

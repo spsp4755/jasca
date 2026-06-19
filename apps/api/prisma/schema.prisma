@@ -22,6 +22,7 @@ model Organization {
   projects    Project[]
   users       User[]
   policies    Policy[]
+  manualAdvisories ManualAdvisory[]
   apiTokens   ApiToken[]
   auditLogs   AuditLog[]
   riskScoreConfig RiskScoreConfig?
@@ -52,6 +53,7 @@ model Project {
   registries     Registry[]
   scanResults    ScanResult[]
   policies       Policy[]
+  manualAdvisories ManualAdvisory[]
   assetCriticality AssetCriticality?
   gitRepositories GitRepository[]
   
@@ -111,6 +113,7 @@ model User {
   bookmarks      VulnerabilityBookmark[]
   workflowChanges VulnerabilityWorkflow[] @relation("WorkflowChangedBy")
   evidenceCreated FixEvidence[] @relation("EvidenceCreatedBy")
+  createdManualAdvisories ManualAdvisory[] @relation("ManualAdvisoryCreatedBy")
   
   // Auth extension relations
   emailVerification   EmailVerification?
@@ -721,6 +724,45 @@ model VulnerabilityBookmark {
   @@unique([userId, vulnerabilityId])
   @@index([userId])
   @@index([vulnerabilityId])
+}
+
+// ============================================
+// Manual Vulnerability Advisory Models
+// ============================================
+
+model ManualAdvisory {
+  id                   String    @id @default(uuid())
+  advisoryId           String    @unique
+  cveId                String?
+  title                String
+  description          String?
+  severity             Severity
+  packageName          String
+  affectedVersionRange String    @default("*")
+  fixedVersion         String?
+  remediation          String?
+  references           String[]
+  isActive             Boolean   @default(true)
+
+  organizationId       String?
+  organization         Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  projectId            String?
+  project              Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdById          String?
+  createdBy            User? @relation("ManualAdvisoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([advisoryId])
+  @@index([cveId])
+  @@index([packageName])
+  @@index([severity])
+  @@index([isActive])
+  @@index([organizationId])
+  @@index([projectId])
 }
 
 // ============================================

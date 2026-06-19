@@ -7,9 +7,10 @@ import { TrivyScanService } from './services/trivy-scan.service';
 import { LicensesModule } from '../licenses/licenses.module';
 import { PoliciesModule } from '../policies/policies.module';
 import { SettingsModule } from '../settings/settings.module';
+import { ManualAdvisoriesModule } from '../manual-advisories/manual-advisories.module';
 
 @Module({
-    imports: [LicensesModule, PoliciesModule, SettingsModule],
+    imports: [LicensesModule, PoliciesModule, SettingsModule, ManualAdvisoriesModule],
     controllers: [ScansController],
     providers: [ScansService, TrivyParserService, VulnSyncService, TrivyScanService],
     exports: [ScansService],

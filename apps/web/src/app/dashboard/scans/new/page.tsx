@@ -1,37 +1,94 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, FileJson, ArrowLeft, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Archive, ArrowLeft, CheckCircle, FileJson, Loader2, ShieldCheck, Upload, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useUploadScan, useProjects, useOrganizations } from '@/lib/api-hooks';
+import { useCancelTrivyScan, useOrganizations, useProjects, useUploadScan } from '@/lib/api-hooks';
+import type { TrivyScanOptions } from '@/lib/api-hooks';
+
+type UploadMode = 'scan-target' | 'result-file';
+type SourceType = 'TRIVY_JSON' | 'TRIVY_SARIF' | 'MANUAL';
+
+const SEVERITY_OPTIONS = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'];
+const SCANNER_OPTIONS = [
+    { value: 'vuln', label: '취약점(vuln)' },
+    { value: 'secret', label: '시크릿(secret)' },
+    { value: 'misconfig', label: '설정오류(misconfig)' },
+];
 
 export default function NewScanPage() {
     const router = useRouter();
+    const [uploadMode, setUploadMode] = useState<UploadMode>('scan-target');
     const [file, setFile] = useState<File | null>(null);
     const [selectedProjectId, setSelectedProjectId] = useState<string>('');
     const [selectedOrgId, setSelectedOrgId] = useState<string>('');
     const [projectName, setProjectName] = useState<string>('');
-    const [sourceType, setSourceType] = useState<'TRIVY_JSON' | 'TRIVY_SARIF' | 'MANUAL'>('TRIVY_JSON');
+    const [sourceType, setSourceType] = useState<SourceType>('TRIVY_JSON');
     const [dragActive, setDragActive] = useState(false);
-    const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+    const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'cancelling' | 'success' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState<string>('');
+    const [scanOperationId, setScanOperationId] = useState<string>('');
+    const cancelRequestedRef = useRef(false);
+    const [trivyOptions, setTrivyOptions] = useState<Required<TrivyScanOptions>>({
+        offlineScan: true,
+        skipDbUpdate: true,
+        skipJavaDbUpdate: true,
+        ignoreUnfixed: false,
+        severities: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
+        scanners: ['vuln', 'secret', 'misconfig'],
+        timeout: '10m',
+    });
 
     const { data: projectsData } = useProjects();
     const { data: orgsData } = useOrganizations();
     const uploadMutation = useUploadScan();
+    const cancelScanMutation = useCancelTrivyScan();
 
     const projects = projectsData?.data || [];
     const organizations = orgsData || [];
+    const isScanningTarget = uploadMode === 'scan-target';
+    const acceptedFiles = isScanningTarget
+        ? '.zip,.tar,.tar.gz,.tgz,.json,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,Dockerfile'
+        : '.json,.sarif';
+
+    const resetFileState = () => {
+        setFile(null);
+        setUploadStatus('idle');
+        setErrorMessage('');
+    };
+
+    const handleModeChange = (mode: UploadMode) => {
+        setUploadMode(mode);
+        resetFileState();
+        if (mode === 'scan-target') {
+            setSourceType('TRIVY_JSON');
+        }
+    };
 
     const handleDrag = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        if (e.type === 'dragenter' || e.type === 'dragover') {
-            setDragActive(true);
-        } else if (e.type === 'dragleave') {
-            setDragActive(false);
+        setDragActive(e.type === 'dragenter' || e.type === 'dragover');
+    };
+
+    const isAllowedFile = (candidate: File) => {
+        const name = candidate.name.toLowerCase();
+        if (isScanningTarget) {
+            return true;
         }
+        return name.endsWith('.json') || name.endsWith('.sarif');
+    };
+
+    const selectFile = (candidate: File) => {
+        if (!isAllowedFile(candidate)) {
+            setErrorMessage('결과 업로드 모드에서는 JSON 또는 SARIF 파일만 업로드할 수 있습니다.');
+            return;
+        }
+
+        setFile(candidate);
+        setUploadStatus('idle');
+        setErrorMessage('');
     };
 
     const handleDrop = (e: React.DragEvent) => {
@@ -40,253 +97,402 @@ export default function NewScanPage() {
         setDragActive(false);
 
         if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            const droppedFile = e.dataTransfer.files[0];
-            if (droppedFile.name.endsWith('.json') || droppedFile.name.endsWith('.sarif')) {
-                setFile(droppedFile);
-                setUploadStatus('idle');
-                setErrorMessage('');
-            } else {
-                setErrorMessage('JSON 또는 SARIF 파일만 업로드할 수 있습니다.');
-            }
+            selectFile(e.dataTransfer.files[0]);
         }
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
-            setUploadStatus('idle');
-            setErrorMessage('');
+            selectFile(e.target.files[0]);
         }
+    };
+
+    const toggleListOption = (key: 'severities' | 'scanners', value: string) => {
+        setTrivyOptions((current) => {
+            const selected = current[key];
+            const next = selected.includes(value)
+                ? selected.filter((item) => item !== value)
+                : [...selected, value];
+
+            return { ...current, [key]: next };
+        });
     };
 
     const handleUpload = async () => {
         if (!file) {
-            setErrorMessage('파일을 선택해주세요.');
+            setErrorMessage('업로드할 파일을 선택해주세요.');
             return;
         }
 
-        if (!selectedProjectId && !projectName) {
+        if (!selectedProjectId && !projectName.trim()) {
             setErrorMessage('프로젝트를 선택하거나 새 프로젝트 이름을 입력해주세요.');
+            return;
+        }
+
+        if (isScanningTarget && trivyOptions.scanners.length === 0) {
+            setErrorMessage('Trivy scanner를 최소 1개 이상 선택해주세요.');
+            return;
+        }
+
+        if (isScanningTarget && trivyOptions.severities.length === 0) {
+            setErrorMessage('심각도를 최소 1개 이상 선택해주세요.');
             return;
         }
 
         setUploadStatus('uploading');
         setErrorMessage('');
+        cancelRequestedRef.current = false;
+        const nextOperationId = isScanningTarget
+            ? (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`)
+            : '';
+        setScanOperationId(nextOperationId);
 
         try {
             await uploadMutation.mutateAsync({
                 projectId: selectedProjectId || undefined,
                 file,
+                scanTarget: isScanningTarget,
+                trivyOptions: isScanningTarget ? trivyOptions : undefined,
+                scanOperationId: nextOperationId || undefined,
                 metadata: {
-                    sourceType,
-                    projectName: !selectedProjectId ? projectName : undefined,
+                    sourceType: isScanningTarget ? 'TRIVY_JSON' : sourceType,
+                    projectName: !selectedProjectId ? projectName.trim() : undefined,
                     organizationId: selectedOrgId || undefined,
+                    imageRef: file.name,
                 },
             });
 
             setUploadStatus('success');
+            setScanOperationId('');
             setTimeout(() => {
                 router.push('/dashboard/scans');
             }, 1500);
         } catch (error: any) {
+            setScanOperationId('');
+            if (cancelRequestedRef.current) {
+                setUploadStatus('idle');
+                setErrorMessage('검사를 중지했습니다. 임시 업로드 파일은 서버에서 정리됩니다.');
+                return;
+            }
+
             setUploadStatus('error');
-            setErrorMessage(error.message || '업로드에 실패했습니다.');
+            setErrorMessage(error.message || '업로드 또는 스캔에 실패했습니다.');
+        }
+    };
+
+    const handleCancelScan = async () => {
+        if (!scanOperationId) return;
+
+        cancelRequestedRef.current = true;
+        setUploadStatus('cancelling');
+        setErrorMessage('');
+
+        try {
+            await cancelScanMutation.mutateAsync(scanOperationId);
+        } catch (error: any) {
+            setUploadStatus('uploading');
+            setErrorMessage(error.message || '검사 중지 요청에 실패했습니다.');
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 p-6">
-            <div className="max-w-2xl mx-auto">
-                {/* Header */}
+        <div className="min-h-screen bg-slate-950 p-6">
+            <div className="mx-auto max-w-4xl">
                 <div className="mb-8">
                     <Link
                         href="/dashboard/scans"
-                        className="inline-flex items-center gap-2 text-slate-400 hover:text-white mb-4 transition-colors"
+                        className="mb-4 inline-flex items-center gap-2 text-slate-400 transition-colors hover:text-white"
                     >
                         <ArrowLeft className="h-4 w-4" />
                         스캔 목록으로 돌아가기
                     </Link>
-                    <h1 className="text-2xl font-bold text-white">새 스캔 업로드</h1>
-                    <p className="text-slate-400 mt-2">
-                        Trivy 스캔 결과 파일을 업로드하여 취약점을 분석합니다.
+                    <h1 className="text-2xl font-bold text-white">새 스캔 등록</h1>
+                    <p className="mt-2 text-slate-400">
+                        폐쇄망 환경에서는 검사 대상 파일이나 압축 파일을 업로드해 JASCA 서버 안의 Trivy로 바로 검사할 수 있습니다.
                     </p>
                 </div>
 
-                {/* Upload Form */}
-                <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-                    {/* File Drop Zone */}
-                    <div
-                        className={`
-                            relative border-2 border-dashed rounded-xl p-8 text-center transition-colors
-                            ${dragActive ? 'border-blue-500 bg-blue-500/10' : 'border-slate-600 hover:border-slate-500'}
-                            ${file ? 'border-green-500 bg-green-500/10' : ''}
-                        `}
-                        onDragEnter={handleDrag}
-                        onDragLeave={handleDrag}
-                        onDragOver={handleDrag}
-                        onDrop={handleDrop}
-                    >
-                        <input
-                            type="file"
-                            accept=".json,.sarif"
-                            onChange={handleFileChange}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        
-                        {file ? (
-                            <div className="flex flex-col items-center gap-3">
-                                <FileJson className="h-12 w-12 text-green-400" />
-                                <div>
-                                    <p className="text-white font-medium">{file.name}</p>
-                                    <p className="text-slate-400 text-sm">
-                                        {(file.size / 1024).toFixed(1)} KB
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setFile(null);
-                                    }}
-                                    className="text-sm text-slate-400 hover:text-white"
-                                >
-                                    다른 파일 선택
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center gap-3">
-                                <Upload className="h-12 w-12 text-slate-500" />
-                                <div>
-                                    <p className="text-white">여기에 파일을 드래그하거나 클릭하여 선택</p>
-                                    <p className="text-slate-400 text-sm mt-1">
-                                        JSON 또는 SARIF 형식 지원
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+                        <div className="mb-6 grid gap-3 sm:grid-cols-2">
+                            <button
+                                type="button"
+                                onClick={() => handleModeChange('scan-target')}
+                                className={`rounded-xl border p-4 text-left transition ${
+                                    isScanningTarget
+                                        ? 'border-blue-500 bg-blue-500/10 text-white'
+                                        : 'border-slate-700 bg-slate-950/40 text-slate-300 hover:border-slate-500'
+                                }`}
+                            >
+                                <ShieldCheck className="mb-3 h-6 w-6 text-blue-300" />
+                                <div className="font-semibold">Trivy로 직접 검사</div>
+                                <div className="mt-1 text-sm text-slate-400">파일, .zip, .tar, .tar.gz를 업로드하면 서버에서 검사합니다.</div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleModeChange('result-file')}
+                                className={`rounded-xl border p-4 text-left transition ${
+                                    !isScanningTarget
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-white'
+                                        : 'border-slate-700 bg-slate-950/40 text-slate-300 hover:border-slate-500'
+                                }`}
+                            >
+                                <FileJson className="mb-3 h-6 w-6 text-emerald-300" />
+                                <div className="font-semibold">결과 파일 업로드</div>
+                                <div className="mt-1 text-sm text-slate-400">이미 생성된 Trivy JSON 또는 SARIF 결과를 등록합니다.</div>
+                            </button>
+                        </div>
 
-                    {/* Source Type */}
-                    <div className="mt-6">
-                        <label className="block text-sm font-medium text-slate-300 mb-2">
-                            소스 유형
-                        </label>
-                        <select
-                            value={sourceType}
-                            onChange={(e) => setSourceType(e.target.value as any)}
-                            className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        <div
+                            className={`relative rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+                                dragActive ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-500'
+                            } ${file ? 'border-green-500 bg-green-500/10' : ''}`}
+                            onDragEnter={handleDrag}
+                            onDragLeave={handleDrag}
+                            onDragOver={handleDrag}
+                            onDrop={handleDrop}
                         >
-                            <option value="TRIVY_JSON">Trivy JSON</option>
-                            <option value="TRIVY_SARIF">Trivy SARIF</option>
-                            <option value="MANUAL">수동 업로드</option>
-                        </select>
-                    </div>
+                            <input
+                                type="file"
+                                accept={acceptedFiles}
+                                onChange={handleFileChange}
+                                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                            />
 
-                    {/* Project Selection */}
-                    <div className="mt-6">
-                        <label className="block text-sm font-medium text-slate-300 mb-2">
-                            프로젝트
-                        </label>
-                        <select
-                            value={selectedProjectId}
-                            onChange={(e) => setSelectedProjectId(e.target.value)}
-                            className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            <option value="">새 프로젝트 생성</option>
-                            {projects.map((project) => (
-                                <option key={project.id} value={project.id}>
-                                    {project.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                            {file ? (
+                                <div className="flex flex-col items-center gap-3">
+                                    {isScanningTarget ? <Archive className="h-12 w-12 text-green-400" /> : <FileJson className="h-12 w-12 text-green-400" />}
+                                    <div>
+                                        <p className="font-medium text-white">{file.name}</p>
+                                        <p className="text-sm text-slate-400">{(file.size / 1024).toFixed(1)} KB</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            resetFileState();
+                                        }}
+                                        className="text-sm text-slate-400 hover:text-white"
+                                    >
+                                        다른 파일 선택
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center gap-3">
+                                    <Upload className="h-12 w-12 text-slate-500" />
+                                    <div>
+                                        <p className="text-white">여기로 파일을 드래그하거나 클릭해서 선택</p>
+                                        <p className="mt-1 text-sm text-slate-400">
+                                            {isScanningTarget ? '.zip, .tar, .tar.gz, 일반 파일 지원' : 'JSON 또는 SARIF 결과 파일 지원'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
-                    {/* New Project Name (if no project selected) */}
-                    {!selectedProjectId && (
-                        <>
-                            <div className="mt-4">
-                                <label className="block text-sm font-medium text-slate-300 mb-2">
-                                    새 프로젝트 이름
-                                </label>
-                                <input
-                                    type="text"
-                                    value={projectName}
-                                    onChange={(e) => setProjectName(e.target.value)}
-                                    placeholder="예: my-web-app"
-                                    className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-                            
-                            <div className="mt-4">
-                                <label className="block text-sm font-medium text-slate-300 mb-2">
-                                    조직
-                                </label>
+                        {!isScanningTarget && (
+                            <div className="mt-6">
+                                <label className="mb-2 block text-sm font-medium text-slate-300">소스 유형</label>
                                 <select
-                                    value={selectedOrgId}
-                                    onChange={(e) => setSelectedOrgId(e.target.value)}
-                                    className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={sourceType}
+                                    onChange={(e) => setSourceType(e.target.value as SourceType)}
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
-                                    <option value="">조직 선택 (선택사항)</option>
-                                    {organizations.map((org) => (
-                                        <option key={org.id} value={org.id}>
-                                            {org.name}
-                                        </option>
-                                    ))}
+                                    <option value="TRIVY_JSON">Trivy JSON</option>
+                                    <option value="TRIVY_SARIF">Trivy SARIF</option>
+                                    <option value="MANUAL">수동 업로드</option>
                                 </select>
                             </div>
-                        </>
-                    )}
+                        )}
 
-                    {/* Error Message */}
-                    {errorMessage && (
-                        <div className="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg flex items-center gap-2 text-red-300">
-                            <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                            <span className="text-sm">{errorMessage}</span>
+                        <div className="mt-6">
+                            <label className="mb-2 block text-sm font-medium text-slate-300">프로젝트</label>
+                            <select
+                                value={selectedProjectId}
+                                onChange={(e) => setSelectedProjectId(e.target.value)}
+                                className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">새 프로젝트 생성</option>
+                                {projects.map((project) => (
+                                    <option key={project.id} value={project.id}>
+                                        {project.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
-                    )}
 
-                    {/* Success Message */}
-                    {uploadStatus === 'success' && (
-                        <div className="mt-4 p-3 bg-green-500/20 border border-green-500/50 rounded-lg flex items-center gap-2 text-green-300">
-                            <CheckCircle className="h-4 w-4 flex-shrink-0" />
-                            <span className="text-sm">업로드 완료! 스캔 목록으로 이동합니다...</span>
-                        </div>
-                    )}
+                        {!selectedProjectId && (
+                            <>
+                                <div className="mt-4">
+                                    <label className="mb-2 block text-sm font-medium text-slate-300">새 프로젝트 이름</label>
+                                    <input
+                                        type="text"
+                                        value={projectName}
+                                        onChange={(e) => setProjectName(e.target.value)}
+                                        placeholder="예: customer-portal"
+                                        className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
 
-                    {/* Submit Button */}
-                    <button
-                        onClick={handleUpload}
-                        disabled={uploadStatus === 'uploading' || uploadStatus === 'success' || !file}
-                        className="mt-6 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
-                    >
-                        {uploadStatus === 'uploading' ? (
-                            <>
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                                업로드 중...
-                            </>
-                        ) : uploadStatus === 'success' ? (
-                            <>
-                                <CheckCircle className="h-5 w-5" />
-                                완료
-                            </>
-                        ) : (
-                            <>
-                                <Upload className="h-5 w-5" />
-                                스캔 업로드
+                                <div className="mt-4">
+                                    <label className="mb-2 block text-sm font-medium text-slate-300">조직</label>
+                                    <select
+                                        value={selectedOrgId}
+                                        onChange={(e) => setSelectedOrgId(e.target.value)}
+                                        className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="">조직 선택 안 함</option>
+                                        {organizations.map((org) => (
+                                            <option key={org.id} value={org.id}>
+                                                {org.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </>
                         )}
-                    </button>
-                </div>
 
-                {/* Help Text */}
-                <div className="mt-6 p-4 bg-slate-800/30 rounded-lg">
-                    <h3 className="text-sm font-medium text-slate-300 mb-2">Trivy 스캔 실행 방법</h3>
-                    <pre className="text-xs text-slate-400 bg-slate-900/50 p-3 rounded overflow-x-auto">
-{`# Docker 이미지 스캔
-trivy image --format json --output result.json your-image:tag
+                        {errorMessage && (
+                            <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-500/50 bg-red-500/20 p-3 text-red-300">
+                                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                                <span className="text-sm">{errorMessage}</span>
+                            </div>
+                        )}
 
-# 파일시스템 스캔
-trivy fs --format json --output result.json ./your-project`}
-                    </pre>
+                        {uploadStatus === 'success' && (
+                            <div className="mt-4 flex items-center gap-2 rounded-lg border border-green-500/50 bg-green-500/20 p-3 text-green-300">
+                                <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                                <span className="text-sm">처리가 완료되었습니다. 스캔 목록으로 이동합니다.</span>
+                            </div>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={handleUpload}
+                            disabled={uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || !file}
+                            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-700"
+                        >
+                            {uploadStatus === 'uploading' ? (
+                                <>
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                    {isScanningTarget ? 'Trivy 검사 중...' : '업로드 중...'}
+                                </>
+                            ) : uploadStatus === 'success' ? (
+                                <>
+                                    <CheckCircle className="h-5 w-5" />
+                                    완료
+                                </>
+                            ) : (
+                                <>
+                                    <Upload className="h-5 w-5" />
+                                    {isScanningTarget ? 'Trivy 검사 실행' : '결과 업로드'}
+                                </>
+                            )}
+                        </button>
+
+                        {isScanningTarget && (uploadStatus === 'uploading' || uploadStatus === 'cancelling') && (
+                            <button
+                                type="button"
+                                onClick={handleCancelScan}
+                                disabled={uploadStatus === 'cancelling'}
+                                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/60 bg-red-500/10 py-3 font-medium text-red-200 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {uploadStatus === 'cancelling' ? (
+                                    <>
+                                        <Loader2 className="h-5 w-5 animate-spin" />
+                                        중지 요청 중...
+                                    </>
+                                ) : (
+                                    <>
+                                        <AlertCircle className="h-5 w-5" />
+                                        검사 중지
+                                    </>
+                                )}
+                            </button>
+                        )}
+                    </div>
+
+                    <aside className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+                        <h2 className="text-lg font-semibold text-white">Trivy 실행 옵션</h2>
+                        <p className="mt-2 text-sm text-slate-400">
+                            폐쇄망 기본값은 DB 다운로드를 시도하지 않도록 설정되어 있습니다.
+                        </p>
+
+                        <div className={`mt-5 space-y-4 ${!isScanningTarget ? 'pointer-events-none opacity-50' : ''}`}>
+                            {[
+                                ['offlineScan', '--offline-scan', '외부 네트워크 조회 없이 로컬 DB만 사용합니다.'],
+                                ['skipDbUpdate', '--skip-db-update', '취약점 DB 업데이트를 건너뜁니다.'],
+                                ['skipJavaDbUpdate', '--skip-java-db-update', 'Java DB 업데이트를 건너뜁니다.'],
+                                ['ignoreUnfixed', '--ignore-unfixed', '수정 버전이 없는 항목은 제외합니다.'],
+                            ].map(([key, label, description]) => (
+                                <label key={key} className="flex cursor-pointer gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={Boolean(trivyOptions[key as keyof Required<TrivyScanOptions>])}
+                                        onChange={(e) => setTrivyOptions((current) => ({ ...current, [key]: e.target.checked }))}
+                                        className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900"
+                                    />
+                                    <span>
+                                        <span className="block text-sm font-medium text-white">{label}</span>
+                                        <span className="block text-xs text-slate-400">{description}</span>
+                                    </span>
+                                </label>
+                            ))}
+
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-300">Scanner</label>
+                                <div className="space-y-2">
+                                    {SCANNER_OPTIONS.map((scanner) => (
+                                        <label key={scanner.value} className="flex items-center gap-2 text-sm text-slate-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={trivyOptions.scanners.includes(scanner.value)}
+                                                onChange={() => toggleListOption('scanners', scanner.value)}
+                                                className="h-4 w-4 rounded border-slate-600 bg-slate-900"
+                                            />
+                                            {scanner.label}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-300">심각도</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {SEVERITY_OPTIONS.map((severity) => (
+                                        <button
+                                            type="button"
+                                            key={severity}
+                                            onClick={() => toggleListOption('severities', severity)}
+                                            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                                                trivyOptions.severities.includes(severity)
+                                                    ? 'border-blue-400 bg-blue-500/20 text-blue-100'
+                                                    : 'border-slate-700 bg-slate-950/40 text-slate-400'
+                                            }`}
+                                        >
+                                            {severity}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-300">Timeout</label>
+                                <input
+                                    type="text"
+                                    value={trivyOptions.timeout}
+                                    onChange={(e) => setTrivyOptions((current) => ({ ...current, timeout: e.target.value }))}
+                                    placeholder="10m"
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <p className="mt-1 text-xs text-slate-500">예: 30s, 10m, 1h</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 rounded-lg bg-slate-950/60 p-4 text-xs text-slate-400">
+                            압축 파일은 서버 임시 폴더에만 해제되고, 스캔이 끝나면 원본과 해제된 파일이 함께 삭제됩니다.
+                        </div>
+                    </aside>
                 </div>
             </div>
         </div>
