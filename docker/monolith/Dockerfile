@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     redis-server \
     supervisor \
     openssl \
+    unzip \
     locales \
     tzdata \
     && rm -rf /var/lib/apt/lists/*

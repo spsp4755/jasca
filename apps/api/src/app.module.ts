@@ -27,6 +27,7 @@ import { TrivyDbModule } from './modules/trivy-db/trivy-db.module';
 import { ExceptionsModule } from './modules/exceptions/exceptions.module';
 import { LicensesModule } from './modules/licenses/licenses.module';
 import { DatabaseModule } from './modules/database/database.module';
+import { ManualAdvisoriesModule } from './modules/manual-advisories/manual-advisories.module';
 
 @Module({
     imports: [
@@ -60,6 +61,7 @@ import { DatabaseModule } from './modules/database/database.module';
         TrivyDbModule,
         ExceptionsModule,
         LicensesModule,
+        ManualAdvisoriesModule,
         DatabaseModule,
     ],
 })

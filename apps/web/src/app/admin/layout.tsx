@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
     Shield,
+    ShieldAlert,
     LayoutDashboard,
     Building2,
     Users,
@@ -40,6 +41,7 @@ const adminNavigation = [
     { name: '사용자 관리', href: '/admin/users', icon: Users },
     { name: '프로젝트 관리', href: '/admin/projects', icon: FolderKanban },
     { name: '취약점 현황', href: '/admin/vulnerabilities', icon: AlertTriangle },
+    { name: '수동 취약점', href: '/admin/manual-advisories', icon: ShieldAlert },
     { name: '라이선스 관리', href: '/admin/licenses', icon: Scale },
     { name: '정책 관리', href: '/admin/policies', icon: FileText },
     { name: '예외 승인', href: '/admin/exceptions', icon: ShieldCheck },
@@ -75,7 +77,7 @@ export default function AdminLayout({
 
     // Check for admin role
     const isAdmin = user?.roles?.some(role =>
-        ['SYSTEM_ADMIN', 'ORG_ADMIN', 'ADMIN'].includes(role)
+        ['SYSTEM_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN', 'ADMIN'].includes(role)
     );
 
     useEffect(() => {

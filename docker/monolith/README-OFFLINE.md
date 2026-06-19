@@ -65,8 +65,8 @@ trivy image --download-java-db-only
 
 ```bash
 mkdir -p /app/jasca
-tar -xzf jasca-offline-release-safe-20260616-bundle.tar.gz
-cd jasca-offline-release-safe-20260616
+tar -xzf jasca-offline-manual-advisory-20260619-bundle.tar.gz
+cd jasca-offline-manual-advisory-20260619
 cp deploy-existing-layout.env.example deploy-existing-layout.env
 vi deploy-existing-layout.env
 chmod +x deploy-existing-layout.sh
@@ -85,6 +85,8 @@ TRIVY_CACHE_MOUNT=/root/.cache/trivy
 ```
 
 기존 배포를 교체하는 경우 `DB_PASSWORD`는 기존 PostgreSQL 데이터 디렉터리와 호환되는 값이어야 합니다. 현재 서버에서 이미 사용 중인 DB 비밀번호가 있다면 같은 값을 `deploy-existing-layout.env`에 넣으세요.
+
+v0.2.4부터는 수동 취약점 Advisory 기능을 위해 `ManualAdvisory` 테이블이 추가됩니다. 기존 데이터를 유지하려면 `/app/jasca/pgdata`, `/app/jasca/redis`를 삭제하지 말고 백업 후 그대로 마운트하세요.
 
 이 스크립트는 내부적으로 다음과 같은 Docker 실행 구조를 사용합니다.
 

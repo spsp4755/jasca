@@ -6,6 +6,7 @@ import { LicenseParserService } from '../licenses/services/license-parser.servic
 import { UploadScanDto } from './dto/upload-scan.dto';
 import * as crypto from 'crypto';
 import { PolicyEngineService } from '../policies/policy-engine.service';
+import { ManualAdvisoriesService } from '../manual-advisories/manual-advisories.service';
 import {
     RequestUser,
     assertOrganizationAccess,
@@ -25,6 +26,7 @@ export class ScansService {
         private readonly licenseParser: LicenseParserService,
         private readonly vulnSyncService: VulnSyncService,
         private readonly policyEngine: PolicyEngineService,
+        private readonly manualAdvisoriesService: ManualAdvisoriesService,
     ) { }
 
     private buildScanAccessWhere(currentUser?: RequestUser, projectId?: string) {
@@ -231,8 +233,18 @@ export class ScansService {
             },
         });
 
+        const manualVulnerabilities = await this.manualAdvisoriesService.getManualVulnerabilitiesForScan(
+            resolvedProjectId,
+            rawResult,
+        );
+        const allVulnerabilities = this.mergeParsedVulnerabilities(parsed.vulnerabilities, manualVulnerabilities);
+
+        if (manualVulnerabilities.length > 0) {
+            this.logger.log(`Matched ${manualVulnerabilities.length} manual advisories for scan ${scanResult.id}`);
+        }
+
         // Process vulnerabilities and collect hashes for sync
-        const newVulnHashes = await this.processVulnerabilities(scanResult.id, parsed.vulnerabilities);
+        const newVulnHashes = await this.processVulnerabilities(scanResult.id, allVulnerabilities);
 
         // Sync resolved vulnerabilities (auto-mark FIXED if not in new scan)
         try {
@@ -467,6 +479,25 @@ export class ScansService {
         }
 
         return vulnHashes;
+    }
+
+    private mergeParsedVulnerabilities(
+        trivyVulnerabilities: ParsedScanResult['vulnerabilities'],
+        manualVulnerabilities: ParsedScanResult['vulnerabilities'],
+    ): ParsedScanResult['vulnerabilities'] {
+        const merged = [...trivyVulnerabilities];
+        const seen = new Set(
+            trivyVulnerabilities.map((vuln) => this.generateVulnHash(vuln.cveId, vuln.pkgName, vuln.pkgVersion)),
+        );
+
+        for (const vuln of manualVulnerabilities) {
+            const hash = this.generateVulnHash(vuln.cveId, vuln.pkgName, vuln.pkgVersion);
+            if (seen.has(hash)) continue;
+            seen.add(hash);
+            merged.push(vuln);
+        }
+
+        return merged;
     }
 
 
