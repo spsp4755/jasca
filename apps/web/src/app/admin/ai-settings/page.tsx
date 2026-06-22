@@ -60,9 +60,7 @@ const staticModelsByProvider: Record<string, { id: string; name: string }[]> = {
     ],
     vllm: [],
     ollama: [],
-    custom: [
-        { id: 'custom', name: '직접 입력' },
-    ],
+    custom: [],
 };
 
 interface DynamicModel {
@@ -95,9 +93,9 @@ export default function AiSettingsPage() {
     const [vllmModels, setVllmModels] = useState<DynamicModel[]>([]);
     const [fetchingModels, setFetchingModels] = useState(false);
 
-    // Custom model input for vLLM
-    const [customVllmModel, setCustomVllmModel] = useState('');
-    const [useCustomVllmModel, setUseCustomVllmModel] = useState(false);
+    // Custom model input for local/private model servers.
+    const [customModelName, setCustomModelName] = useState('');
+    const [useCustomModelName, setUseCustomModelName] = useState(false);
 
     // Cache URLs per provider to prevent reset when switching
     const [providerUrls, setProviderUrls] = useState<Record<string, string>>({});
@@ -146,9 +144,9 @@ export default function AiSettingsPage() {
     useEffect(() => {
         if (settings) {
             setConfig({ ...defaultConfig, ...settings });
-            if (settings.provider === 'vllm' && settings.summaryModel) {
-                setCustomVllmModel(settings.summaryModel);
-                setUseCustomVllmModel(true);
+            if (['vllm', 'custom'].includes(settings.provider) && settings.summaryModel) {
+                setCustomModelName(settings.summaryModel);
+                setUseCustomModelName(true);
             }
             
             // Initialize provider URLs with default values and the current saved URL
@@ -183,8 +181,8 @@ export default function AiSettingsPage() {
         setOllamaModels([]);
         setVllmModels([]);
         setTestResult(null);
-        setCustomVllmModel('');
-        setUseCustomVllmModel(false);
+        setCustomModelName('');
+        setUseCustomModelName(providerId === 'custom');
     };
 
     const handleApiUrlChange = (newUrl: string) => {
@@ -199,9 +197,10 @@ export default function AiSettingsPage() {
     const handleSave = async () => {
         try {
             const configToSave = { ...config };
-            if (config.provider === 'vllm' && useCustomVllmModel && customVllmModel) {
-                configToSave.summaryModel = customVllmModel;
-                configToSave.remediationModel = customVllmModel;
+            if (useCustomModelName && customModelName.trim()) {
+                const modelName = customModelName.trim();
+                configToSave.summaryModel = modelName;
+                configToSave.remediationModel = modelName;
             }
 
             await updateMutation.mutateAsync({ key: 'ai', value: configToSave });
@@ -357,7 +356,7 @@ export default function AiSettingsPage() {
             if (result.success && result.models) {
                 setVllmModels(result.models);
                 if (result.models.length > 0) {
-                    setUseCustomVllmModel(false);
+                    setUseCustomModelName(false);
                     if (!config.summaryModel) {
                         setConfig(prev => ({
                             ...prev,
@@ -376,13 +375,14 @@ export default function AiSettingsPage() {
 
     const getAvailableModels = () => {
         if (config.provider === 'ollama' && ollamaModels.length > 0) return ollamaModels;
-        if (config.provider === 'vllm' && vllmModels.length > 0 && !useCustomVllmModel) return vllmModels;
+        if (config.provider === 'vllm' && vllmModels.length > 0 && !useCustomModelName) return vllmModels;
         return staticModelsByProvider[config.provider] || [];
     };
 
     const availableModels = getAvailableModels();
     const needsModelFetch = config.provider === 'ollama' || config.provider === 'vllm';
     const hasModels = config.provider === 'ollama' ? ollamaModels.length > 0 : vllmModels.length > 0;
+    const supportsCustomModelName = ['vllm', 'custom', 'openai', 'anthropic'].includes(config.provider);
 
     if (isLoading) {
         return (
@@ -720,40 +720,43 @@ export default function AiSettingsPage() {
                             </div>
                         )}
 
-                        {config.provider === 'vllm' && (
+                        {supportsCustomModelName && (
                             <div className="flex items-center gap-2">
                                 <input
                                     type="checkbox"
-                                    id="useCustomVllmModel"
-                                    checked={useCustomVllmModel}
-                                    onChange={(e) => setUseCustomVllmModel(e.target.checked)}
+                                    id="useCustomModelName"
+                                    checked={useCustomModelName}
+                                    onChange={(e) => setUseCustomModelName(e.target.checked)}
                                     className="rounded border-slate-300 text-red-600 focus:ring-red-500"
                                 />
-                                <label htmlFor="useCustomVllmModel" className="text-sm text-slate-700 dark:text-slate-300">
+                                <label htmlFor="useCustomModelName" className="text-sm text-slate-700 dark:text-slate-300">
                                     모델명 직접 입력
                                 </label>
                             </div>
                         )}
 
-                        {config.provider === 'vllm' && useCustomVllmModel && (
+                        {supportsCustomModelName && useCustomModelName && (
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                                    vLLM 모델명
+                                    모델명
                                 </label>
                                 <div className="relative">
                                     <Edit3 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                                     <input
                                         type="text"
-                                        value={customVllmModel}
-                                        onChange={(e) => setCustomVllmModel(e.target.value)}
-                                        placeholder="예: meta-llama/Llama-2-7b-chat-hf"
+                                        value={customModelName}
+                                        onChange={(e) => setCustomModelName(e.target.value)}
+                                        placeholder="예: Qwen2.5-32B-Instruct, meta-llama/Llama-3.1-8B-Instruct"
                                         className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg pl-10 pr-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
                                     />
                                 </div>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    폐쇄망 사내 모델 서버에서 모델 목록 조회가 안 되거나 조직별 모델명이 별도로 정해진 경우 사용하세요.
+                                </p>
                             </div>
                         )}
 
-                        {(availableModels.length > 0 || !needsModelFetch) && !useCustomVllmModel && (
+                        {availableModels.length > 0 && !useCustomModelName && (
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
