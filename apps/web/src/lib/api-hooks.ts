@@ -2235,6 +2235,34 @@ export function useSeedLicenses() {
     });
 }
 
+export function useUpdateLicense() {
+    const queryClient = useQueryClient();
+    return useMutation<
+        License,
+        Error,
+        {
+            id: string;
+            data: Partial<Omit<Pick<License, 'classification' | 'description' | 'url' | 'osiApproved' | 'fsfLibre'>, 'description' | 'url'>> & {
+                description?: string | null;
+                url?: string | null;
+            };
+        }
+    >({
+        mutationFn: ({ id, data }) =>
+            authFetch(`${API_BASE}/licenses/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['licenses'] });
+            queryClient.invalidateQueries({ queryKey: ['license-stats'] });
+            queryClient.invalidateQueries({ queryKey: ['tracked-licenses'] });
+            queryClient.invalidateQueries({ queryKey: ['project-license-summary'] });
+        },
+    });
+}
+
 // Tracked license with project/scan info
 export interface TrackedLicenseInfo {
     id: string;

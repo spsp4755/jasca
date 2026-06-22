@@ -64,7 +64,7 @@ export function QuickActions({ onScanStart, onReportGenerate, className = '' }: 
             id: 'export',
             label: '내보내기',
             icon: Download,
-            onClick: () => console.log('Export'),
+            href: '/dashboard/reports',
         },
         {
             id: 'notifications',

@@ -29,6 +29,7 @@ import {
     ExternalLink,
     Settings,
     Plus,
+    X,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
@@ -37,7 +38,9 @@ import {
     useSeedLicenses,
     useTrackedLicenses,
     useProjectLicenseSummary,
+    useUpdateLicense,
     LicenseClassification,
+    type License,
 } from '@/lib/api-hooks';
 
 const CLASSIFICATION_CONFIG: Record<
@@ -110,9 +113,19 @@ export default function AdminLicensesPage() {
     const [activeTab, setActiveTab] = useState<ViewTab>('overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedClassification, setSelectedClassification] = useState<LicenseClassification | ''>('');
+    const [catalogPage, setCatalogPage] = useState(0);
     const [trackedPage, setTrackedPage] = useState(0);
     const [projectPage, setProjectPage] = useState(0);
+    const [editingLicense, setEditingLicense] = useState<License | null>(null);
+    const [editForm, setEditForm] = useState<{
+        classification: LicenseClassification;
+        description: string;
+        url: string;
+        osiApproved: boolean;
+        fsfLibre: boolean;
+    } | null>(null);
     const PAGE_SIZE = 20;
+    const CATALOG_PAGE_SIZE = 15;
 
     const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useLicenseStats();
     const { data: licenses, isLoading: licensesLoading } = useLicenses({
@@ -130,6 +143,7 @@ export default function AdminLicensesPage() {
         offset: projectPage * PAGE_SIZE,
     });
     const seedLicenses = useSeedLicenses();
+    const updateLicense = useUpdateLicense();
 
     // Prepare chart data
     const pieData = stats
@@ -142,6 +156,26 @@ export default function AdminLicensesPage() {
                   classification,
               }))
         : [];
+    const catalogTotal = licenses?.length || 0;
+    const catalogTotalPages = Math.max(1, Math.ceil(catalogTotal / CATALOG_PAGE_SIZE));
+    const catalogLicenses = licenses?.slice(
+        catalogPage * CATALOG_PAGE_SIZE,
+        catalogPage * CATALOG_PAGE_SIZE + CATALOG_PAGE_SIZE,
+    ) || [];
+    const trackedTotalPages = Math.max(1, Math.ceil((trackedData?.total || 0) / PAGE_SIZE));
+    const projectTotalPages = Math.max(1, Math.ceil((projectSummaryData?.total || 0) / PAGE_SIZE));
+
+    const updateSearchQuery = (value: string) => {
+        setSearchQuery(value);
+        setCatalogPage(0);
+        setTrackedPage(0);
+    };
+
+    const updateSelectedClassification = (value: LicenseClassification | '') => {
+        setSelectedClassification(value);
+        setCatalogPage(0);
+        setTrackedPage(0);
+    };
 
     const handleSeedLicenses = async () => {
         try {
@@ -149,6 +183,38 @@ export default function AdminLicensesPage() {
         } catch (error) {
             console.error('Failed to seed licenses:', error);
         }
+    };
+
+    const openLicenseEditor = (license: License) => {
+        setEditingLicense(license);
+        setEditForm({
+            classification: license.classification,
+            description: license.description || '',
+            url: license.url || '',
+            osiApproved: license.osiApproved,
+            fsfLibre: license.fsfLibre,
+        });
+    };
+
+    const closeLicenseEditor = () => {
+        setEditingLicense(null);
+        setEditForm(null);
+    };
+
+    const saveLicense = async () => {
+        if (!editingLicense || !editForm) return;
+
+        await updateLicense.mutateAsync({
+            id: editingLicense.id,
+            data: {
+                classification: editForm.classification,
+                description: editForm.description.trim() || null,
+                url: editForm.url.trim() || null,
+                osiApproved: editForm.osiApproved,
+                fsfLibre: editForm.fsfLibre,
+            },
+        });
+        closeLicenseEditor();
     };
 
     if (statsLoading) {
@@ -200,10 +266,13 @@ export default function AdminLicensesPage() {
                         <Database className="h-4 w-4" />
                         {seedLicenses.isPending ? '처리 중...' : '기본 라이선스 등록'}
                     </button>
-                    <button className="flex items-center gap-2 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                    <Link
+                        href="/admin/policies"
+                        className="flex items-center gap-2 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
                         <Plus className="h-4 w-4" />
                         정책 추가
-                    </button>
+                    </Link>
                 </div>
             </div>
 
@@ -364,7 +433,7 @@ export default function AdminLicensesPage() {
                                                 <button
                                                     key={key}
                                                     onClick={() => {
-                                                        setSelectedClassification(key === selectedClassification ? '' : key);
+                                                        updateSelectedClassification(key === selectedClassification ? '' : key);
                                                         setActiveTab('tracked');
                                                     }}
                                                     className={`w-full flex items-center justify-between p-2.5 rounded-lg border transition-all ${
@@ -415,7 +484,7 @@ export default function AdminLicensesPage() {
                                     type="text"
                                     placeholder="검색..."
                                     value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onChange={(e) => updateSearchQuery(e.target.value)}
                                     className="pl-9 pr-4 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500"
                                 />
                             </div>
@@ -441,7 +510,7 @@ export default function AdminLicensesPage() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                            {licenses.slice(0, 15).map((license) => {
+                                            {catalogLicenses.map((license) => {
                                                 const config = CLASSIFICATION_CONFIG[license.classification];
                                                 return (
                                                     <tr key={license.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
@@ -464,7 +533,11 @@ export default function AdminLicensesPage() {
                                                             {license.fsfLibre ? <CheckCircle className="h-4 w-4 text-green-500 mx-auto" /> : <span className="text-slate-400">-</span>}
                                                         </td>
                                                         <td className="py-3 px-4 text-center">
-                                                            <button className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                                                            <button
+                                                                onClick={() => openLicenseEditor(license)}
+                                                                title="라이선스 분류 수정"
+                                                                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                                            >
                                                                 <Settings className="h-4 w-4" />
                                                             </button>
                                                         </td>
@@ -473,6 +546,46 @@ export default function AdminLicensesPage() {
                                             })}
                                         </tbody>
                                     </table>
+                                    <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 text-sm dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                                        <span className="text-slate-500">
+                                            {catalogTotal === 0
+                                                ? '0개'
+                                                : `${catalogPage * CATALOG_PAGE_SIZE + 1}-${Math.min((catalogPage + 1) * CATALOG_PAGE_SIZE, catalogTotal)} / ${catalogTotal}개`}
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => setCatalogPage(0)}
+                                                disabled={catalogPage === 0}
+                                                className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                            >
+                                                처음
+                                            </button>
+                                            <button
+                                                onClick={() => setCatalogPage((page) => Math.max(0, page - 1))}
+                                                disabled={catalogPage === 0}
+                                                className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                            >
+                                                이전
+                                            </button>
+                                            <span className="px-2 text-slate-500">
+                                                {catalogPage + 1} / {catalogTotalPages}
+                                            </span>
+                                            <button
+                                                onClick={() => setCatalogPage((page) => Math.min(catalogTotalPages - 1, page + 1))}
+                                                disabled={catalogPage >= catalogTotalPages - 1}
+                                                className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                            >
+                                                다음
+                                            </button>
+                                            <button
+                                                onClick={() => setCatalogPage(catalogTotalPages - 1)}
+                                                disabled={catalogPage >= catalogTotalPages - 1}
+                                                className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                            >
+                                                마지막
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="flex flex-col items-center justify-center py-8 text-slate-500">
@@ -508,13 +621,13 @@ export default function AdminLicensesPage() {
                                     type="text"
                                     placeholder="패키지/라이선스 검색..."
                                     value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onChange={(e) => updateSearchQuery(e.target.value)}
                                     className="pl-9 pr-4 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500 w-64"
                                 />
                             </div>
                             {selectedClassification && (
                                 <button
-                                    onClick={() => setSelectedClassification('')}
+                                    onClick={() => updateSelectedClassification('')}
                                     className="flex items-center gap-1 px-2 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg"
                                 >
                                     <Filter className="h-3 w-3" />
@@ -572,7 +685,7 @@ export default function AdminLicensesPage() {
                                                     </td>
                                                     <td className="py-3 px-4">
                                                         <Link
-                                                            href={`/admin/projects/${item.projectId}`}
+                                                            href={`/dashboard/projects/${item.projectId}`}
                                                             className="flex items-center gap-1 text-sm text-red-600 dark:text-red-400 hover:underline"
                                                         >
                                                             <FolderKanban className="h-3 w-3" />
@@ -584,7 +697,7 @@ export default function AdminLicensesPage() {
                                                     </td>
                                                     <td className="py-3 px-4">
                                                         <Link
-                                                            href={`/admin/scans/${item.scanId}`}
+                                                            href={`/dashboard/scans/${item.scanId}`}
                                                             className="flex items-center gap-1 text-sm text-red-600 dark:text-red-400 hover:underline"
                                                         >
                                                             <FileSearch className="h-3 w-3" />
@@ -602,6 +715,46 @@ export default function AdminLicensesPage() {
                                         })}
                                     </tbody>
                                 </table>
+                                <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 text-sm dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                                    <span className="text-slate-500">
+                                        {(trackedData?.total || 0) === 0
+                                            ? '0개'
+                                            : `${trackedPage * PAGE_SIZE + 1}-${Math.min((trackedPage + 1) * PAGE_SIZE, trackedData?.total || 0)} / ${trackedData?.total || 0}개`}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setTrackedPage(0)}
+                                            disabled={trackedPage === 0}
+                                            className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                        >
+                                            처음
+                                        </button>
+                                        <button
+                                            onClick={() => setTrackedPage((page) => Math.max(0, page - 1))}
+                                            disabled={trackedPage === 0}
+                                            className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                        >
+                                            이전
+                                        </button>
+                                        <span className="px-2 text-slate-500">
+                                            {trackedPage + 1} / {trackedTotalPages}
+                                        </span>
+                                        <button
+                                            onClick={() => setTrackedPage((page) => Math.min(trackedTotalPages - 1, page + 1))}
+                                            disabled={trackedPage >= trackedTotalPages - 1}
+                                            className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                        >
+                                            다음
+                                        </button>
+                                        <button
+                                            onClick={() => setTrackedPage(trackedTotalPages - 1)}
+                                            disabled={trackedPage >= trackedTotalPages - 1}
+                                            className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                        >
+                                            마지막
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center py-12 text-slate-500">
@@ -634,7 +787,7 @@ export default function AdminLicensesPage() {
                                 {projectSummaryData.data.map((project) => (
                                     <Link
                                         key={project.projectId}
-                                        href={`/admin/projects/${project.projectId}`}
+                                        href={`/dashboard/projects/${project.projectId}`}
                                         className="block p-4 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                                     >
                                         <div className="flex items-center justify-between">
@@ -685,6 +838,46 @@ export default function AdminLicensesPage() {
                                         </div>
                                     </Link>
                                 ))}
+                                <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 text-sm dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                                    <span className="text-slate-500">
+                                        {(projectSummaryData?.total || 0) === 0
+                                            ? '0개'
+                                            : `${projectPage * PAGE_SIZE + 1}-${Math.min((projectPage + 1) * PAGE_SIZE, projectSummaryData?.total || 0)} / ${projectSummaryData?.total || 0}개`}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setProjectPage(0)}
+                                            disabled={projectPage === 0}
+                                            className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                        >
+                                            처음
+                                        </button>
+                                        <button
+                                            onClick={() => setProjectPage((page) => Math.max(0, page - 1))}
+                                            disabled={projectPage === 0}
+                                            className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                        >
+                                            이전
+                                        </button>
+                                        <span className="px-2 text-slate-500">
+                                            {projectPage + 1} / {projectTotalPages}
+                                        </span>
+                                        <button
+                                            onClick={() => setProjectPage((page) => Math.min(projectTotalPages - 1, page + 1))}
+                                            disabled={projectPage >= projectTotalPages - 1}
+                                            className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                        >
+                                            다음
+                                        </button>
+                                        <button
+                                            onClick={() => setProjectPage(projectTotalPages - 1)}
+                                            disabled={projectPage >= projectTotalPages - 1}
+                                            className="rounded border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                        >
+                                            마지막
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center py-12 text-slate-500">
@@ -695,6 +888,123 @@ export default function AdminLicensesPage() {
                         )}
                     </CardContent>
                 </Card>
+            )}
+
+            {editingLicense && editForm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-slate-800">
+                        <div className="flex items-center justify-between border-b border-slate-200 p-5 dark:border-slate-700">
+                            <div>
+                                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">라이선스 분류 수정</h2>
+                                <p className="mt-1 text-sm text-slate-500">
+                                    {editingLicense.spdxId} · {editingLicense.name}
+                                </p>
+                            </div>
+                            <button
+                                onClick={closeLicenseEditor}
+                                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 p-5">
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                    분류
+                                </label>
+                                <select
+                                    value={editForm.classification}
+                                    onChange={(event) =>
+                                        setEditForm((prev) =>
+                                            prev ? { ...prev, classification: event.target.value as LicenseClassification } : prev,
+                                        )
+                                    }
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                >
+                                    {(Object.entries(CLASSIFICATION_CONFIG) as [LicenseClassification, typeof CLASSIFICATION_CONFIG[LicenseClassification]][]).map(
+                                        ([key, config]) => (
+                                            <option key={key} value={key}>
+                                                {config.label} ({key})
+                                            </option>
+                                        ),
+                                    )}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                    설명
+                                </label>
+                                <textarea
+                                    value={editForm.description}
+                                    onChange={(event) =>
+                                        setEditForm((prev) => (prev ? { ...prev, description: event.target.value } : prev))
+                                    }
+                                    rows={3}
+                                    placeholder="사내 라이선스 검토 기준이나 예외 메모를 입력하세요."
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                    참고 URL
+                                </label>
+                                <input
+                                    type="url"
+                                    value={editForm.url}
+                                    onChange={(event) =>
+                                        setEditForm((prev) => (prev ? { ...prev, url: event.target.value } : prev))
+                                    }
+                                    placeholder="https://spdx.org/licenses/MIT.html"
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                                    <input
+                                        type="checkbox"
+                                        checked={editForm.osiApproved}
+                                        onChange={(event) =>
+                                            setEditForm((prev) => (prev ? { ...prev, osiApproved: event.target.checked } : prev))
+                                        }
+                                        className="rounded border-slate-300 text-red-600 focus:ring-red-500"
+                                    />
+                                    OSI 승인
+                                </label>
+                                <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                                    <input
+                                        type="checkbox"
+                                        checked={editForm.fsfLibre}
+                                        onChange={(event) =>
+                                            setEditForm((prev) => (prev ? { ...prev, fsfLibre: event.target.checked } : prev))
+                                        }
+                                        className="rounded border-slate-300 text-red-600 focus:ring-red-500"
+                                    />
+                                    FSF Libre
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 border-t border-slate-200 p-5 dark:border-slate-700">
+                            <button
+                                onClick={closeLicenseEditor}
+                                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                            >
+                                취소
+                            </button>
+                            <button
+                                onClick={saveLicense}
+                                disabled={updateLicense.isPending}
+                                className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50"
+                            >
+                                {updateLicense.isPending ? '저장 중...' : '저장'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

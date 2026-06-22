@@ -84,6 +84,33 @@ export class LicensesService {
     }
 
     /**
+     * Update operator-managed license catalog metadata.
+     */
+    async update(
+        id: string,
+        data: {
+            classification?: LicenseClassification;
+            description?: string | null;
+            url?: string | null;
+            osiApproved?: boolean;
+            fsfLibre?: boolean;
+        },
+    ) {
+        await this.findById(id);
+
+        return this.prisma.license.update({
+            where: { id },
+            data: {
+                ...(data.classification ? { classification: data.classification } : {}),
+                ...(data.description !== undefined ? { description: data.description } : {}),
+                ...(data.url !== undefined ? { url: data.url } : {}),
+                ...(data.osiApproved !== undefined ? { osiApproved: data.osiApproved } : {}),
+                ...(data.fsfLibre !== undefined ? { fsfLibre: data.fsfLibre } : {}),
+            },
+        });
+    }
+
+    /**
      * Get license by SPDX ID
      */
     async findBySpdxId(spdxId: string) {

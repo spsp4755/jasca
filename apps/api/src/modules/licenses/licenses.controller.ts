@@ -1,6 +1,8 @@
 import {
     Controller,
+    Body,
     Get,
+    Patch,
     Post,
     Param,
     Query,
@@ -116,6 +118,24 @@ export class LicensesController {
     @ApiOperation({ summary: 'Get license by ID' })
     async findById(@Param('id') id: string) {
         return this.licensesService.findById(id);
+    }
+
+    @Patch(':id')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update license catalog metadata' })
+    async updateLicense(
+        @Param('id') id: string,
+        @Body()
+        body: {
+            classification?: LicenseClassification;
+            description?: string | null;
+            url?: string | null;
+            osiApproved?: boolean;
+            fsfLibre?: boolean;
+        },
+    ) {
+        return this.licensesService.update(id, body);
     }
 
     @Post('seed')

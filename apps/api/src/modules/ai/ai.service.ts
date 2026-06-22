@@ -399,6 +399,8 @@ export class AiService {
                     return await this.callOllama(settings.apiUrl, settings.model, prompt, settings.maxTokens, controller.signal);
                 case 'vllm':
                     return await this.callVllm(settings.apiUrl, settings.model, prompt, settings.apiKey, settings.maxTokens, controller.signal);
+                case 'custom':
+                    return await this.callVllm(settings.apiUrl, settings.model, prompt, settings.apiKey, settings.maxTokens, controller.signal);
                 case 'openai':
                     return await this.callOpenAi(settings.apiUrl, settings.model, prompt, settings.apiKey!, settings.maxTokens, controller.signal);
                 case 'anthropic':
@@ -513,11 +515,15 @@ export class AiService {
 
         // Normalize API URL (remove trailing slash)
         const normalizedUrl = apiUrl.replace(/\/$/, '');
+        const v1BaseUrl = normalizedUrl.endsWith('/v1') ? normalizedUrl : `${normalizedUrl}/v1`;
+        const rootBaseUrl = normalizedUrl.endsWith('/v1') ? normalizedUrl.slice(0, -3) : normalizedUrl;
         
         // Try chat completions first (newer vLLM versions), fallback to completions
         const endpoints = [
-            `${normalizedUrl}/v1/chat/completions`,
-            `${normalizedUrl}/v1/completions`,
+            `${v1BaseUrl}/chat/completions`,
+            `${v1BaseUrl}/completions`,
+            `${rootBaseUrl}/chat/completions`,
+            `${rootBaseUrl}/completions`,
         ];
         
         let lastError: Error | null = null;
@@ -609,7 +615,10 @@ export class AiService {
         maxTokens: number,
         signal: AbortSignal,
     ): Promise<{ content: string; model: string }> {
-        const response = await fetch(`${apiUrl}/v1/chat/completions`, {
+        const normalizedUrl = apiUrl.replace(/\/$/, '');
+        const v1BaseUrl = normalizedUrl.endsWith('/v1') ? normalizedUrl : `${normalizedUrl}/v1`;
+
+        const response = await fetch(`${v1BaseUrl}/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

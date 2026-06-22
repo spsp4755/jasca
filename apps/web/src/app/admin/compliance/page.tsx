@@ -61,6 +61,24 @@ export default function CompliancePage() {
         handleAiMapping();
     };
 
+    const handleDownloadReport = () => {
+        const payload = {
+            generatedAt: new Date().toISOString(),
+            framework: 'GENERAL',
+            report,
+            violationsLast30Days: violations,
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `jasca-compliance-report-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    };
+
     const estimatedTokens = estimateTokens({ report, violations });
 
     if (isLoading) {
@@ -220,7 +238,10 @@ export default function CompliancePage() {
 
             {/* Export */}
             <div className="flex justify-end">
-                <button className="flex items-center gap-2 px-4 py-2 text-sm border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                <button
+                    onClick={handleDownloadReport}
+                    className="flex items-center gap-2 px-4 py-2 text-sm border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                >
                     <FileText className="h-4 w-4" />
                     컴플라이언스 리포트 다운로드
                 </button>
