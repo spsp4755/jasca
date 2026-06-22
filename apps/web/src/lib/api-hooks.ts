@@ -111,8 +111,9 @@ async function safeParseJson(response: Response): Promise<any> {
 // ============ Main Auth Fetch Function ============
 async function authFetch(url: string, options: RequestInit = {}, retryCount = 0): Promise<any> {
     const token = useAuthStore.getState().accessToken;
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
     const headers: HeadersInit = {
-        'Content-Type': 'application/json',
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...(options.headers || {}),
     };
     if (token) {
@@ -880,6 +881,23 @@ export function useCreateManualAdvisory() {
                 method: 'POST',
                 body: JSON.stringify(data),
             }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['manual-advisories'] });
+        },
+    });
+}
+
+export function useBulkUploadManualAdvisories() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (file: File) => {
+            const formData = new FormData();
+            formData.append('file', file);
+            return authFetch(`${API_BASE}/manual-advisories/upload`, {
+                method: 'POST',
+                body: formData,
+            });
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['manual-advisories'] });
         },

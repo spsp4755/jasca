@@ -26,6 +26,13 @@ export interface ManualAdvisoryDto {
     projectId?: string;
 }
 
+export interface ManualAdvisoryBulkResult {
+    created: number;
+    updated: number;
+    failed: number;
+    errors: Array<{ index: number; advisoryId?: string; message: string }>;
+}
+
 interface PackageCandidate {
     name: string;
     version: string;
@@ -72,6 +79,47 @@ export class ManualAdvisoriesService {
                 createdById: currentUser?.id,
             },
         });
+    }
+
+    async bulkUpsert(items: ManualAdvisoryDto[], currentUser: RequestUser): Promise<ManualAdvisoryBulkResult> {
+        if (!Array.isArray(items) || items.length === 0) {
+            throw new BadRequestException('items must contain at least one advisory');
+        }
+        if (items.length > 500) {
+            throw new BadRequestException('A single bulk request can contain up to 500 advisories');
+        }
+
+        const result: ManualAdvisoryBulkResult = {
+            created: 0,
+            updated: 0,
+            failed: 0,
+            errors: [],
+        };
+
+        for (const [index, item] of items.entries()) {
+            try {
+                const existing = await this.prisma.manualAdvisory.findUnique({
+                    where: { advisoryId: item.advisoryId?.trim() || '' },
+                });
+
+                if (existing) {
+                    await this.update(existing.id, item, currentUser);
+                    result.updated++;
+                } else {
+                    await this.create(item, currentUser);
+                    result.created++;
+                }
+            } catch (error) {
+                result.failed++;
+                result.errors.push({
+                    index,
+                    advisoryId: item?.advisoryId,
+                    message: error instanceof Error ? error.message : 'Unknown error',
+                });
+            }
+        }
+
+        return result;
     }
 
     async update(id: string, dto: Partial<ManualAdvisoryDto>, currentUser: RequestUser) {

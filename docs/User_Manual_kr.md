@@ -446,6 +446,24 @@ API 토큰은 CI/CD나 외부 스캐너가 JASCA에 결과를 업로드할 때 �
 6. 저장합니다.
 7. 이후 새 스캔부터 해당 Advisory가 패키지/버전 기준으로 매칭되어 취약점으로 표시됩니다.
 
+대량 등록:
+
+- `CSV/JSON 가져오기` 버튼으로 여러 Advisory를 한 번에 반입할 수 있습니다.
+- 동일한 `advisoryId`가 이미 있으면 새로 만들지 않고 기존 항목을 수정합니다.
+- CSV 헤더 예시는 다음과 같습니다.
+
+```csv
+advisoryId,cveId,title,description,severity,packageName,affectedVersionRange,fixedVersion,remediation,references,isActive,organizationId,projectId
+corp-ADV-2026-001,,긴급 사내 취약점,내부 공지 기준,HIGH,example-package,<1.2.3,1.2.3,패키지 업그레이드 필요,https://intra.example/advisory,true,,
+```
+
+API 자동화:
+
+- 단건 등록: `POST /api/manual-advisories`
+- 대량 등록: `POST /api/manual-advisories/bulk`
+- 파일 반입: `POST /api/manual-advisories/upload` multipart field name은 `file`입니다.
+- 자동화 계정은 `SYSTEM_ADMIN`, `ORG_ADMIN`, `SECURITY_ADMIN` 중 하나의 권한이 필요합니다.
+
 버전 범위 예시:
 
 - `*`: 모든 버전

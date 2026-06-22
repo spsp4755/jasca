@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { AlertTriangle, Edit, Loader2, Plus, Search, ShieldAlert, Trash2, X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Edit, Loader2, Plus, Search, ShieldAlert, Trash2, Upload, X } from 'lucide-react';
 import {
     ManualAdvisory,
     ManualAdvisoryInput,
     useCreateManualAdvisory,
     useDeleteManualAdvisory,
+    useBulkUploadManualAdvisories,
     useManualAdvisories,
     useOrganizations,
     useProjects,
@@ -53,7 +54,9 @@ export default function AdminManualAdvisoriesPage() {
     const createMutation = useCreateManualAdvisory();
     const updateMutation = useUpdateManualAdvisory();
     const deleteMutation = useDeleteManualAdvisory();
+    const bulkUploadMutation = useBulkUploadManualAdvisories();
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState<ManualAdvisory | null>(null);
@@ -141,6 +144,21 @@ export default function AdminManualAdvisoriesPage() {
         await deleteMutation.mutateAsync(advisory.id);
     };
 
+    const uploadBulkFile = async (file?: File) => {
+        if (!file) return;
+        const result = await bulkUploadMutation.mutateAsync(file) as {
+            created: number;
+            updated: number;
+            failed: number;
+            errors?: Array<{ index: number; advisoryId?: string; message: string }>;
+        };
+        const failedMessage = result.failed > 0
+            ? `\n실패 ${result.failed}건:\n${result.errors?.slice(0, 5).map((error) => `${error.index + 1}행 ${error.advisoryId || ''} ${error.message}`).join('\n') || ''}`
+            : '';
+        alert(`수동 Advisory 반입 완료\n생성 ${result.created}건, 수정 ${result.updated}건${failedMessage}`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
     if (isLoading) {
         return (
             <div className="flex h-64 items-center justify-center">
@@ -169,13 +187,30 @@ export default function AdminManualAdvisoriesPage() {
                         <p className="text-sm text-slate-500">Trivy DB에 없는 사내/긴급 취약점을 패키지와 버전 기준으로 추가 탐지합니다.</p>
                     </div>
                 </div>
-                <button
-                    onClick={openCreate}
-                    className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-                >
-                    <Plus className="h-4 w-4" />
-                    Advisory 추가
-                </button>
+                <div className="flex items-center gap-2">
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv,.json,application/json,text/csv"
+                        className="hidden"
+                        onChange={(event) => uploadBulkFile(event.target.files?.[0])}
+                    />
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={bulkUploadMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                        {bulkUploadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        CSV/JSON 가져오기
+                    </button>
+                    <button
+                        onClick={openCreate}
+                        className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                    >
+                        <Plus className="h-4 w-4" />
+                        Advisory 추가
+                    </button>
+                </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-4">
@@ -193,7 +228,7 @@ export default function AdminManualAdvisoriesPage() {
             </div>
 
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-200">
-                등록된 Advisory는 새 스캔 저장 시 Trivy 결과의 패키지 목록과 매칭됩니다. 매칭되면 일반 취약점처럼 취약점 목록, 정책 평가, 보고서에 포함됩니다.
+                등록된 Advisory는 새 스캔 저장 시 Trivy 결과의 패키지 목록과 매칭됩니다. CSV/JSON 대량 반입도 가능하며, 동일한 Advisory ID가 있으면 기존 항목을 수정합니다.
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
