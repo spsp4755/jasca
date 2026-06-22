@@ -9,6 +9,9 @@
 - 라이선스 프로젝트/스캔 상세 링크가 존재하지 않는 관리자 상세 경로로 이동하던 문제를 수정했습니다.
 - 컴플라이언스 리포트 다운로드 버튼이 실제 JSON 파일을 내려받도록 수정했습니다.
 - 공용 빠른 작업의 내보내기 액션이 콘솔 로그만 남기던 문제를 수정하고 보고서 화면으로 연결했습니다.
+- 수동 취약점 Advisory를 JSON API로 대량 upsert할 수 있는 `POST /api/manual-advisories/bulk`를 추가했습니다.
+- 수동 취약점 Advisory를 CSV/JSON 파일로 대량 반입할 수 있는 `POST /api/manual-advisories/upload`와 관리자 화면의 `CSV/JSON 가져오기` 버튼을 추가했습니다.
+- 동일한 `advisoryId`는 새로 만들지 않고 기존 Advisory를 수정하도록 대량 반입 동작을 구성했습니다.
 - 관리자 AI 설정에서 사내/폐쇄망 모델명을 직접 입력할 수 있도록 개선했습니다.
 - `Custom` AI Provider가 실제 OpenAI 호환 호출 경로로 실행되도록 연결했습니다.
 - `/v1`이 포함된 사내 모델 API URL에서 `/v1/v1/...`로 중복 호출될 수 있는 문제를 수정했습니다.
