@@ -29,6 +29,16 @@ export class ScansService {
         private readonly manualAdvisoriesService: ManualAdvisoriesService,
     ) { }
 
+    private getDisplayTargetName(scan: { imageRef?: string | null; artifactName?: string | null }) {
+        return scan.imageRef || this.basename(scan.artifactName) || scan.artifactName || 'Unknown';
+    }
+
+    private basename(value?: string | null) {
+        if (!value) return undefined;
+        const normalized = value.replace(/\\/g, '/').replace(/\/+$/, '');
+        return normalized.split('/').filter(Boolean).pop();
+    }
+
     private buildScanAccessWhere(currentUser?: RequestUser, projectId?: string) {
         if (projectId) {
             return { projectId };
@@ -81,8 +91,10 @@ export class ScansService {
         const transformedResults = results.map(scan => ({
             id: scan.id,
             projectId: scan.projectId,
-            targetName: scan.artifactName || scan.imageRef || 'Unknown',
+            targetName: this.getDisplayTargetName(scan),
+            scanLocation: scan.artifactName,
             scanType: scan.sourceType || 'UNKNOWN',
+            sourceType: scan.sourceType,
             status: scan.summary ? 'COMPLETED' : 'PENDING',
             startedAt: scan.scannedAt?.toISOString() || scan.createdAt.toISOString(),
             completedAt: scan.summary ? scan.createdAt.toISOString() : undefined,
@@ -90,6 +102,8 @@ export class ScansService {
             imageRef: scan.imageRef,
             imageDigest: scan.imageDigest,
             tag: scan.tag,
+            artifactName: scan.artifactName,
+            artifactType: scan.artifactType,
             summary: scan.summary ? {
                 critical: scan.summary.critical,
                 high: scan.summary.high,
@@ -140,8 +154,10 @@ export class ScansService {
         return {
             id: scan.id,
             projectId: scan.projectId,
-            targetName: scan.artifactName || scan.imageRef || 'Unknown',
+            targetName: this.getDisplayTargetName(scan),
+            scanLocation: scan.artifactName,
             scanType: scan.sourceType || 'UNKNOWN',
+            sourceType: scan.sourceType,
             status: scan.summary ? 'COMPLETED' : 'PENDING',
             startedAt: scan.scannedAt?.toISOString() || scan.createdAt.toISOString(),
             completedAt: scan.summary ? scan.createdAt.toISOString() : undefined,
@@ -149,6 +165,8 @@ export class ScansService {
             imageRef: scan.imageRef,
             imageDigest: scan.imageDigest,
             tag: scan.tag,
+            artifactName: scan.artifactName,
+            artifactType: scan.artifactType,
             summary: scan.summary ? {
                 critical: scan.summary.critical,
                 high: scan.summary.high,

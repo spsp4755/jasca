@@ -107,6 +107,8 @@ export default function ScanDetailPage() {
 
     const summary = (scan as any).summary || {};
     const vulnerabilities = (scan as any).vulnerabilities || [];
+    const targetName = (scan as any).targetName || (scan as any).imageRef || (scan as any).artifactName || 'Unknown';
+    const scanLocation = (scan as any).scanLocation || (scan as any).artifactName;
 
     return (
         <div className="space-y-6">
@@ -123,7 +125,7 @@ export default function ScanDetailPage() {
                         스캔 상세 정보
                     </h2>
                     <p className="text-slate-600 dark:text-slate-400 mt-1">
-                        {(scan as any).artifactName || (scan as any).imageRef || 'Unknown'}
+                        {targetName}
                     </p>
                 </div>
             </div>
@@ -182,7 +184,7 @@ export default function ScanDetailPage() {
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
                     스캔 정보
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
                     <div>
                         <span className="text-sm text-slate-500 dark:text-slate-400">프로젝트</span>
                         <p className="font-medium text-slate-900 dark:text-white">
@@ -190,15 +192,16 @@ export default function ScanDetailPage() {
                         </p>
                     </div>
                     <div>
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
-                            {(scan as any).artifactType === 'filesystem' ? '스캔 경로' : '이미지'}
-                        </span>
-                        <p className="font-medium text-slate-900 dark:text-white truncate">
+                        <span className="text-sm text-slate-500 dark:text-slate-400">대상</span>
+                        <p className="font-medium text-slate-900 dark:text-white truncate" title={targetName}>
+                            {targetName}
+                        </p>
+                    </div>
+                    <div>
+                        <span className="text-sm text-slate-500 dark:text-slate-400">검사 위치</span>
+                        <p className="font-medium text-slate-900 dark:text-white truncate" title={scanLocation || undefined}>
                             {(() => {
-                                const path = (scan as any).artifactType === 'filesystem' 
-                                    ? ((scan as any).artifactName || (scan as any).imageRef)
-                                    : (scan as any).imageRef;
-                                // Handle '.' or empty paths for filesystem scans
+                                const path = scanLocation;
                                 if (!path || path === '.') {
                                     return (scan as any).artifactType === 'filesystem' 
                                         ? '현재 디렉토리 (.)'

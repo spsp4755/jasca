@@ -289,8 +289,11 @@ export interface Scan {
     projectId: string;
     scanType: string;
     targetName: string;
+    scanLocation?: string;
     imageRef?: string;
     artifactName?: string;
+    artifactType?: string;
+    sourceType?: string;
     status: string;
     startedAt: string;
     completedAt?: string;
