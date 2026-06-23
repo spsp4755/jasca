@@ -34,6 +34,7 @@ const defaultConfig: AiSettings = {
     maxTokens: 1024,
     temperature: 0.7,
     timeout: 60,
+    allowMockFallback: false,
     enableAutoSummary: true,
     enableRemediationGuide: true,
 };
@@ -125,6 +126,7 @@ export default function AiSettingsPage() {
             model: string;
             timeout: number;
             enabled: boolean;
+            allowMockFallback?: boolean;
         };
         connection?: {
             status: string;
@@ -647,6 +649,8 @@ export default function AiSettingsPage() {
                                                 <div className="text-slate-900 dark:text-white">{diagnosisResult.settings.model}</div>
                                                 <div className="text-slate-500">타임아웃:</div>
                                                 <div className="text-slate-900 dark:text-white">{diagnosisResult.settings.timeout}초</div>
+                                                <div className="text-slate-500">Mock fallback:</div>
+                                                <div className="text-slate-900 dark:text-white">{diagnosisResult.settings.allowMockFallback ? '허용' : '차단'}</div>
                                                 {diagnosisResult.connection?.modelCount !== undefined && (
                                                     <>
                                                         <div className="text-slate-500">사용 가능한 모델:</div>
@@ -866,6 +870,23 @@ export default function AiSettingsPage() {
                             <p className="text-xs text-slate-500 mt-2">
                                 권장: Ollama/vLLM - 120초, OpenAI/Anthropic - 60초
                             </p>
+                        </div>
+
+                        <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <h4 className="font-medium text-slate-900 dark:text-white">Mock fallback 허용</h4>
+                                    <p className="text-sm text-slate-500 mt-1">
+                                        운영 환경에서는 끄는 것을 권장합니다. 끄면 사내 AI 호출 실패 시 mock-model-v1 결과를 저장하지 않고 오류를 표시합니다.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setConfig(prev => ({ ...prev, allowMockFallback: !prev.allowMockFallback }))}
+                                    className={`relative w-12 h-6 rounded-full transition-colors ${config.allowMockFallback ? 'bg-red-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                                >
+                                    <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${config.allowMockFallback ? 'translate-x-6' : ''}`} />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="border-t border-slate-200 dark:border-slate-700 pt-4">

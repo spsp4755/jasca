@@ -41,7 +41,10 @@ DB_PASSWORD="${DB_PASSWORD:-}"
 DATABASE_URL="${DATABASE_URL:-}"
 REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
 TRIVY_CACHE_MOUNT="${TRIVY_CACHE_MOUNT:-}"
+TRIVY_RPM_OS_FAMILY="${TRIVY_RPM_OS_FAMILY:-}"
+TRIVY_RPM_OS_VERSION="${TRIVY_RPM_OS_VERSION:-}"
 HOSTS_MOUNT="${HOSTS_MOUNT:-/etc/hosts}"
+EXTRA_HOSTS="${EXTRA_HOSTS:-}"
 
 if [ -z "$CORS_ORIGIN" ]; then
     echo "Error: CORS_ORIGIN must be set in $ENV_FILE"
@@ -112,12 +115,29 @@ DOCKER_RUN_ARGS=(
   -v "${APP_DIR}/redis:/var/lib/redis"
 )
 
+if [ -n "$TRIVY_RPM_OS_FAMILY" ]; then
+    DOCKER_RUN_ARGS+=(-e "TRIVY_RPM_OS_FAMILY=${TRIVY_RPM_OS_FAMILY}")
+fi
+
+if [ -n "$TRIVY_RPM_OS_VERSION" ]; then
+    DOCKER_RUN_ARGS+=(-e "TRIVY_RPM_OS_VERSION=${TRIVY_RPM_OS_VERSION}")
+fi
+
 if [ "$EXPOSE_API_PORT" = "1" ]; then
     DOCKER_RUN_ARGS+=(-p "${API_PORT}:3001")
 fi
 
 if [ -f "$HOSTS_MOUNT" ]; then
     DOCKER_RUN_ARGS+=(-v "${HOSTS_MOUNT}:/etc/hosts:ro")
+fi
+
+if [ -n "$EXTRA_HOSTS" ]; then
+    IFS=',' read -r -a EXTRA_HOST_ENTRIES <<< "$EXTRA_HOSTS"
+    for host_entry in "${EXTRA_HOST_ENTRIES[@]}"; do
+        if [ -n "$host_entry" ]; then
+            DOCKER_RUN_ARGS+=(--add-host "$host_entry")
+        fi
+    done
 fi
 
 if [ -n "$TRIVY_CACHE_MOUNT" ]; then

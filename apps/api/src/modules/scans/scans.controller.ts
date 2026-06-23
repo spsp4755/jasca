@@ -82,6 +82,8 @@ function parseListField(value: unknown): string[] | undefined {
 function parseTrivyScanOptions(body: any): TrivyScanOptions {
     return {
         scanMode: typeof body.scanMode === 'string' ? body.scanMode as TrivyScanOptions['scanMode'] : undefined,
+        rpmOsFamily: typeof body.rpmOsFamily === 'string' ? body.rpmOsFamily : undefined,
+        rpmOsVersion: typeof body.rpmOsVersion === 'string' ? body.rpmOsVersion : undefined,
         offlineScan: parseBooleanField(body.offlineScan, true),
         skipDbUpdate: parseBooleanField(body.skipDbUpdate, true),
         skipJavaDbUpdate: parseBooleanField(body.skipJavaDbUpdate, true),
@@ -279,11 +281,23 @@ export class ScansController {
         }
 
         const user = (req as any).user;
+        const scanOperationId = typeof body.scanOperationId === 'string' ? body.scanOperationId : undefined;
+        let responseReady = false;
+        if (scanOperationId) {
+            req.on('close', () => {
+                if (!responseReady && (req as any).aborted) {
+                    this.trivyScanService.cancelScan(scanOperationId);
+                }
+            });
+        }
         const rawResult = await this.trivyScanService.scanUploadedFile(
             file.path,
             parseTrivyScanOptions(body),
-            typeof body.scanOperationId === 'string' ? body.scanOperationId : undefined,
+            scanOperationId,
         );
+        if (this.trivyScanService.isCancellationRequested(scanOperationId)) {
+            throw new BadRequestException('Trivy scan was cancelled by the user');
+        }
         const dto: UploadScanDto = {
             sourceType: SourceType.TRIVY_JSON,
             projectName: body.projectName,
@@ -304,11 +318,21 @@ export class ScansController {
             uploaderIp = '127.0.0.1';
         }
 
-        return this.scansService.uploadScan(projectId, dto, rawResult, {
+        const savedScan = await this.scansService.uploadScan(projectId, dto, rawResult, {
             uploaderIp: uploaderIp || 'unknown',
             userAgent: req.headers['user-agent'] || 'Browser Trivy Scan',
             uploadedById: user?.id,
         }, user);
+        this.trivyScanService.markScanSaved(scanOperationId, savedScan.id);
+
+        if (this.trivyScanService.isCancellationRequested(scanOperationId)) {
+            if (scanOperationId) this.trivyScanService.consumeSavedScan(scanOperationId);
+            await this.scansService.delete(savedScan.id, user).catch(() => undefined);
+            throw new BadRequestException('Trivy scan was cancelled by the user');
+        }
+
+        responseReady = true;
+        return savedScan;
     }
 
     @Post('scan/cancel/:operationId')
@@ -317,10 +341,15 @@ export class ScansController {
     @ApiBearerAuth()
     @ApiSecurity('api-key')
     @ApiOperation({ summary: 'Cancel a running Trivy scan' })
-    async cancelTrivyScan(@Param('operationId') operationId: string) {
+    async cancelTrivyScan(@Param('operationId') operationId: string, @Req() req: Request) {
         const cancelled = this.trivyScanService.cancelScan(operationId);
+        const savedScanId = this.trivyScanService.consumeSavedScan(operationId);
+        if (savedScanId) {
+            await this.scansService.delete(savedScanId, (req as any).user).catch(() => undefined);
+        }
         return {
             cancelled,
+            deletedSavedResult: !!savedScanId,
             message: cancelled ? 'Trivy scan cancellation requested' : 'No running Trivy scan found for the operation ID',
         };
     }

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Body, Param, UseGuards, Query, BadRequestException, Req, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, UseGuards, Query, BadRequestException, Req, ForbiddenException, HttpException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -91,6 +91,9 @@ export class AiController {
                 mockReason: result.mockReason,
             };
         } catch (error) {
+            if (error instanceof HttpException) {
+                throw error;
+            }
             throw new BadRequestException(
                 error instanceof Error ? error.message : 'AI execution failed'
             );
@@ -272,6 +275,7 @@ export class AiController {
                 model: settings.model,
                 timeout: settings.timeout,
                 enabled: settings.enabled,
+                allowMockFallback: settings.allowMockFallback,
             },
             connection: {
                 status: connectionResult.success ? 'connected' : 'disconnected',
@@ -422,11 +426,12 @@ export class AiController {
                 headers['Authorization'] = `Bearer ${apiKey}`;
             }
 
-            // Normalize URL and try v1/models endpoint (OpenAI-compatible)
             const normalizedUrl = apiUrl.replace(/\/$/, '');
+            const v1BaseUrl = normalizedUrl.endsWith('/v1') ? normalizedUrl : `${normalizedUrl}/v1`;
+            const rootBaseUrl = normalizedUrl.endsWith('/v1') ? normalizedUrl.slice(0, -3) : normalizedUrl;
             const endpoints = [
-                `${normalizedUrl}/v1/models`,
-                `${normalizedUrl}/models`,
+                `${v1BaseUrl}/models`,
+                `${rootBaseUrl}/models`,
             ];
             
             let lastError: Error | null = null;
@@ -544,11 +549,12 @@ export class AiController {
                 headers['Authorization'] = `Bearer ${apiKey}`;
             }
 
-            // Normalize URL and try v1/models endpoint (OpenAI-compatible)
             const normalizedUrl = apiUrl.replace(/\/$/, '');
+            const v1BaseUrl = normalizedUrl.endsWith('/v1') ? normalizedUrl : `${normalizedUrl}/v1`;
+            const rootBaseUrl = normalizedUrl.endsWith('/v1') ? normalizedUrl.slice(0, -3) : normalizedUrl;
             const endpoints = [
-                `${normalizedUrl}/v1/models`,
-                `${normalizedUrl}/models`,
+                `${v1BaseUrl}/models`,
+                `${rootBaseUrl}/models`,
             ];
             
             let lastError: Error | null = null;

@@ -345,7 +345,9 @@ export interface UploadScanDto {
 }
 
 export interface TrivyScanOptions {
-    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image';
+    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image' | 'rpm';
+    rpmOsFamily?: string;
+    rpmOsVersion?: string;
     offlineScan?: boolean;
     skipDbUpdate?: boolean;
     skipJavaDbUpdate?: boolean;
@@ -2067,6 +2069,7 @@ export interface AiSettings {
     maxTokens: number;
     temperature: number;
     timeout: number;  // Request timeout in seconds (default: 60)
+    allowMockFallback?: boolean;
     enableAutoSummary: boolean;
     enableRemediationGuide: boolean;
 }

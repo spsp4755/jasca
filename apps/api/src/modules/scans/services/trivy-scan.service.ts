@@ -20,7 +20,9 @@ interface TrivySettings {
 }
 
 export interface TrivyScanOptions {
-    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image';
+    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image' | 'rpm';
+    rpmOsFamily?: string;
+    rpmOsVersion?: string;
     offlineScan?: boolean;
     skipDbUpdate?: boolean;
     skipJavaDbUpdate?: boolean;
@@ -31,7 +33,7 @@ export interface TrivyScanOptions {
 }
 
 type ArchiveType = 'zip' | 'tar' | 'tar.gz';
-type TrivyScanMode = 'fs' | 'rootfs' | 'image';
+type TrivyScanMode = 'fs' | 'rootfs' | 'image' | 'rpm';
 
 interface PreparedScanTarget {
     mode: TrivyScanMode;
@@ -46,7 +48,10 @@ export class TrivyScanService {
     private readonly trivyBinary = process.env.TRIVY_BINARY_PATH || 'trivy';
     private readonly defaultCacheDir = process.env.TRIVY_CACHE_DIR || path.resolve(process.cwd(), '..', '..', 'trivy-db');
     private readonly archiveMaxEntries = Number(process.env.TRIVY_ARCHIVE_MAX_ENTRIES || DEFAULT_ARCHIVE_MAX_ENTRIES);
+    private readonly cancellationTtlMs = Number(process.env.TRIVY_CANCEL_TTL_MS || 2 * 60 * 60 * 1000);
     private readonly activeScans = new Map<string, { cancel: () => void; startedAt: number }>();
+    private readonly cancelledScans = new Map<string, number>();
+    private readonly savedScanResults = new Map<string, { scanId: string; savedAt: number }>();
 
     constructor(private readonly settingsService: SettingsService) { }
 
@@ -58,14 +63,23 @@ export class TrivyScanService {
                 throw new BadRequestException('Uploaded file was not found');
             }
 
+            this.assertNotCancelled(operationId);
+
+            const startedAt = Date.now();
+            const fileStats = fs.statSync(filePath);
             const settings = await this.getTrivySettings();
             const normalizedOptions = this.normalizeScanOptions(options);
             const scanTarget = await this.prepareScanTarget(filePath, uploadDir, normalizedOptions);
             const effectiveTimeout = normalizedOptions.timeout || settings.timeout;
-            const args = this.buildTrivyArgs(settings, scanTarget, normalizedOptions);
             const timeoutMs = this.parseTimeoutMs(effectiveTimeout);
+            this.logger.log(`Trivy scan prepared. operationId=${operationId || 'n/a'} mode=${scanTarget.mode} file=${path.basename(filePath)} size=${fileStats.size}B prepareMs=${Date.now() - startedAt}`);
 
-            const stdout = await this.runTrivy(args, timeoutMs, operationId);
+            const stdout = scanTarget.mode === 'rpm'
+                ? await this.runRpmArchiveScan(settings, scanTarget, normalizedOptions, timeoutMs, operationId)
+                : await this.runTrivy(this.buildTrivyArgs(settings, scanTarget, normalizedOptions), timeoutMs, operationId);
+
+            this.assertNotCancelled(operationId);
+            this.logger.log(`Trivy scan completed. operationId=${operationId || 'n/a'} mode=${scanTarget.mode} durationMs=${Date.now() - startedAt}`);
 
             return JSON.parse(stdout);
         } catch (error) {
@@ -102,18 +116,67 @@ export class TrivyScanService {
     }
 
     cancelScan(operationId: string): boolean {
+        this.cleanupExpiredCancellations();
+        this.cancelledScans.set(operationId, Date.now());
+
         const activeScan = this.activeScans.get(operationId);
         if (!activeScan) {
-            return false;
+            this.logger.warn(`Trivy scan cancellation registered before process start. operationId=${operationId}`);
+            return true;
         }
 
         activeScan.cancel();
         return true;
     }
 
-    private runTrivy(args: string[], timeoutMs: number, operationId?: string): Promise<string> {
+    isCancellationRequested(operationId?: string): boolean {
+        this.cleanupExpiredCancellations();
+        return !!operationId && this.cancelledScans.has(operationId);
+    }
+
+    markScanSaved(operationId: string | undefined, scanId: string): void {
+        if (!operationId) return;
+        this.cleanupExpiredCancellations();
+        this.savedScanResults.set(operationId, { scanId, savedAt: Date.now() });
+    }
+
+    consumeSavedScan(operationId: string): string | undefined {
+        this.cleanupExpiredCancellations();
+        const saved = this.savedScanResults.get(operationId);
+        if (!saved) return undefined;
+        this.savedScanResults.delete(operationId);
+        return saved.scanId;
+    }
+
+    private assertNotCancelled(operationId?: string): void {
+        if (this.isCancellationRequested(operationId)) {
+            throw new BadRequestException('Trivy scan was cancelled by the user');
+        }
+    }
+
+    private cleanupExpiredCancellations(): void {
+        const now = Date.now();
+        for (const [operationId, requestedAt] of this.cancelledScans.entries()) {
+            if (now - requestedAt > this.cancellationTtlMs) {
+                this.cancelledScans.delete(operationId);
+            }
+        }
+        for (const [operationId, saved] of this.savedScanResults.entries()) {
+            if (now - saved.savedAt > this.cancellationTtlMs) {
+                this.savedScanResults.delete(operationId);
+            }
+        }
+    }
+
+    private runTrivy(args: string[], timeoutMs: number, operationId?: string, extraEnv: NodeJS.ProcessEnv = {}): Promise<string> {
         return new Promise((resolve, reject) => {
+            if (this.isCancellationRequested(operationId)) {
+                reject(new BadRequestException('Trivy scan was cancelled by the user'));
+                return;
+            }
+
             const child = spawn(this.trivyBinary, args, {
+                env: { ...process.env, ...extraEnv },
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
             const stdoutChunks: Buffer[] = [];
@@ -214,6 +277,15 @@ export class TrivyScanService {
     private async prepareScanTarget(filePath: string, uploadDir: string, options: TrivyScanOptions): Promise<PreparedScanTarget> {
         const archiveType = this.detectArchiveType(filePath);
         const requestedMode = options.scanMode || 'auto';
+        const lowerName = path.basename(filePath).toLowerCase();
+
+        if (requestedMode === 'rpm' || (requestedMode === 'auto' && lowerName.endsWith('.rpm'))) {
+            if (!lowerName.endsWith('.rpm')) {
+                throw new BadRequestException('RPM archive scan requires a .rpm file.');
+            }
+
+            return { mode: 'rpm', targetPath: filePath, archiveType: null };
+        }
 
         if (requestedMode === 'image') {
             if (!archiveType || archiveType === 'zip') {
@@ -251,6 +323,113 @@ export class TrivyScanService {
             : 'fs';
 
         return { mode, targetPath: extractDir, archiveType };
+    }
+
+    private async runRpmArchiveScan(
+        settings: TrivySettings,
+        target: PreparedScanTarget,
+        options: TrivyScanOptions,
+        timeoutMs: number,
+        operationId?: string,
+    ): Promise<string> {
+        const sbomPath = path.join(path.dirname(target.targetPath), 'rpm-sbom.cdx.json');
+        const sbomArgs = [
+            'fs',
+            '--format',
+            'cyclonedx',
+            '--output',
+            sbomPath,
+            '--scanners',
+            'vuln',
+            target.targetPath,
+        ];
+
+        const rpmStartedAt = Date.now();
+        this.logger.log(`Generating RPM SBOM. operationId=${operationId || 'n/a'} file=${path.basename(target.targetPath)}`);
+        await this.runTrivy(sbomArgs, timeoutMs, operationId, {
+            TRIVY_EXPERIMENTAL_RPM_ARCHIVE: 'true',
+        });
+
+        this.assertNotCancelled(operationId);
+        await this.ensureRpmSbomComponents(sbomPath, target.targetPath, options);
+        this.logger.log(`RPM SBOM generated. operationId=${operationId || 'n/a'} durationMs=${Date.now() - rpmStartedAt}`);
+
+        const sbomScanOptions: TrivyScanOptions = {
+            ...options,
+            scanners: options.scanners?.filter((scanner) => ['vuln', 'license'].includes(scanner)),
+        };
+        const sbomScanArgs = this.buildTrivyArgs(settings, { ...target, mode: 'fs', targetPath: sbomPath }, sbomScanOptions);
+        sbomScanArgs[0] = 'sbom';
+        sbomScanArgs.splice(sbomScanArgs.length - 1, 1, sbomPath);
+
+        return this.runTrivy(sbomScanArgs, timeoutMs, operationId);
+    }
+
+    private async ensureRpmSbomComponents(sbomPath: string, rpmPath: string, options: TrivyScanOptions): Promise<void> {
+        const osFamily = (options.rpmOsFamily || process.env.TRIVY_RPM_OS_FAMILY || 'redhat').trim();
+        const osVersion = (options.rpmOsVersion || process.env.TRIVY_RPM_OS_VERSION || '').trim();
+
+        if (!osVersion) {
+            this.logger.warn('RPM scan is missing OS version. Set rpmOsVersion in UI or TRIVY_RPM_OS_VERSION for accurate vulnerability matching.');
+        }
+
+        const sbom = JSON.parse(await fs.promises.readFile(sbomPath, 'utf-8'));
+        sbom.components = Array.isArray(sbom.components) ? sbom.components : [];
+
+        const existingOs = sbom.components.find((component: any) => component?.type === 'operating-system');
+        if (existingOs) {
+            existingOs.name = existingOs.name || osFamily;
+            existingOs.version = existingOs.version || osVersion;
+        } else {
+            sbom.components.unshift({
+                type: 'operating-system',
+                name: osFamily,
+                version: osVersion,
+            });
+        }
+
+        const hasPackageComponent = sbom.components.some((component: any) =>
+            component?.type !== 'operating-system' && (component?.purl || component?.name),
+        );
+
+        if (!hasPackageComponent) {
+            const rpm = await this.queryRpmMetadata(rpmPath);
+            const namespace = osFamily.toLowerCase();
+            const distro = osVersion ? `${namespace}-${osVersion}` : namespace;
+            const versionWithRelease = rpm.release ? `${rpm.version}-${rpm.release}` : rpm.version;
+            sbom.components.push({
+                type: 'library',
+                name: rpm.name,
+                version: versionWithRelease,
+                purl: `pkg:rpm/${namespace}/${rpm.name}@${versionWithRelease}?arch=${rpm.arch}&distro=${distro}`,
+            });
+            this.logger.log(`RPM SBOM component injected. package=${rpm.name} version=${versionWithRelease} arch=${rpm.arch} os=${distro}`);
+        }
+
+        await fs.promises.writeFile(sbomPath, JSON.stringify(sbom), 'utf-8');
+    }
+
+    private async queryRpmMetadata(rpmPath: string): Promise<{ name: string; version: string; release: string; arch: string }> {
+        try {
+            const { stdout } = await execFileAsync('rpm', ['-qp', '--qf', '%{NAME}\t%{VERSION}\t%{RELEASE}\t%{ARCH}', rpmPath], {
+                timeout: 30 * 1000,
+                maxBuffer: 1024 * 1024,
+            });
+            const [name, version, release, arch] = stdout.trim().split('\t');
+            if (!name || !version || !arch) {
+                throw new Error(`Unexpected rpm metadata output: ${stdout}`);
+            }
+
+            return {
+                name,
+                version,
+                release: release || '',
+                arch,
+            };
+        } catch (error) {
+            this.logger.warn(`Failed to query RPM metadata for ${path.basename(rpmPath)}: ${(error as Error).message}`);
+            throw new BadRequestException('RPM metadata could not be read. Ensure the file is a valid RPM package.');
+        }
     }
 
     private detectArchiveType(filePath: string): ArchiveType | null {
@@ -379,7 +558,7 @@ export class TrivyScanService {
             ignoreUnfixed: false,
             timeout: '10m',
             cacheDir: this.defaultCacheDir,
-            scanners: ['vuln', 'secret', 'misconfig'],
+            scanners: ['vuln', 'license'],
         };
 
         try {
@@ -407,7 +586,7 @@ export class TrivyScanService {
             ? options.scanners.join(',')
             : settings.scanners?.length
                 ? settings.scanners.map((scanner) => scanner === 'config' ? 'misconfig' : scanner).join(',')
-                : 'vuln,secret,misconfig';
+                : 'vuln,license';
         const timeout = options.timeout || settings.timeout || '10m';
         const skipDbUpdate = options.skipDbUpdate !== false;
         const skipJavaDbUpdate = options.skipJavaDbUpdate !== false;
@@ -457,9 +636,9 @@ export class TrivyScanService {
     }
 
     private normalizeScanOptions(options: TrivyScanOptions): TrivyScanOptions {
-        const allowedModes = new Set(['auto', 'fs', 'rootfs', 'image']);
+        const allowedModes = new Set(['auto', 'fs', 'rootfs', 'image', 'rpm']);
         const allowedSeverities = new Set(['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
-        const allowedScanners = new Set(['vuln', 'secret', 'misconfig']);
+        const allowedScanners = new Set(['vuln', 'license', 'secret', 'misconfig']);
 
         const severities = options.severities
             ?.map((severity) => severity.toUpperCase())
@@ -475,6 +654,8 @@ export class TrivyScanService {
 
         return {
             scanMode: allowedModes.has(options.scanMode || '') ? options.scanMode : 'auto',
+            rpmOsFamily: options.rpmOsFamily?.trim() || process.env.TRIVY_RPM_OS_FAMILY || 'redhat',
+            rpmOsVersion: options.rpmOsVersion?.trim() || process.env.TRIVY_RPM_OS_VERSION || undefined,
             offlineScan: options.offlineScan === true,
             skipDbUpdate: options.skipDbUpdate !== false,
             skipJavaDbUpdate: options.skipJavaDbUpdate !== false,

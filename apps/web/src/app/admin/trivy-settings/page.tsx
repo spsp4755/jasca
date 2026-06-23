@@ -44,7 +44,15 @@ const defaultConfig: TrivySettings = {
     ignoreUnfixed: false,
     timeout: '10m',
     cacheDir: '/tmp/trivy-cache',
-    scanners: ['vuln', 'secret', 'config'],
+    scanners: ['vuln', 'license'],
+};
+
+const normalizeScanners = (scanners?: string[]) => {
+    const allowed = new Set(['vuln', 'license', 'misconfig', 'secret']);
+    const normalized = (scanners || [])
+        .map((scanner) => scanner === 'config' ? 'misconfig' : scanner)
+        .filter((scanner) => allowed.has(scanner));
+    return normalized.length ? Array.from(new Set(normalized)) : defaultConfig.scanners;
 };
 
 export default function TrivySettingsPage() {
@@ -61,7 +69,7 @@ export default function TrivySettingsPage() {
     // Load settings from API
     useEffect(() => {
         if (settings) {
-            setConfig({ ...defaultConfig, ...settings });
+            setConfig({ ...defaultConfig, ...settings, scanners: normalizeScanners(settings.scanners) });
         }
     }, [settings]);
 
@@ -395,9 +403,9 @@ export default function TrivySettingsPage() {
                         <div className="flex flex-wrap gap-2">
                             {[
                                 { id: 'vuln', label: '취약점' },
-                                { id: 'secret', label: '시크릿' },
-                                { id: 'config', label: '설정 오류' },
                                 { id: 'license', label: '라이선스' },
+                                { id: 'misconfig', label: '설정 오류' },
+                                { id: 'secret', label: '시크릿' },
                             ].map((scanner) => (
                                 <button
                                     key={scanner.id}

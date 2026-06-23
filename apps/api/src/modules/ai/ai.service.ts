@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AiActionType, AI_PROMPTS, AI_ACTION_METADATA } from './ai-actions';
 
@@ -58,6 +58,7 @@ export class AiService {
         apiKey?: string;
         model: string;
         enabled: boolean;
+        allowMockFallback: boolean;
         timeout: number;
         maxTokens: number;
     } | null> {
@@ -75,6 +76,7 @@ export class AiService {
                 // Use summaryModel or remediationModel field from settings
                 model: (value.summaryModel as string) || (value.model as string) || 'llama3.2',
                 enabled: (value.enableAutoSummary as boolean) ?? (value.enabled as boolean) ?? true,
+                allowMockFallback: (value.allowMockFallback as boolean) ?? false,
                 // Timeout in seconds, default 60s
                 timeout: (value.timeout as number) || 60,
                 // Validate maxTokens: minimum 100, maximum 16000, default 2048
@@ -95,6 +97,7 @@ export class AiService {
         apiKey?: string;
         model: string;
         enabled: boolean;
+        allowMockFallback: boolean;
         timeout: number;
         maxTokens: number;
     } | null> {
@@ -317,11 +320,34 @@ export class AiService {
                 modelName = result.model;
                 this.logger.log(`AI call successful using ${aiSettings.provider}/${modelName}`);
             } catch (error) {
-                this.logger.error('AI call failed, falling back to mock:', error);
+                this.logger.error('AI call failed:', error);
                 content = await this.generateMockResponse(action, context);
                 modelName = 'mock-model-v1 (fallback)';
                 status = 'ERROR';
                 errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                this.logger.error(`AI call failed for ${aiSettings.provider}/${aiSettings.model} at ${aiSettings.apiUrl}: ${errorMessage}`);
+                if (!aiSettings.allowMockFallback) {
+                    const estimate = this.estimateTokens(action, context);
+                    const durationMs = Date.now() - startTime;
+                    await this.prisma.aiExecution.create({
+                        data: {
+                            userId,
+                            action,
+                            actionLabel: metadata?.label || action,
+                            provider: providerName,
+                            model: aiSettings.model,
+                            inputTokens: estimate.inputTokens,
+                            outputTokens: 0,
+                            durationMs,
+                            status: errorMessage.includes('timed out') ? 'TIMEOUT' : 'ERROR',
+                            error: errorMessage,
+                            result: '',
+                        },
+                    }).catch((dbError) => {
+                        this.logger.warn('Failed to log AI execution error to database:', dbError);
+                    });
+                    throw new ServiceUnavailableException(`AI provider call failed: ${errorMessage}`);
+                }
                 isMock = true;
                 mockReason = `AI API 호출 실패: ${errorMessage}`;
                 if (errorMessage.includes('timed out')) {
@@ -593,7 +619,7 @@ export class AiService {
                     lastError.message.includes('ETIMEDOUT') ||
                     lastError.message.includes('fetch failed') ||
                     lastError.name === 'AbortError') {
-                    throw new Error(`vLLM 서버 연결 실패: ${normalizedUrl} - 서버가 실행 중인지 확인하세요.`);
+                    throw new Error(`vLLM server connection failed: ${normalizedUrl}. Check that the server is reachable from inside the JASCA container.`);
                 }
                 
                 // Continue to try next endpoint for other errors
