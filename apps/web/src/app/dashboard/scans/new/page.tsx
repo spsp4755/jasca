@@ -13,13 +13,15 @@ type SourceType = 'TRIVY_JSON' | 'TRIVY_SARIF' | 'MANUAL';
 const SEVERITY_OPTIONS = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'];
 const SCANNER_OPTIONS = [
     { value: 'vuln', label: '취약점(vuln)' },
-    { value: 'secret', label: '시크릿(secret)' },
+    { value: 'license', label: '라이선스(license)' },
     { value: 'misconfig', label: '설정오류(misconfig)' },
+    { value: 'secret', label: '시크릿(secret)' },
 ];
 
 const SCAN_MODE_OPTIONS = [
     { value: 'auto', label: 'Auto', description: 'Detect image/rootfs/fs from the uploaded file.' },
     { value: 'fs', label: 'Filesystem(fs)', description: 'Source, manifests, rpm/deb/apk packages, and normal archives.' },
+    { value: 'rpm', label: 'RPM package', description: 'Standalone .rpm scan using Trivy RPM archive SBOM flow.' },
     { value: 'rootfs', label: 'Rootfs', description: 'Linux root filesystem archives with OS/package DB files.' },
     { value: 'image', label: 'Image archive', description: 'Docker/OCI image tar or tar.gz archives.' },
 ] as const;
@@ -40,12 +42,14 @@ export default function NewScanPage() {
     const uploadAbortControllerRef = useRef<AbortController | null>(null);
     const [trivyOptions, setTrivyOptions] = useState<Required<TrivyScanOptions>>({
         scanMode: 'auto',
+        rpmOsFamily: 'redhat',
+        rpmOsVersion: '',
         offlineScan: true,
         skipDbUpdate: true,
         skipJavaDbUpdate: true,
         ignoreUnfixed: false,
         severities: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
-        scanners: ['vuln', 'secret', 'misconfig'],
+        scanners: ['vuln', 'license'],
         timeout: '10m',
     });
 
@@ -456,6 +460,33 @@ export default function NewScanPage() {
                                     {SCAN_MODE_OPTIONS.find((mode) => mode.value === trivyOptions.scanMode)?.description}
                                 </p>
                             </div>
+
+                            {(trivyOptions.scanMode === 'auto' || trivyOptions.scanMode === 'rpm') && (
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-300">RPM OS family</label>
+                                        <input
+                                            type="text"
+                                            value={trivyOptions.rpmOsFamily}
+                                            onChange={(e) => setTrivyOptions((current) => ({ ...current, rpmOsFamily: e.target.value }))}
+                                            placeholder="redhat"
+                                            className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <p className="mt-1 text-xs text-slate-500">예: redhat, centos, rocky, alma</p>
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-300">RPM OS version</label>
+                                        <input
+                                            type="text"
+                                            value={trivyOptions.rpmOsVersion}
+                                            onChange={(e) => setTrivyOptions((current) => ({ ...current, rpmOsVersion: e.target.value }))}
+                                            placeholder="8"
+                                            className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <p className="mt-1 text-xs text-slate-500">RPM 단일 파일 취약점 매칭에 필요합니다.</p>
+                                    </div>
+                                </div>
+                            )}
 
                             {[
                                 ['offlineScan', '--offline-scan', '외부 네트워크 조회 없이 로컬 DB만 사용합니다.'],

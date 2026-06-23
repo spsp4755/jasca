@@ -82,7 +82,7 @@ export class TrivyDbController {
       ignoreUnfixed: false,
       timeout: '10m',
       cacheDir: '/tmp/trivy-cache',
-      scanners: ['vuln', 'secret', 'config'],
+      scanners: ['vuln', 'license'],
     };
 
     try {
@@ -108,7 +108,8 @@ export class TrivyDbController {
    */
   private buildScannersFlag(settings: TrivySettings): string {
     if (settings.scanners && settings.scanners.length > 0) {
-      return `--scanners ${settings.scanners.join(',')}`;
+      const scanners = settings.scanners.map(scanner => scanner === 'config' ? 'misconfig' : scanner);
+      return `--scanners ${scanners.join(',')}`;
     }
     return '';
   }
@@ -682,7 +683,7 @@ export class TrivyDbController {
     });
 
     // 6. Validate scanners
-    const validScanners = ['vuln', 'secret', 'config', 'license'];
+    const validScanners = ['vuln', 'license', 'misconfig', 'secret', 'config'];
     const invalidScanners = settings.scanners.filter(s => !validScanners.includes(s));
     validations.push({
       name: '스캐너 설정',

@@ -27,7 +27,7 @@ const defaultSettings: Record<string, unknown> = {
         ignoreUnfixed: false,
         timeout: '10m',
         cacheDir: '/tmp/trivy-cache',
-        scanners: ['vuln', 'secret', 'config'],
+        scanners: ['vuln', 'license'],
     },
     ai: {
         provider: 'openai',
@@ -37,6 +37,7 @@ const defaultSettings: Record<string, unknown> = {
         remediationModel: 'gpt-4-turbo',
         maxTokens: 1024,
         temperature: 0.7,
+        allowMockFallback: false,
         enableAutoSummary: true,
         enableRemediationGuide: true,
     },
