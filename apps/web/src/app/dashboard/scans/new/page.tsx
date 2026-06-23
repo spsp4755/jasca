@@ -17,6 +17,13 @@ const SCANNER_OPTIONS = [
     { value: 'misconfig', label: '설정오류(misconfig)' },
 ];
 
+const SCAN_MODE_OPTIONS = [
+    { value: 'auto', label: 'Auto', description: 'Detect image/rootfs/fs from the uploaded file.' },
+    { value: 'fs', label: 'Filesystem(fs)', description: 'Source, manifests, rpm/deb/apk packages, and normal archives.' },
+    { value: 'rootfs', label: 'Rootfs', description: 'Linux root filesystem archives with OS/package DB files.' },
+    { value: 'image', label: 'Image archive', description: 'Docker/OCI image tar or tar.gz archives.' },
+] as const;
+
 export default function NewScanPage() {
     const router = useRouter();
     const [uploadMode, setUploadMode] = useState<UploadMode>('scan-target');
@@ -30,7 +37,9 @@ export default function NewScanPage() {
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [scanOperationId, setScanOperationId] = useState<string>('');
     const cancelRequestedRef = useRef(false);
+    const uploadAbortControllerRef = useRef<AbortController | null>(null);
     const [trivyOptions, setTrivyOptions] = useState<Required<TrivyScanOptions>>({
+        scanMode: 'auto',
         offlineScan: true,
         skipDbUpdate: true,
         skipJavaDbUpdate: true,
@@ -49,7 +58,7 @@ export default function NewScanPage() {
     const organizations = orgsData || [];
     const isScanningTarget = uploadMode === 'scan-target';
     const acceptedFiles = isScanningTarget
-        ? '.zip,.tar,.tar.gz,.tgz,.json,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,Dockerfile'
+        ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,Dockerfile'
         : '.json,.sarif';
 
     const resetFileState = () => {
@@ -142,6 +151,9 @@ export default function NewScanPage() {
         setUploadStatus('uploading');
         setErrorMessage('');
         cancelRequestedRef.current = false;
+        uploadAbortControllerRef.current?.abort();
+        const uploadAbortController = new AbortController();
+        uploadAbortControllerRef.current = uploadAbortController;
         const nextOperationId = isScanningTarget
             ? (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`)
             : '';
@@ -154,6 +166,7 @@ export default function NewScanPage() {
                 scanTarget: isScanningTarget,
                 trivyOptions: isScanningTarget ? trivyOptions : undefined,
                 scanOperationId: nextOperationId || undefined,
+                signal: uploadAbortController.signal,
                 metadata: {
                     sourceType: isScanningTarget ? 'TRIVY_JSON' : sourceType,
                     projectName: !selectedProjectId ? projectName.trim() : undefined,
@@ -164,6 +177,7 @@ export default function NewScanPage() {
 
             setUploadStatus('success');
             setScanOperationId('');
+            uploadAbortControllerRef.current = null;
             setTimeout(() => {
                 router.push('/dashboard/scans');
             }, 1500);
@@ -188,7 +202,13 @@ export default function NewScanPage() {
         setErrorMessage('');
 
         try {
-            await cancelScanMutation.mutateAsync(scanOperationId);
+            const result = await cancelScanMutation.mutateAsync(scanOperationId);
+            uploadAbortControllerRef.current?.abort();
+            setScanOperationId('');
+            setUploadStatus('idle');
+            setErrorMessage((result as any)?.cancelled === false
+                ? '실행 중인 Trivy 스캔을 찾지 못했습니다. 잠시 후 결과 목록을 새로고침해 주세요.'
+                : '검사를 중지했습니다. 임시 업로드 파일은 서버에서 정리됩니다.');
         } catch (error: any) {
             setUploadStatus('uploading');
             setErrorMessage(error.message || '검사 중지 요청에 실패했습니다.');
@@ -419,6 +439,24 @@ export default function NewScanPage() {
                         </p>
 
                         <div className={`mt-5 space-y-4 ${!isScanningTarget ? 'pointer-events-none opacity-50' : ''}`}>
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-300">Scan mode</label>
+                                <select
+                                    value={trivyOptions.scanMode}
+                                    onChange={(e) => setTrivyOptions((current) => ({ ...current, scanMode: e.target.value as Required<TrivyScanOptions>['scanMode'] }))}
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    {SCAN_MODE_OPTIONS.map((mode) => (
+                                        <option key={mode.value} value={mode.value}>
+                                            {mode.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="mt-1 text-xs text-slate-500">
+                                    {SCAN_MODE_OPTIONS.find((mode) => mode.value === trivyOptions.scanMode)?.description}
+                                </p>
+                            </div>
+
                             {[
                                 ['offlineScan', '--offline-scan', '외부 네트워크 조회 없이 로컬 DB만 사용합니다.'],
                                 ['skipDbUpdate', '--skip-db-update', '취약점 DB 업데이트를 건너뜁니다.'],

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, RequestTimeoutException, ServiceUnavailableException } from '@nestjs/common';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
@@ -20,6 +20,7 @@ interface TrivySettings {
 }
 
 export interface TrivyScanOptions {
+    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image';
     offlineScan?: boolean;
     skipDbUpdate?: boolean;
     skipJavaDbUpdate?: boolean;
@@ -30,6 +31,13 @@ export interface TrivyScanOptions {
 }
 
 type ArchiveType = 'zip' | 'tar' | 'tar.gz';
+type TrivyScanMode = 'fs' | 'rootfs' | 'image';
+
+interface PreparedScanTarget {
+    mode: TrivyScanMode;
+    targetPath: string;
+    archiveType?: ArchiveType | null;
+}
 
 @Injectable()
 export class TrivyScanService {
@@ -38,7 +46,7 @@ export class TrivyScanService {
     private readonly trivyBinary = process.env.TRIVY_BINARY_PATH || 'trivy';
     private readonly defaultCacheDir = process.env.TRIVY_CACHE_DIR || path.resolve(process.cwd(), '..', '..', 'trivy-db');
     private readonly archiveMaxEntries = Number(process.env.TRIVY_ARCHIVE_MAX_ENTRIES || DEFAULT_ARCHIVE_MAX_ENTRIES);
-    private readonly activeScans = new Map<string, () => void>();
+    private readonly activeScans = new Map<string, { cancel: () => void; startedAt: number }>();
 
     constructor(private readonly settingsService: SettingsService) { }
 
@@ -50,9 +58,9 @@ export class TrivyScanService {
                 throw new BadRequestException('Uploaded file was not found');
             }
 
-            const scanTarget = await this.prepareScanTarget(filePath, uploadDir);
             const settings = await this.getTrivySettings();
             const normalizedOptions = this.normalizeScanOptions(options);
+            const scanTarget = await this.prepareScanTarget(filePath, uploadDir, normalizedOptions);
             const effectiveTimeout = normalizedOptions.timeout || settings.timeout;
             const args = this.buildTrivyArgs(settings, scanTarget, normalizedOptions);
             const timeoutMs = this.parseTimeoutMs(effectiveTimeout);
@@ -70,7 +78,7 @@ export class TrivyScanService {
                 }
             }
 
-            if (error instanceof BadRequestException) {
+            if (error instanceof BadRequestException || error instanceof RequestTimeoutException) {
                 throw error;
             }
 
@@ -94,12 +102,12 @@ export class TrivyScanService {
     }
 
     cancelScan(operationId: string): boolean {
-        const cancel = this.activeScans.get(operationId);
-        if (!cancel) {
+        const activeScan = this.activeScans.get(operationId);
+        if (!activeScan) {
             return false;
         }
 
-        cancel();
+        activeScan.cancel();
         return true;
     }
 
@@ -110,9 +118,11 @@ export class TrivyScanService {
             });
             const stdoutChunks: Buffer[] = [];
             const stderrChunks: Buffer[] = [];
-            let cancelled = false;
+            let cancelledByUser = false;
             let timedOut = false;
+            let outputLimitExceeded = false;
             let killTimer: NodeJS.Timeout | undefined;
+            let settled = false;
 
             const terminate = () => {
                 if (child.killed) return;
@@ -130,17 +140,21 @@ export class TrivyScanService {
             }, timeoutMs);
 
             if (operationId) {
-                this.activeScans.set(operationId, () => {
-                    cancelled = true;
-                    terminate();
+                this.activeScans.set(operationId, {
+                    startedAt: Date.now(),
+                    cancel: () => {
+                        cancelledByUser = true;
+                        this.logger.warn(`Trivy scan cancellation requested by user. operationId=${operationId}`);
+                        terminate();
+                    },
                 });
             }
 
             child.stdout.on('data', (chunk: Buffer) => {
                 stdoutChunks.push(chunk);
                 if (Buffer.concat(stdoutChunks).length > 100 * 1024 * 1024) {
+                    outputLimitExceeded = true;
                     terminate();
-                    reject(new Error('Trivy output exceeded the 100MB limit'));
                 }
             });
 
@@ -152,10 +166,13 @@ export class TrivyScanService {
                 clearTimeout(timeoutTimer);
                 if (killTimer) clearTimeout(killTimer);
                 if (operationId) this.activeScans.delete(operationId);
+                settled = true;
                 reject(error);
             });
 
-            child.on('close', (code) => {
+            child.on('close', (code, signal) => {
+                if (settled) return;
+                settled = true;
                 clearTimeout(timeoutTimer);
                 if (killTimer) clearTimeout(killTimer);
                 if (operationId) this.activeScans.delete(operationId);
@@ -163,18 +180,26 @@ export class TrivyScanService {
                 const stdout = Buffer.concat(stdoutChunks).toString('utf-8');
                 const stderr = Buffer.concat(stderrChunks).toString('utf-8');
 
-                if (cancelled) {
+                if (cancelledByUser) {
                     reject(new BadRequestException('Trivy scan was cancelled by the user'));
                     return;
                 }
 
                 if (timedOut) {
-                    reject(new Error(`Trivy scan timed out after ${timeoutMs}ms`));
+                    reject(new RequestTimeoutException(`Trivy scan timed out after ${timeoutMs}ms`));
+                    return;
+                }
+
+                if (outputLimitExceeded) {
+                    reject(new Error('Trivy output exceeded the 100MB limit'));
                     return;
                 }
 
                 if (code !== 0) {
-                    const error = new Error(`Trivy exited with code ${code}`);
+                    const exitDetail = signal
+                        ? `Trivy exited with signal ${signal}`
+                        : `Trivy exited with code ${code}`;
+                    const error = new Error(exitDetail);
                     (error as any).stdout = stdout;
                     (error as any).stderr = stderr;
                     reject(error);
@@ -186,19 +211,46 @@ export class TrivyScanService {
         });
     }
 
-    private async prepareScanTarget(filePath: string, uploadDir: string): Promise<string> {
+    private async prepareScanTarget(filePath: string, uploadDir: string, options: TrivyScanOptions): Promise<PreparedScanTarget> {
         const archiveType = this.detectArchiveType(filePath);
+        const requestedMode = options.scanMode || 'auto';
+
+        if (requestedMode === 'image') {
+            if (!archiveType || archiveType === 'zip') {
+                throw new BadRequestException('Image archive scan requires a Docker/OCI tar or tar.gz file.');
+            }
+
+            const entries = await this.listArchiveEntries(filePath, archiveType);
+            if (!this.looksLikeContainerImageArchive(entries)) {
+                throw new BadRequestException('The uploaded archive does not look like a Docker or OCI image archive.');
+            }
+
+            return { mode: 'image', targetPath: filePath, archiveType };
+        }
+
         if (!archiveType) {
-            return uploadDir;
+            return {
+                mode: requestedMode === 'rootfs' ? 'rootfs' : 'fs',
+                targetPath: this.shouldScanSingleFile(filePath) ? filePath : uploadDir,
+                archiveType: null,
+            };
+        }
+
+        const entries = await this.validateArchiveEntries(filePath, archiveType);
+        if (requestedMode === 'auto' && this.looksLikeContainerImageArchive(entries)) {
+            return { mode: 'image', targetPath: filePath, archiveType };
         }
 
         const extractDir = path.join(uploadDir, 'extracted');
         fs.mkdirSync(extractDir, { recursive: true });
 
-        await this.validateArchiveEntries(filePath, archiveType);
         await this.extractArchive(filePath, archiveType, extractDir);
 
-        return extractDir;
+        const mode: TrivyScanMode = requestedMode === 'rootfs' || (requestedMode === 'auto' && this.looksLikeRootfs(extractDir))
+            ? 'rootfs'
+            : 'fs';
+
+        return { mode, targetPath: extractDir, archiveType };
     }
 
     private detectArchiveType(filePath: string): ArchiveType | null {
@@ -209,7 +261,7 @@ export class TrivyScanService {
         return null;
     }
 
-    private async validateArchiveEntries(filePath: string, archiveType: ArchiveType): Promise<void> {
+    private async validateArchiveEntries(filePath: string, archiveType: ArchiveType): Promise<string[]> {
         const entries = await this.listArchiveEntries(filePath, archiveType);
         if (entries.length === 0) {
             throw new BadRequestException('Archive is empty or cannot be inspected');
@@ -232,6 +284,8 @@ export class TrivyScanService {
                 throw new BadRequestException(`Archive contains an unsafe path: ${entry}`);
             }
         }
+
+        return entries;
     }
 
     private async listArchiveEntries(filePath: string, archiveType: ArchiveType): Promise<string[]> {
@@ -269,6 +323,54 @@ export class TrivyScanService {
         }
     }
 
+    private looksLikeContainerImageArchive(entries: string[]): boolean {
+        const normalized = entries.map((entry) => entry.replace(/\\/g, '/'));
+        return normalized.some((entry) => entry === 'manifest.json' || entry.endsWith('/manifest.json')) ||
+            normalized.some((entry) => entry === 'oci-layout' || entry.endsWith('/oci-layout')) ||
+            normalized.some((entry) => entry === 'repositories' || entry.endsWith('/repositories')) ||
+            normalized.some((entry) => entry.endsWith('/blobs/sha256/')) ||
+            normalized.some((entry) => /^blobs\/sha256\/[a-f0-9]{64}$/i.test(entry));
+    }
+
+    private looksLikeRootfs(rootPath: string): boolean {
+        const indicators = [
+            'etc/os-release',
+            'usr/lib/os-release',
+            'var/lib/dpkg/status',
+            'var/lib/rpm',
+            'usr/lib/sysimage/rpm',
+            'lib/apk/db/installed',
+            'var/lib/apk/db/installed',
+        ];
+
+        return indicators.some((indicator) => fs.existsSync(path.join(rootPath, indicator)));
+    }
+
+    private shouldScanSingleFile(filePath: string): boolean {
+        const lowerName = path.basename(filePath).toLowerCase();
+        return [
+            '.rpm',
+            '.deb',
+            '.apk',
+            '.jar',
+            '.war',
+            '.ear',
+            '.gem',
+            '.whl',
+            '.egg',
+            '.nupkg',
+            '.lock',
+            '.json',
+            '.xml',
+            '.yaml',
+            '.yml',
+            '.toml',
+            '.gradle',
+            '.csproj',
+            '.sln',
+        ].some((extension) => lowerName.endsWith(extension)) || lowerName === 'dockerfile';
+    }
+
     private async getTrivySettings(): Promise<TrivySettings> {
         const defaults: TrivySettings = {
             outputFormat: 'json',
@@ -295,7 +397,7 @@ export class TrivyScanService {
         }
     }
 
-    private buildTrivyArgs(settings: TrivySettings, targetPath: string, options: TrivyScanOptions): string[] {
+    private buildTrivyArgs(settings: TrivySettings, target: PreparedScanTarget, options: TrivyScanOptions): string[] {
         const severities = options.severities?.length
             ? options.severities.join(',')
             : settings.severities?.length
@@ -312,12 +414,16 @@ export class TrivyScanService {
         const ignoreUnfixed = options.ignoreUnfixed ?? settings.ignoreUnfixed;
 
         const args = [
-            'fs',
+            target.mode,
             '--format',
             'json',
             '--cache-dir',
             settings.cacheDir,
         ];
+
+        if (target.mode === 'image') {
+            args.push('--input', target.targetPath);
+        }
 
         if (skipDbUpdate) {
             args.push('--skip-db-update');
@@ -344,11 +450,14 @@ export class TrivyScanService {
             args.push('--ignore-unfixed');
         }
 
-        args.push(targetPath);
+        if (target.mode !== 'image') {
+            args.push(target.targetPath);
+        }
         return args;
     }
 
     private normalizeScanOptions(options: TrivyScanOptions): TrivyScanOptions {
+        const allowedModes = new Set(['auto', 'fs', 'rootfs', 'image']);
         const allowedSeverities = new Set(['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
         const allowedScanners = new Set(['vuln', 'secret', 'misconfig']);
 
@@ -365,6 +474,7 @@ export class TrivyScanService {
         }
 
         return {
+            scanMode: allowedModes.has(options.scanMode || '') ? options.scanMode : 'auto',
             offlineScan: options.offlineScan === true,
             skipDbUpdate: options.skipDbUpdate !== false,
             skipJavaDbUpdate: options.skipJavaDbUpdate !== false,
