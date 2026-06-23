@@ -81,6 +81,7 @@ function parseListField(value: unknown): string[] | undefined {
 
 function parseTrivyScanOptions(body: any): TrivyScanOptions {
     return {
+        scanMode: typeof body.scanMode === 'string' ? body.scanMode as TrivyScanOptions['scanMode'] : undefined,
         offlineScan: parseBooleanField(body.offlineScan, true),
         skipDbUpdate: parseBooleanField(body.skipDbUpdate, true),
         skipJavaDbUpdate: parseBooleanField(body.skipJavaDbUpdate, true),

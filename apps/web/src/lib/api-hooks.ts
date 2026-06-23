@@ -345,6 +345,7 @@ export interface UploadScanDto {
 }
 
 export interface TrivyScanOptions {
+    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image';
     offlineScan?: boolean;
     skipDbUpdate?: boolean;
     skipJavaDbUpdate?: boolean;
@@ -364,6 +365,7 @@ export function useUploadScan() {
             scanTarget,
             trivyOptions,
             scanOperationId,
+            signal,
         }: {
             projectId?: string; // Now optional - can use projectName + organizationId in metadata instead
             file: File;
@@ -371,6 +373,7 @@ export function useUploadScan() {
             scanTarget?: boolean;
             trivyOptions?: TrivyScanOptions;
             scanOperationId?: string;
+            signal?: AbortSignal;
         }) => {
             const token = useAuthStore.getState().accessToken;
             const formData = new FormData();
@@ -404,6 +407,7 @@ export function useUploadScan() {
                     ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 },
                 body: formData,
+                signal,
             });
 
             if (!response.ok) {
