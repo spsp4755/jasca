@@ -304,7 +304,52 @@ export interface Scan {
         high: number;
         medium: number;
         low: number;
+        unknown?: number;
+        total?: number;
     };
+    scanEvidence?: {
+        completed?: boolean;
+        startedAt?: string;
+        completedAt?: string;
+        durationMs?: number;
+        originalFileName?: string;
+        fileSizeBytes?: number;
+        scanMode?: string;
+        archiveType?: string | null;
+        targetKind?: string;
+        cacheDir?: string;
+        options?: {
+            scanners?: string[];
+            severities?: string[];
+            offlineScan?: boolean;
+            skipDbUpdate?: boolean;
+            skipJavaDbUpdate?: boolean;
+            ignoreUnfixed?: boolean;
+            timeout?: string;
+            analysisStrategy?: string;
+            rpmOsFamily?: string;
+            rpmOsVersion?: string;
+        };
+        commands?: Array<{ phase: string; command: string }>;
+        resultSummary?: {
+            resultCount?: number;
+            vulnerabilities?: number;
+            packages?: number;
+            licenses?: number;
+            misconfigurations?: number;
+            secrets?: number;
+            targets?: Array<{
+                target?: string;
+                class?: string;
+                type?: string;
+                vulnerabilities?: number;
+                packages?: number;
+                licenses?: number;
+                misconfigurations?: number;
+                secrets?: number;
+            }>;
+        };
+    } | null;
     project?: {
         name: string;
     };
@@ -345,7 +390,8 @@ export interface UploadScanDto {
 }
 
 export interface TrivyScanOptions {
-    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image' | 'rpm';
+    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image' | 'repo' | 'sbom' | 'vm' | 'rpm';
+    analysisStrategy?: 'auto' | 'direct' | 'syft-sbom';
     rpmOsFamily?: string;
     rpmOsVersion?: string;
     offlineScan?: boolean;
@@ -413,8 +459,21 @@ export function useUploadScan() {
             });
 
             if (!response.ok) {
-                const error = await response.json().catch(() => ({ message: 'Upload failed' }));
-                throw new Error(error.message || 'Upload failed');
+                const responseText = await response.text().catch(() => '');
+                let message = response.status === 413
+                    ? '업로드 파일이 설정된 최대 크기를 초과했습니다. TRIVY_UPLOAD_MAX_BYTES와 앞단 reverse proxy 업로드 제한을 확인하세요.'
+                    : 'Upload failed';
+
+                if (responseText) {
+                    try {
+                        const error = JSON.parse(responseText);
+                        message = error.message || message;
+                    } catch {
+                        message = responseText.slice(0, 500) || message;
+                    }
+                }
+
+                throw new Error(message);
             }
 
             return response.json();

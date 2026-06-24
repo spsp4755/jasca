@@ -74,6 +74,28 @@ function formatDate(dateString?: string | null) {
     });
 }
 
+function formatBytes(bytes?: number | null) {
+    if (!bytes || bytes < 0) return '-';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = bytes;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+    }
+    return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatDuration(ms?: number | null) {
+    if (!ms || ms < 0) return '-';
+    if (ms < 1000) return `${ms}ms`;
+    const seconds = Math.round(ms / 1000);
+    if (seconds < 60) return `${seconds}초`;
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return `${minutes}분 ${rest}초`;
+}
+
 export default function ScanDetailPage() {
     const params = useParams();
     const id = params?.id as string;
@@ -109,6 +131,8 @@ export default function ScanDetailPage() {
     const vulnerabilities = (scan as any).vulnerabilities || [];
     const targetName = (scan as any).targetName || (scan as any).imageRef || (scan as any).artifactName || 'Unknown';
     const scanLocation = (scan as any).scanLocation || (scan as any).artifactName;
+    const evidence = (scan as any).scanEvidence;
+    const evidenceSummary = evidence?.resultSummary;
 
     return (
         <div className="space-y-6">
@@ -265,6 +289,163 @@ export default function ScanDetailPage() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Trivy Execution Evidence */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+                <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                            <Shield className="h-5 w-5 text-blue-500" />
+                            Trivy 검사 검증 정보
+                        </h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                            취약점이 0건이어도 아래 값이 있으면 Trivy 실행과 결과 파싱이 완료된 것입니다.
+                        </p>
+                    </div>
+                    <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+                        evidence?.completed
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                    }`}>
+                        {evidence?.completed ? '검사 완료 증거 있음' : '직접 검사 증거 없음'}
+                    </span>
+                </div>
+
+                {evidence ? (
+                    <div className="space-y-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div>
+                                <span className="text-sm text-slate-500 dark:text-slate-400">업로드 파일</span>
+                                <p className="font-medium text-slate-900 dark:text-white truncate" title={evidence.originalFileName}>
+                                    {evidence.originalFileName || '-'}
+                                </p>
+                            </div>
+                            <div>
+                                <span className="text-sm text-slate-500 dark:text-slate-400">파일 크기</span>
+                                <p className="font-medium text-slate-900 dark:text-white">
+                                    {formatBytes(evidence.fileSizeBytes)}
+                                </p>
+                            </div>
+                            <div>
+                                <span className="text-sm text-slate-500 dark:text-slate-400">검사 모드</span>
+                                <p className="font-medium text-slate-900 dark:text-white">
+                                    {evidence.scanMode || '-'}{evidence.archiveType ? ` / ${evidence.archiveType}` : ''}
+                                </p>
+                            </div>
+                            <div>
+                                <span className="text-sm text-slate-500 dark:text-slate-400">소요 시간</span>
+                                <p className="font-medium text-slate-900 dark:text-white">
+                                    {formatDuration(evidence.durationMs)}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                            {[
+                                ['Results', evidenceSummary?.resultCount ?? 0],
+                                ['Packages', evidenceSummary?.packages ?? 0],
+                                ['Vulns', evidenceSummary?.vulnerabilities ?? 0],
+                                ['Licenses', evidenceSummary?.licenses ?? 0],
+                                ['Misconfig', evidenceSummary?.misconfigurations ?? 0],
+                                ['Secrets', evidenceSummary?.secrets ?? 0],
+                            ].map(([label, value]) => (
+                                <div key={label} className="rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 p-3">
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
+                                    <p className="text-lg font-semibold text-slate-900 dark:text-white">{value}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                                <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">실행 옵션</h4>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-slate-500">Scanners</span>
+                                        <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.options?.scanners?.join(', ') || '-'}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-slate-500">Severity</span>
+                                        <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.options?.severities?.join(', ') || '-'}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-slate-500">Offline / DB Update</span>
+                                        <span className="font-medium text-slate-900 dark:text-white text-right">
+                                            offline={String(evidence.options?.offlineScan)} / skipDb={String(evidence.options?.skipDbUpdate)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-slate-500">Analysis Strategy</span>
+                                        <span className="font-medium text-slate-900 dark:text-white text-right">
+                                            {evidence.options?.analysisStrategy || '-'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-slate-500">Cache Dir</span>
+                                        <span className="font-mono text-xs text-slate-900 dark:text-white text-right break-all">{evidence.cacheDir || '-'}</span>
+                                    </div>
+                                    {(evidence.options?.rpmOsFamily || evidence.options?.rpmOsVersion) && (
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-slate-500">RPM OS</span>
+                                            <span className="font-medium text-slate-900 dark:text-white text-right">
+                                                {evidence.options?.rpmOsFamily || '-'} {evidence.options?.rpmOsVersion || ''}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                                <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">검사 대상</h4>
+                                <div className="space-y-2 max-h-40 overflow-auto">
+                                    {(evidenceSummary?.targets || []).length > 0 ? (
+                                        evidenceSummary.targets.map((target: any, index: number) => (
+                                            <div key={`${target.target}-${index}`} className="text-sm border-b border-slate-100 dark:border-slate-700 last:border-0 pb-2 last:pb-0">
+                                                <p className="font-medium text-slate-900 dark:text-white break-all">{target.target || 'unknown'}</p>
+                                                <p className="text-xs text-slate-500">
+                                                    {target.class || '-'} / {target.type || '-'} · vulns {target.vulnerabilities || 0} · packages {target.packages || 0}
+                                                </p>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-sm text-amber-600 dark:text-amber-300">
+                                            Trivy Results가 0개입니다. 이 경우 검사 대상 형식, 스캔 모드, DB 설정을 다시 확인해야 합니다.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <details className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                            <summary className="cursor-pointer text-sm font-semibold text-slate-800 dark:text-slate-200">
+                                실행 명령 확인
+                            </summary>
+                            <div className="mt-3 space-y-2">
+                                {(evidence.commands || []).map((command: any, index: number) => (
+                                    <div key={`${command.phase}-${index}`}>
+                                        <p className="text-xs text-slate-500 mb-1">{command.phase}</p>
+                                        <code className="block text-xs bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 rounded p-2 overflow-x-auto">
+                                            {command.command}
+                                        </code>
+                                    </div>
+                                ))}
+                            </div>
+                        </details>
+                    </div>
+                ) : (
+                    <div className="flex items-start gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
+                        <Info className="h-5 w-5 text-amber-500 mt-0.5" />
+                        <div>
+                            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                                이 결과에는 JASCA 직접 검사 증거가 없습니다.
+                            </p>
+                            <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                                기존 JSON 업로드 결과이거나, 검증 정보가 추가되기 전 버전에서 생성된 스캔일 수 있습니다.
+                            </p>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Vulnerabilities List */}

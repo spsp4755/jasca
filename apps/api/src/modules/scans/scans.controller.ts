@@ -37,7 +37,24 @@ import { UploadScanDto } from './dto/upload-scan.dto';
 import { TrivyScanOptions, TrivyScanService } from './services/trivy-scan.service';
 
 const TRIVY_UPLOAD_ROOT = path.join(os.tmpdir(), 'jasca-trivy-uploads');
-const MAX_TRIVY_UPLOAD_BYTES = Number(process.env.TRIVY_UPLOAD_MAX_BYTES || 200 * 1024 * 1024);
+const MAX_TRIVY_UPLOAD_BYTES = parseSizeBytes(process.env.TRIVY_UPLOAD_MAX_BYTES, 200 * 1024 * 1024);
+
+function parseSizeBytes(value: string | undefined, fallback: number): number {
+    if (!value) return fallback;
+    const trimmed = value.trim();
+    const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/i);
+    if (!match) return fallback;
+
+    const amount = Number(match[1]);
+    const unit = (match[2] || 'b').toLowerCase();
+    const multiplier =
+        unit === 'gb' ? 1024 ** 3 :
+            unit === 'mb' ? 1024 ** 2 :
+                unit === 'kb' ? 1024 :
+                    1;
+
+    return Math.floor(amount * multiplier);
+}
 
 function sanitizeUploadName(originalName: string): string {
     const baseName = path.basename(originalName || 'upload.bin');
@@ -82,6 +99,7 @@ function parseListField(value: unknown): string[] | undefined {
 function parseTrivyScanOptions(body: any): TrivyScanOptions {
     return {
         scanMode: typeof body.scanMode === 'string' ? body.scanMode as TrivyScanOptions['scanMode'] : undefined,
+        analysisStrategy: typeof body.analysisStrategy === 'string' ? body.analysisStrategy as TrivyScanOptions['analysisStrategy'] : undefined,
         rpmOsFamily: typeof body.rpmOsFamily === 'string' ? body.rpmOsFamily : undefined,
         rpmOsVersion: typeof body.rpmOsVersion === 'string' ? body.rpmOsVersion : undefined,
         offlineScan: parseBooleanField(body.offlineScan, true),

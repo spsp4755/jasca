@@ -20,7 +20,8 @@ interface TrivySettings {
 }
 
 export interface TrivyScanOptions {
-    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image' | 'rpm';
+    scanMode?: 'auto' | 'fs' | 'rootfs' | 'image' | 'repo' | 'sbom' | 'vm' | 'rpm';
+    analysisStrategy?: 'auto' | 'direct' | 'syft-sbom';
     rpmOsFamily?: string;
     rpmOsVersion?: string;
     offlineScan?: boolean;
@@ -33,7 +34,7 @@ export interface TrivyScanOptions {
 }
 
 type ArchiveType = 'zip' | 'tar' | 'tar.gz';
-type TrivyScanMode = 'fs' | 'rootfs' | 'image' | 'rpm';
+type TrivyScanMode = 'fs' | 'rootfs' | 'image' | 'repo' | 'sbom' | 'vm' | 'rpm';
 
 interface PreparedScanTarget {
     mode: TrivyScanMode;
@@ -41,11 +42,60 @@ interface PreparedScanTarget {
     archiveType?: ArchiveType | null;
 }
 
+interface TrivyExecutionEvidence {
+    executedBy: 'jasca';
+    completed: true;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    originalFileName: string;
+    fileSizeBytes: number;
+    scanMode: TrivyScanMode;
+    archiveType?: ArchiveType | null;
+    targetKind: string;
+    cacheDir: string;
+    options: {
+        scanners: string[];
+        severities: string[];
+        offlineScan: boolean;
+        skipDbUpdate: boolean;
+        skipJavaDbUpdate: boolean;
+        ignoreUnfixed: boolean;
+        timeout: string;
+        analysisStrategy?: string;
+        rpmOsFamily?: string;
+        rpmOsVersion?: string;
+    };
+    commands: Array<{
+        phase: string;
+        command: string;
+    }>;
+    resultSummary: {
+        resultCount: number;
+        targets: Array<{
+            target: string;
+            class?: string;
+            type?: string;
+            vulnerabilities: number;
+            packages: number;
+            licenses: number;
+            misconfigurations: number;
+            secrets: number;
+        }>;
+        vulnerabilities: number;
+        packages: number;
+        licenses: number;
+        misconfigurations: number;
+        secrets: number;
+    };
+}
+
 @Injectable()
 export class TrivyScanService {
     private readonly logger = new Logger(TrivyScanService.name);
     private readonly uploadRoot = path.join(os.tmpdir(), 'jasca-trivy-uploads');
     private readonly trivyBinary = process.env.TRIVY_BINARY_PATH || 'trivy';
+    private readonly syftBinary = process.env.SYFT_BINARY_PATH || 'syft';
     private readonly defaultCacheDir = process.env.TRIVY_CACHE_DIR || path.resolve(process.cwd(), '..', '..', 'trivy-db');
     private readonly archiveMaxEntries = Number(process.env.TRIVY_ARCHIVE_MAX_ENTRIES || DEFAULT_ARCHIVE_MAX_ENTRIES);
     private readonly cancellationTtlMs = Number(process.env.TRIVY_CANCEL_TTL_MS || 2 * 60 * 60 * 1000);
@@ -66,6 +116,7 @@ export class TrivyScanService {
             this.assertNotCancelled(operationId);
 
             const startedAt = Date.now();
+            const startedAtIso = new Date(startedAt).toISOString();
             const fileStats = fs.statSync(filePath);
             const settings = await this.getTrivySettings();
             const normalizedOptions = this.normalizeScanOptions(options);
@@ -74,14 +125,45 @@ export class TrivyScanService {
             const timeoutMs = this.parseTimeoutMs(effectiveTimeout);
             this.logger.log(`Trivy scan prepared. operationId=${operationId || 'n/a'} mode=${scanTarget.mode} file=${path.basename(filePath)} size=${fileStats.size}B prepareMs=${Date.now() - startedAt}`);
 
+            const commands: TrivyExecutionEvidence['commands'] = [];
             const stdout = scanTarget.mode === 'rpm'
-                ? await this.runRpmArchiveScan(settings, scanTarget, normalizedOptions, timeoutMs, operationId)
-                : await this.runTrivy(this.buildTrivyArgs(settings, scanTarget, normalizedOptions), timeoutMs, operationId);
+                ? await this.runRpmArchiveScan(settings, scanTarget, normalizedOptions, timeoutMs, operationId, commands)
+                : await this.runScanWithStrategy(settings, scanTarget, normalizedOptions, timeoutMs, operationId, commands);
 
             this.assertNotCancelled(operationId);
-            this.logger.log(`Trivy scan completed. operationId=${operationId || 'n/a'} mode=${scanTarget.mode} durationMs=${Date.now() - startedAt}`);
+            const completedAt = Date.now();
+            this.logger.log(`Trivy scan completed. operationId=${operationId || 'n/a'} mode=${scanTarget.mode} durationMs=${completedAt - startedAt}`);
 
-            return JSON.parse(stdout);
+            const result = JSON.parse(stdout);
+            this.attachExecutionEvidence(result, {
+                executedBy: 'jasca',
+                completed: true,
+                startedAt: startedAtIso,
+                completedAt: new Date(completedAt).toISOString(),
+                durationMs: completedAt - startedAt,
+                originalFileName: path.basename(filePath),
+                fileSizeBytes: fileStats.size,
+                scanMode: scanTarget.mode,
+                archiveType: scanTarget.archiveType,
+                targetKind: this.getTargetKind(scanTarget),
+                cacheDir: settings.cacheDir,
+                options: {
+                    scanners: this.effectiveScanners(settings, normalizedOptions),
+                    severities: this.effectiveSeverities(settings, normalizedOptions),
+                    offlineScan: normalizedOptions.offlineScan === true,
+                    skipDbUpdate: normalizedOptions.skipDbUpdate !== false,
+                    skipJavaDbUpdate: normalizedOptions.skipJavaDbUpdate !== false,
+                    ignoreUnfixed: normalizedOptions.ignoreUnfixed ?? settings.ignoreUnfixed,
+                    timeout: effectiveTimeout,
+                    analysisStrategy: normalizedOptions.analysisStrategy || 'auto',
+                    rpmOsFamily: normalizedOptions.rpmOsFamily,
+                    rpmOsVersion: normalizedOptions.rpmOsVersion,
+                },
+                commands,
+                resultSummary: this.summarizeTrivyResult(result),
+            });
+
+            return result;
         } catch (error) {
             const stdout = (error as any)?.stdout;
             if (stdout) {
@@ -274,6 +356,175 @@ export class TrivyScanService {
         });
     }
 
+    private async runScanWithStrategy(
+        settings: TrivySettings,
+        target: PreparedScanTarget,
+        options: TrivyScanOptions,
+        timeoutMs: number,
+        operationId: string | undefined,
+        commands: TrivyExecutionEvidence['commands'],
+    ): Promise<string> {
+        const strategy = options.analysisStrategy || 'auto';
+        const supportsSyft = ['fs', 'rootfs', 'repo'].includes(target.mode);
+
+        if (strategy === 'syft-sbom') {
+            if (!supportsSyft) {
+                throw new BadRequestException('Syft SBOM strategy supports fs, rootfs, and repo scan modes only.');
+            }
+            return this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands);
+        }
+
+        const directOutput = await this.runTrivy(
+            this.trackCommand(commands, 'trivy-direct-scan', this.buildTrivyArgs(settings, target, options), target),
+            timeoutMs,
+            operationId,
+        );
+
+        if (strategy === 'direct' || !supportsSyft || !this.shouldFallbackToSyft(directOutput)) {
+            return directOutput;
+        }
+
+        this.logger.warn(`Trivy direct scan produced weak inventory. Falling back to Syft SBOM. mode=${target.mode} target=${path.basename(target.targetPath)}`);
+        return this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands);
+    }
+
+    private shouldFallbackToSyft(stdout: string): boolean {
+        try {
+            const summary = this.summarizeTrivyResult(JSON.parse(stdout));
+            return summary.resultCount === 0 || summary.packages === 0;
+        } catch {
+            return false;
+        }
+    }
+
+    private async runSyftThenTrivySbom(
+        settings: TrivySettings,
+        target: PreparedScanTarget,
+        options: TrivyScanOptions,
+        timeoutMs: number,
+        operationId: string | undefined,
+        commands: TrivyExecutionEvidence['commands'],
+    ): Promise<string> {
+        const sbomPath = path.join(path.dirname(target.targetPath), `syft-${Date.now()}.cdx.json`);
+        const syftArgs = [target.targetPath, '-o', 'cyclonedx-json'];
+        const sbom = await this.runSyft(this.trackSyftCommand(commands, 'syft-sbom', syftArgs, target), timeoutMs, operationId);
+        await fs.promises.writeFile(sbomPath, sbom, 'utf-8');
+
+        this.assertNotCancelled(operationId);
+        const sbomScanOptions: TrivyScanOptions = {
+            ...options,
+            analysisStrategy: 'direct',
+            scanners: options.scanners?.filter((scanner) => ['vuln', 'license'].includes(scanner)),
+        };
+        const sbomArgs = this.buildTrivyArgs(settings, { ...target, mode: 'sbom', targetPath: sbomPath }, sbomScanOptions);
+        return this.runTrivy(
+            this.trackCommand(commands, 'trivy-syft-sbom-scan', sbomArgs, { ...target, mode: 'sbom', targetPath: sbomPath }),
+            timeoutMs,
+            operationId,
+        );
+    }
+
+    private runSyft(args: string[], timeoutMs: number, operationId?: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            if (this.isCancellationRequested(operationId)) {
+                reject(new BadRequestException('Trivy scan was cancelled by the user'));
+                return;
+            }
+
+            const child = spawn(this.syftBinary, args, {
+                env: { ...process.env },
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
+            const stdoutChunks: Buffer[] = [];
+            const stderrChunks: Buffer[] = [];
+            let cancelledByUser = false;
+            let timedOut = false;
+            let outputLimitExceeded = false;
+            let killTimer: NodeJS.Timeout | undefined;
+            let settled = false;
+
+            const terminate = () => {
+                if (child.killed) return;
+                child.kill('SIGTERM');
+                killTimer = setTimeout(() => {
+                    if (!child.killed) {
+                        child.kill('SIGKILL');
+                    }
+                }, 5000);
+            };
+
+            const timeoutTimer = setTimeout(() => {
+                timedOut = true;
+                terminate();
+            }, timeoutMs);
+
+            if (operationId) {
+                this.activeScans.set(operationId, {
+                    startedAt: Date.now(),
+                    cancel: () => {
+                        cancelledByUser = true;
+                        this.logger.warn(`Syft SBOM generation cancellation requested by user. operationId=${operationId}`);
+                        terminate();
+                    },
+                });
+            }
+
+            child.stdout.on('data', (chunk: Buffer) => {
+                stdoutChunks.push(chunk);
+                if (Buffer.concat(stdoutChunks).length > 100 * 1024 * 1024) {
+                    outputLimitExceeded = true;
+                    terminate();
+                }
+            });
+
+            child.stderr.on('data', (chunk: Buffer) => {
+                stderrChunks.push(chunk);
+            });
+
+            child.on('error', (error) => {
+                clearTimeout(timeoutTimer);
+                if (killTimer) clearTimeout(killTimer);
+                if (operationId) this.activeScans.delete(operationId);
+                settled = true;
+                reject(error);
+            });
+
+            child.on('close', (code, signal) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutTimer);
+                if (killTimer) clearTimeout(killTimer);
+                if (operationId) this.activeScans.delete(operationId);
+
+                const stdout = Buffer.concat(stdoutChunks).toString('utf-8');
+                const stderr = Buffer.concat(stderrChunks).toString('utf-8');
+
+                if (cancelledByUser) {
+                    reject(new BadRequestException('Trivy scan was cancelled by the user'));
+                    return;
+                }
+                if (timedOut) {
+                    reject(new RequestTimeoutException(`Syft SBOM generation timed out after ${timeoutMs}ms`));
+                    return;
+                }
+                if (outputLimitExceeded) {
+                    reject(new Error('Syft output exceeded the 100MB limit'));
+                    return;
+                }
+                if (code !== 0) {
+                    const exitDetail = signal ? `Syft exited with signal ${signal}` : `Syft exited with code ${code}`;
+                    const error = new Error(`${exitDetail}: ${stderr || stdout}`);
+                    (error as any).stdout = stdout;
+                    (error as any).stderr = stderr;
+                    reject(error);
+                    return;
+                }
+
+                resolve(stdout);
+            });
+        });
+    }
+
     private async prepareScanTarget(filePath: string, uploadDir: string, options: TrivyScanOptions): Promise<PreparedScanTarget> {
         const archiveType = this.detectArchiveType(filePath);
         const requestedMode = options.scanMode || 'auto';
@@ -285,6 +536,18 @@ export class TrivyScanService {
             }
 
             return { mode: 'rpm', targetPath: filePath, archiveType: null };
+        }
+
+        if (requestedMode === 'sbom') {
+            return { mode: 'sbom', targetPath: filePath, archiveType: archiveType };
+        }
+
+        if (requestedMode === 'vm') {
+            if (archiveType) {
+                throw new BadRequestException('VM image scan requires a VM image file such as qcow2, vmdk, vhd, or raw img, not a compressed archive.');
+            }
+
+            return { mode: 'vm', targetPath: filePath, archiveType: null };
         }
 
         if (requestedMode === 'image') {
@@ -301,6 +564,10 @@ export class TrivyScanService {
         }
 
         if (!archiveType) {
+            if (requestedMode === 'repo') {
+                throw new BadRequestException('Repository scan requires an uploaded source archive such as .zip, .tar, or .tar.gz.');
+            }
+
             return {
                 mode: requestedMode === 'rootfs' ? 'rootfs' : 'fs',
                 targetPath: this.shouldScanSingleFile(filePath) ? filePath : uploadDir,
@@ -320,6 +587,8 @@ export class TrivyScanService {
 
         const mode: TrivyScanMode = requestedMode === 'rootfs' || (requestedMode === 'auto' && this.looksLikeRootfs(extractDir))
             ? 'rootfs'
+            : requestedMode === 'repo'
+                ? 'repo'
             : 'fs';
 
         return { mode, targetPath: extractDir, archiveType };
@@ -331,6 +600,7 @@ export class TrivyScanService {
         options: TrivyScanOptions,
         timeoutMs: number,
         operationId?: string,
+        commands: TrivyExecutionEvidence['commands'] = [],
     ): Promise<string> {
         const sbomPath = path.join(path.dirname(target.targetPath), 'rpm-sbom.cdx.json');
         const sbomArgs = [
@@ -346,7 +616,7 @@ export class TrivyScanService {
 
         const rpmStartedAt = Date.now();
         this.logger.log(`Generating RPM SBOM. operationId=${operationId || 'n/a'} file=${path.basename(target.targetPath)}`);
-        await this.runTrivy(sbomArgs, timeoutMs, operationId, {
+        await this.runTrivy(this.trackCommand(commands, 'rpm-sbom', sbomArgs, target), timeoutMs, operationId, {
             TRIVY_EXPERIMENTAL_RPM_ARCHIVE: 'true',
         });
 
@@ -362,7 +632,97 @@ export class TrivyScanService {
         sbomScanArgs[0] = 'sbom';
         sbomScanArgs.splice(sbomScanArgs.length - 1, 1, sbomPath);
 
-        return this.runTrivy(sbomScanArgs, timeoutMs, operationId);
+        return this.runTrivy(this.trackCommand(commands, 'rpm-vuln-scan', sbomScanArgs, { ...target, targetPath: sbomPath }), timeoutMs, operationId);
+    }
+
+    private trackCommand(
+        commands: TrivyExecutionEvidence['commands'],
+        phase: string,
+        args: string[],
+        target: PreparedScanTarget,
+    ): string[] {
+        commands.push({
+            phase,
+            command: [this.trivyBinary, ...this.redactCommandArgs(args, target)].join(' '),
+        });
+        return args;
+    }
+
+    private trackSyftCommand(
+        commands: TrivyExecutionEvidence['commands'],
+        phase: string,
+        args: string[],
+        target: PreparedScanTarget,
+    ): string[] {
+        commands.push({
+            phase,
+            command: [this.syftBinary, ...this.redactCommandArgs(args, target)].join(' '),
+        });
+        return args;
+    }
+
+    private redactCommandArgs(args: string[], target: PreparedScanTarget): string[] {
+        const targetPath = path.resolve(target.targetPath);
+        const uploadDir = path.dirname(targetPath);
+        return args.map((arg) => {
+            const resolved = path.resolve(arg);
+            if (resolved === targetPath) {
+                return `<upload:${path.basename(targetPath)}>`;
+            }
+            if (resolved === uploadDir) {
+                return '<upload-dir>';
+            }
+            if (resolved.startsWith(uploadDir + path.sep)) {
+                return `<upload:${path.basename(arg)}>`;
+            }
+            return /\s/.test(arg) ? JSON.stringify(arg) : arg;
+        });
+    }
+
+    private attachExecutionEvidence(result: any, evidence: TrivyExecutionEvidence): void {
+        result.Metadata = result.Metadata || {};
+        result.Metadata.JascaScanEvidence = evidence;
+    }
+
+    private summarizeTrivyResult(result: any): TrivyExecutionEvidence['resultSummary'] {
+        const results = Array.isArray(result?.Results) ? result.Results : [];
+        const targets: TrivyExecutionEvidence['resultSummary']['targets'] = results.map((target: any) => {
+            const packages = Array.isArray(target.Packages) ? target.Packages : [];
+            return {
+                target: target.Target || 'unknown',
+                class: target.Class,
+                type: target.Type,
+                vulnerabilities: Array.isArray(target.Vulnerabilities) ? target.Vulnerabilities.length : 0,
+                packages: packages.length,
+                licenses: packages.reduce((sum: number, pkg: any) => sum + (Array.isArray(pkg.Licenses) ? pkg.Licenses.length : 0), 0),
+                misconfigurations: Array.isArray(target.Misconfigurations) ? target.Misconfigurations.length : 0,
+                secrets: Array.isArray(target.Secrets) ? target.Secrets.length : 0,
+            };
+        });
+
+        return {
+            resultCount: results.length,
+            targets,
+            vulnerabilities: targets.reduce((sum: number, target) => sum + target.vulnerabilities, 0),
+            packages: targets.reduce((sum: number, target) => sum + target.packages, 0),
+            licenses: targets.reduce((sum: number, target) => sum + target.licenses, 0),
+            misconfigurations: targets.reduce((sum: number, target) => sum + target.misconfigurations, 0),
+            secrets: targets.reduce((sum: number, target) => sum + target.secrets, 0),
+        };
+    }
+
+    private effectiveScanners(settings: TrivySettings, options: TrivyScanOptions): string[] {
+        const scanners = options.scanners?.length ? options.scanners : settings.scanners;
+        return (scanners?.length ? scanners : ['vuln', 'license'])
+            .map((scanner) => scanner === 'config' ? 'misconfig' : scanner);
+    }
+
+    private effectiveSeverities(settings: TrivySettings, options: TrivyScanOptions): string[] {
+        return options.severities?.length
+            ? options.severities
+            : settings.severities?.length
+                ? settings.severities
+                : ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
     }
 
     private async ensureRpmSbomComponents(sbomPath: string, rpmPath: string, options: TrivyScanOptions): Promise<void> {
@@ -636,7 +996,8 @@ export class TrivyScanService {
     }
 
     private normalizeScanOptions(options: TrivyScanOptions): TrivyScanOptions {
-        const allowedModes = new Set(['auto', 'fs', 'rootfs', 'image', 'rpm']);
+        const allowedModes = new Set(['auto', 'fs', 'rootfs', 'image', 'repo', 'sbom', 'vm', 'rpm']);
+        const allowedStrategies = new Set(['auto', 'direct', 'syft-sbom']);
         const allowedSeverities = new Set(['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
         const allowedScanners = new Set(['vuln', 'license', 'secret', 'misconfig']);
 
@@ -654,6 +1015,7 @@ export class TrivyScanService {
 
         return {
             scanMode: allowedModes.has(options.scanMode || '') ? options.scanMode : 'auto',
+            analysisStrategy: allowedStrategies.has(options.analysisStrategy || '') ? options.analysisStrategy : 'auto',
             rpmOsFamily: options.rpmOsFamily?.trim() || process.env.TRIVY_RPM_OS_FAMILY || 'redhat',
             rpmOsVersion: options.rpmOsVersion?.trim() || process.env.TRIVY_RPM_OS_VERSION || undefined,
             offlineScan: options.offlineScan === true,
@@ -664,6 +1026,16 @@ export class TrivyScanService {
             scanners: scanners?.length ? scanners : undefined,
             timeout: timeout || undefined,
         };
+    }
+
+    private getTargetKind(target: PreparedScanTarget): string {
+        if (target.mode === 'image') return 'container-image-archive';
+        if (target.mode === 'repo') return 'source-repository-archive';
+        if (target.mode === 'sbom') return 'sbom-file';
+        if (target.mode === 'vm') return 'virtual-machine-image';
+        if (target.mode === 'rpm') return 'rpm-helper-sbom-flow';
+        if (target.archiveType) return 'extracted-archive';
+        return 'uploaded-file';
     }
 
     private parseTimeoutMs(timeout: string): number {

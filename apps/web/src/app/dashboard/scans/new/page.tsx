@@ -19,11 +19,20 @@ const SCANNER_OPTIONS = [
 ];
 
 const SCAN_MODE_OPTIONS = [
-    { value: 'auto', label: 'Auto', description: 'Detect image/rootfs/fs from the uploaded file.' },
-    { value: 'fs', label: 'Filesystem(fs)', description: 'Source, manifests, rpm/deb/apk packages, and normal archives.' },
-    { value: 'rpm', label: 'RPM package', description: 'Standalone .rpm scan using Trivy RPM archive SBOM flow.' },
-    { value: 'rootfs', label: 'Rootfs', description: 'Linux root filesystem archives with OS/package DB files.' },
-    { value: 'image', label: 'Image archive', description: 'Docker/OCI image tar or tar.gz archives.' },
+    { value: 'auto', label: 'Auto', description: '업로드 파일을 보고 image/rootfs/fs/rpm 보조 흐름을 자동 선택합니다.' },
+    { value: 'fs', label: 'Filesystem(fs)', description: '소스코드, manifest, 일반 압축 해제 결과, 단일 패키지 파일을 검사합니다.' },
+    { value: 'rootfs', label: 'Rootfs', description: 'OS 패키지 DB가 포함된 Linux root filesystem 압축본을 검사합니다.' },
+    { value: 'image', label: 'Image archive', description: 'Docker/OCI image tar 또는 tar.gz를 trivy image --input 방식으로 검사합니다.' },
+    { value: 'repo', label: 'Repository(repo)', description: '업로드한 소스 저장소 압축본을 해제한 뒤 trivy repo로 검사합니다.' },
+    { value: 'sbom', label: 'SBOM', description: 'CycloneDX, SPDX 등 이미 생성된 SBOM 파일을 trivy sbom으로 검사합니다.' },
+    { value: 'vm', label: 'VM image', description: 'qcow2, vmdk, vhd, raw img 같은 VM 이미지를 trivy vm으로 검사합니다.' },
+    { value: 'rpm', label: 'RPM helper', description: 'Trivy 공식 모드는 아니며, JASCA가 RPM을 SBOM으로 변환 후 trivy sbom으로 검사합니다.' },
+] as const;
+
+const ANALYSIS_STRATEGY_OPTIONS = [
+    { value: 'auto', label: '폐쇄망 자동 보강', description: 'Trivy 직접 검사 결과가 비어 있거나 패키지를 못 찾으면 Syft SBOM 생성 후 trivy sbom으로 재검사합니다.' },
+    { value: 'direct', label: 'Trivy 직접 검사만', description: 'Syft를 사용하지 않고 선택한 Trivy 모드로만 검사합니다.' },
+    { value: 'syft-sbom', label: 'Syft SBOM 우선', description: '파일/압축을 Syft로 SBOM 생성한 뒤 trivy sbom으로 검사합니다. fs/rootfs/repo 모드에서 사용합니다.' },
 ] as const;
 
 export default function NewScanPage() {
@@ -42,6 +51,7 @@ export default function NewScanPage() {
     const uploadAbortControllerRef = useRef<AbortController | null>(null);
     const [trivyOptions, setTrivyOptions] = useState<Required<TrivyScanOptions>>({
         scanMode: 'auto',
+        analysisStrategy: 'auto',
         rpmOsFamily: 'redhat',
         rpmOsVersion: '',
         offlineScan: true,
@@ -62,7 +72,7 @@ export default function NewScanPage() {
     const organizations = orgsData || [];
     const isScanningTarget = uploadMode === 'scan-target';
     const acceptedFiles = isScanningTarget
-        ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,Dockerfile'
+        ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.spdx,.cdx,.cyclonedx,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,.qcow2,.vmdk,.vhd,.vhdx,.img,Dockerfile'
         : '.json,.sarif';
 
     const resetFileState = () => {
@@ -458,6 +468,24 @@ export default function NewScanPage() {
                                 </select>
                                 <p className="mt-1 text-xs text-slate-500">
                                     {SCAN_MODE_OPTIONS.find((mode) => mode.value === trivyOptions.scanMode)?.description}
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-300">Analysis strategy</label>
+                                <select
+                                    value={trivyOptions.analysisStrategy}
+                                    onChange={(e) => setTrivyOptions((current) => ({ ...current, analysisStrategy: e.target.value as Required<TrivyScanOptions>['analysisStrategy'] }))}
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    {ANALYSIS_STRATEGY_OPTIONS.map((strategy) => (
+                                        <option key={strategy.value} value={strategy.value}>
+                                            {strategy.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="mt-1 text-xs text-slate-500">
+                                    {ANALYSIS_STRATEGY_OPTIONS.find((strategy) => strategy.value === trivyOptions.analysisStrategy)?.description}
                                 </p>
                             </div>
 

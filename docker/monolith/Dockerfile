@@ -72,6 +72,10 @@ RUN apt-get update && apt-get install -y wget lsb-release \
     && apt-get update && apt-get install -y trivy \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Syft at image build time so closed-network runtime scans can generate
+# SBOMs locally without reaching out to cloud services.
+RUN curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
 # Prepare Trivy DB mount point for offline usage.
 # Recommended: mount the target server's Trivy cache at runtime:
 #   -v /path/to/trivy-cache:/app/trivy-db:ro
