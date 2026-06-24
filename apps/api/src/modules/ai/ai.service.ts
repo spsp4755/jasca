@@ -316,7 +316,7 @@ export class AiService {
             providerName = aiSettings.provider;
             try {
                 const result = await this.callAiProvider(aiSettings, fullPrompt);
-                content = result.content;
+                content = this.stripReasoningContent(result.content);
                 modelName = result.model;
                 this.logger.log(`AI call successful using ${aiSettings.provider}/${modelName}`);
             } catch (error) {
@@ -672,6 +672,29 @@ export class AiService {
             content: data.choices[0]?.message?.content || '',
             model: data.model || model,
         };
+    }
+
+    /**
+     * Remove model-internal reasoning blocks before storing or rendering AI output.
+     * Some private/vLLM-served reasoning models return <think>...</think> in the
+     * assistant message even when the UI should only show the final answer.
+     */
+    private stripReasoningContent(content: string): string {
+        if (!content) return content;
+
+        let cleaned = content
+            .replace(/<think(?:ing)?\b[^>]*>[\s\S]*?<\/think(?:ing)?>/gi, '')
+            .replace(/<analysis\b[^>]*>[\s\S]*?<\/analysis>/gi, '')
+            .replace(/```(?:thinking|think|analysis)\s*[\s\S]*?```/gi, '')
+            .replace(/^\s*(?:thinking|thought|reasoning)\s*:\s*[\s\S]*?(?=\n\s*\n|$)/i, '');
+
+        // If a model emits an opening reasoning tag without closing it, avoid
+        // leaking the hidden chain-of-thought. Prefer an empty answer over
+        // showing internal reasoning.
+        cleaned = cleaned.replace(/<think(?:ing)?\b[^>]*>[\s\S]*$/gi, '');
+        cleaned = cleaned.replace(/<analysis\b[^>]*>[\s\S]*$/gi, '');
+
+        return cleaned.trim();
     }
 
     /**
