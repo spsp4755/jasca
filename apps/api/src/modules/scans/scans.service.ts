@@ -33,6 +33,10 @@ export class ScansService {
         return scan.imageRef || this.basename(scan.artifactName) || scan.artifactName || 'Unknown';
     }
 
+    private getScanEvidence(rawResult: any) {
+        return rawResult?.Metadata?.JascaScanEvidence || null;
+    }
+
     private basename(value?: string | null) {
         if (!value) return undefined;
         const normalized = value.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -210,6 +214,7 @@ export class ScansService {
                     email: v.assignee.email,
                 } : undefined,
             })),
+            scanEvidence: this.getScanEvidence(scan.rawResult),
             rawResult: scan.rawResult,
         };
     }

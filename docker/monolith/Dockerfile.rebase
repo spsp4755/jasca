@@ -6,6 +6,10 @@ RUN if ! command -v rpm >/dev/null 2>&1; then \
       apt-get update && apt-get install -y rpm && rm -rf /var/lib/apt/lists/*; \
     fi
 
+RUN if ! command -v syft >/dev/null 2>&1; then \
+      curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin; \
+    fi
+
 # Refresh the standalone web server and static assets from the host build.
 COPY apps/web/.next/standalone/ ./
 COPY apps/web/.next/static ./.next/static

@@ -12,6 +12,8 @@
 coverage
 local-data
 trivy-db
+release-assets-*
+dist/offline-bundle
 *.log
 .env.local
 .env.development.local

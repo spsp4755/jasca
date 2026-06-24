@@ -26,6 +26,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         if (exception instanceof HttpException) {
             status = exception.getStatus();
             message = exception.getResponse();
+        } else if (this.isMulterFileSizeError(exception)) {
+            status = HttpStatus.PAYLOAD_TOO_LARGE;
+            message = 'Uploaded file is larger than the configured limit. Increase TRIVY_UPLOAD_MAX_BYTES and NEXT_PROXY_CLIENT_MAX_BODY_SIZE, then restart the container.';
         } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
             // Prisma known errors
             status = HttpStatus.BAD_REQUEST;
@@ -76,6 +79,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
             message: typeof message === 'string' ? message : (message as any).message || message,
             ...(errorCode && { errorCode }),
         });
+    }
+
+    private isMulterFileSizeError(exception: unknown): boolean {
+        return typeof exception === 'object' &&
+            exception !== null &&
+            (exception as any).name === 'MulterError' &&
+            (exception as any).code === 'LIMIT_FILE_SIZE';
     }
 
     private getPrismaErrorMessage(error: Prisma.PrismaClientKnownRequestError): string {
