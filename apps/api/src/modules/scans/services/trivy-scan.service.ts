@@ -602,54 +602,95 @@ export class TrivyScanService {
         operationId?: string,
         commands: TrivyExecutionEvidence['commands'] = [],
     ): Promise<string> {
-        const sbomPath = path.join(path.dirname(target.targetPath), 'rpm-sbom.cdx.json');
-        const sbomArgs = [
-            'fs',
-            '--format',
-            'cyclonedx',
-            '--output',
-            sbomPath,
-            '--cache-dir',
-            settings.cacheDir,
-            '--scanners',
-            'vuln',
-        ];
-
-        // Mirror the offline flags used by buildTrivyArgs() so the SBOM generation
-        // phase never attempts to download the vulnerability DB in air-gapped
-        // environments. Without these, RPM Helper scans fail with a 503 even when
-        // trivy-db is already bundled in the cache dir.
-        if (options.skipDbUpdate !== false) {
-            sbomArgs.push('--skip-db-update');
-        }
-        if (options.skipJavaDbUpdate !== false) {
-            sbomArgs.push('--skip-java-db-update');
-        }
-        if (options.offlineScan) {
-            sbomArgs.push('--offline-scan');
-        }
-
-        sbomArgs.push(target.targetPath);
+        // Extract the RPM payload to disk and scan it as a filesystem so Trivy's
+        // file-level analyzers (gobinary, jar, node, python, ...) inspect the
+        // binaries *inside* the package. The previous TRIVY_EXPERIMENTAL_RPM_ARCHIVE
+        // SBOM flow only recorded the RPM as a single package component and never
+        // looked inside it, so application RPMs that bundle a Go binary (e.g.
+        // grafana-alloy) reported 0 vulnerabilities even though the embedded
+        // binary contained hundreds of vulnerable Go modules.
+        const extractDir = path.join(path.dirname(target.targetPath), 'rpm-extracted');
+        await fs.promises.mkdir(extractDir, { recursive: true });
 
         const rpmStartedAt = Date.now();
-        this.logger.log(`Generating RPM SBOM. operationId=${operationId || 'n/a'} file=${path.basename(target.targetPath)}`);
-        await this.runTrivy(this.trackCommand(commands, 'rpm-sbom', sbomArgs, target), timeoutMs, operationId, {
-            TRIVY_EXPERIMENTAL_RPM_ARCHIVE: 'true',
+        this.logger.log(`Extracting RPM payload. operationId=${operationId || 'n/a'} file=${path.basename(target.targetPath)}`);
+        await this.extractRpmPayload(target.targetPath, extractDir, timeoutMs, operationId, commands);
+        this.assertNotCancelled(operationId);
+        this.logger.log(`RPM payload extracted. operationId=${operationId || 'n/a'} durationMs=${Date.now() - rpmStartedAt}`);
+
+        const fsTarget: PreparedScanTarget = { ...target, mode: 'fs', targetPath: extractDir, archiveType: null };
+        const scanArgs = this.buildTrivyArgs(settings, fsTarget, options);
+        return this.runTrivy(this.trackCommand(commands, 'rpm-fs-scan', scanArgs, fsTarget), timeoutMs, operationId);
+    }
+
+    private extractRpmPayload(
+        rpmPath: string,
+        extractDir: string,
+        timeoutMs: number,
+        operationId: string | undefined,
+        commands: TrivyExecutionEvidence['commands'],
+    ): Promise<void> {
+        commands.push({
+            phase: 'rpm-extract',
+            command: `rpm2cpio <upload:${path.basename(rpmPath)}> | cpio -idmu --no-absolute-filenames`,
         });
 
-        this.assertNotCancelled(operationId);
-        await this.ensureRpmSbomComponents(sbomPath, target.targetPath, options);
-        this.logger.log(`RPM SBOM generated. operationId=${operationId || 'n/a'} durationMs=${Date.now() - rpmStartedAt}`);
+        return new Promise((resolve, reject) => {
+            if (this.isCancellationRequested(operationId)) {
+                reject(new BadRequestException('Trivy scan was cancelled by the user'));
+                return;
+            }
 
-        const sbomScanOptions: TrivyScanOptions = {
-            ...options,
-            scanners: options.scanners?.filter((scanner) => ['vuln', 'license'].includes(scanner)),
-        };
-        const sbomScanArgs = this.buildTrivyArgs(settings, { ...target, mode: 'fs', targetPath: sbomPath }, sbomScanOptions);
-        sbomScanArgs[0] = 'sbom';
-        sbomScanArgs.splice(sbomScanArgs.length - 1, 1, sbomPath);
+            const rpm2cpio = spawn('rpm2cpio', [rpmPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+            const cpio = spawn('cpio', ['-idmu', '--no-absolute-filenames'], {
+                cwd: extractDir,
+                stdio: ['pipe', 'ignore', 'pipe'],
+            });
 
-        return this.runTrivy(this.trackCommand(commands, 'rpm-vuln-scan', sbomScanArgs, { ...target, targetPath: sbomPath }), timeoutMs, operationId);
+            let stderr = '';
+            let settled = false;
+
+            const fail = (error: Error) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                try { rpm2cpio.kill('SIGKILL'); } catch { /* ignore */ }
+                try { cpio.kill('SIGKILL'); } catch { /* ignore */ }
+                reject(error);
+            };
+
+            const timer = setTimeout(() => {
+                fail(new RequestTimeoutException(`RPM extraction timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+
+            rpm2cpio.on('error', (error) => fail(new ServiceUnavailableException(`rpm2cpio could not be started: ${error.message}`)));
+            cpio.on('error', (error) => fail(new ServiceUnavailableException(`cpio could not be started: ${error.message}`)));
+            // Avoid an uncaught EPIPE if cpio exits before rpm2cpio finishes writing.
+            cpio.stdin.on('error', () => { /* ignore */ });
+            rpm2cpio.stdout.on('error', () => { /* ignore */ });
+
+            rpm2cpio.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+            cpio.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+            rpm2cpio.stdout.pipe(cpio.stdin);
+
+            rpm2cpio.on('close', (code) => {
+                if (code !== 0) {
+                    fail(new ServiceUnavailableException(`rpm2cpio failed (exit ${code}): ${stderr.trim() || 'unknown error'}`));
+                }
+            });
+
+            cpio.on('close', (code) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new ServiceUnavailableException(`cpio extraction failed (exit ${code}): ${stderr.trim() || 'unknown error'}`));
+                }
+            });
+        });
     }
 
     private trackCommand(
@@ -740,73 +781,6 @@ export class TrivyScanService {
             : settings.severities?.length
                 ? settings.severities
                 : ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
-    }
-
-    private async ensureRpmSbomComponents(sbomPath: string, rpmPath: string, options: TrivyScanOptions): Promise<void> {
-        const osFamily = (options.rpmOsFamily || process.env.TRIVY_RPM_OS_FAMILY || 'redhat').trim();
-        const osVersion = (options.rpmOsVersion || process.env.TRIVY_RPM_OS_VERSION || '').trim();
-
-        if (!osVersion) {
-            this.logger.warn('RPM scan is missing OS version. Set rpmOsVersion in UI or TRIVY_RPM_OS_VERSION for accurate vulnerability matching.');
-        }
-
-        const sbom = JSON.parse(await fs.promises.readFile(sbomPath, 'utf-8'));
-        sbom.components = Array.isArray(sbom.components) ? sbom.components : [];
-
-        const existingOs = sbom.components.find((component: any) => component?.type === 'operating-system');
-        if (existingOs) {
-            existingOs.name = existingOs.name || osFamily;
-            existingOs.version = existingOs.version || osVersion;
-        } else {
-            sbom.components.unshift({
-                type: 'operating-system',
-                name: osFamily,
-                version: osVersion,
-            });
-        }
-
-        const hasPackageComponent = sbom.components.some((component: any) =>
-            component?.type !== 'operating-system' && (component?.purl || component?.name),
-        );
-
-        if (!hasPackageComponent) {
-            const rpm = await this.queryRpmMetadata(rpmPath);
-            const namespace = osFamily.toLowerCase();
-            const distro = osVersion ? `${namespace}-${osVersion}` : namespace;
-            const versionWithRelease = rpm.release ? `${rpm.version}-${rpm.release}` : rpm.version;
-            sbom.components.push({
-                type: 'library',
-                name: rpm.name,
-                version: versionWithRelease,
-                purl: `pkg:rpm/${namespace}/${rpm.name}@${versionWithRelease}?arch=${rpm.arch}&distro=${distro}`,
-            });
-            this.logger.log(`RPM SBOM component injected. package=${rpm.name} version=${versionWithRelease} arch=${rpm.arch} os=${distro}`);
-        }
-
-        await fs.promises.writeFile(sbomPath, JSON.stringify(sbom), 'utf-8');
-    }
-
-    private async queryRpmMetadata(rpmPath: string): Promise<{ name: string; version: string; release: string; arch: string }> {
-        try {
-            const { stdout } = await execFileAsync('rpm', ['-qp', '--qf', '%{NAME}\t%{VERSION}\t%{RELEASE}\t%{ARCH}', rpmPath], {
-                timeout: 30 * 1000,
-                maxBuffer: 1024 * 1024,
-            });
-            const [name, version, release, arch] = stdout.trim().split('\t');
-            if (!name || !version || !arch) {
-                throw new Error(`Unexpected rpm metadata output: ${stdout}`);
-            }
-
-            return {
-                name,
-                version,
-                release: release || '',
-                arch,
-            };
-        } catch (error) {
-            this.logger.warn(`Failed to query RPM metadata for ${path.basename(rpmPath)}: ${(error as Error).message}`);
-            throw new BadRequestException('RPM metadata could not be read. Ensure the file is a valid RPM package.');
-        }
     }
 
     private detectArchiveType(filePath: string): ArchiveType | null {
@@ -1050,7 +1024,7 @@ export class TrivyScanService {
         if (target.mode === 'repo') return 'source-repository-archive';
         if (target.mode === 'sbom') return 'sbom-file';
         if (target.mode === 'vm') return 'virtual-machine-image';
-        if (target.mode === 'rpm') return 'rpm-helper-sbom-flow';
+        if (target.mode === 'rpm') return 'rpm-extracted-filesystem';
         if (target.archiveType) return 'extracted-archive';
         return 'uploaded-file';
     }
