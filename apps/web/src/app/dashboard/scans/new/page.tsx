@@ -26,7 +26,7 @@ const SCAN_MODE_OPTIONS = [
     { value: 'repo', label: 'Repository(repo)', description: '업로드한 소스 저장소 압축본을 해제한 뒤 trivy repo로 검사합니다.' },
     { value: 'sbom', label: 'SBOM', description: 'CycloneDX, SPDX 등 이미 생성된 SBOM 파일을 trivy sbom으로 검사합니다.' },
     { value: 'vm', label: 'VM image', description: 'qcow2, vmdk, vhd, raw img 같은 VM 이미지를 trivy vm으로 검사합니다.' },
-    { value: 'rpm', label: 'RPM helper', description: 'Trivy 공식 모드는 아니며, JASCA가 RPM을 SBOM으로 변환 후 trivy sbom으로 검사합니다.' },
+    { value: 'rpm', label: 'RPM helper', description: 'RPM 페이로드를 rpm2cpio | cpio로 추출한 뒤 trivy fs로 검사합니다. RPM 내부에 포함된 Go/Java 등 바이너리까지 분석됩니다.' },
 ] as const;
 
 const ANALYSIS_STRATEGY_OPTIONS = [

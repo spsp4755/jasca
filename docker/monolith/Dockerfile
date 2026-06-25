@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     supervisor \
     openssl \
     rpm \
+    cpio \
     unzip \
     locales \
     tzdata \
