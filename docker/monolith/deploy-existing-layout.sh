@@ -45,6 +45,7 @@ TRIVY_UPLOAD_MAX_BYTES="${TRIVY_UPLOAD_MAX_BYTES:-}"
 SYFT_BINARY_PATH="${SYFT_BINARY_PATH:-}"
 TRIVY_RPM_OS_FAMILY="${TRIVY_RPM_OS_FAMILY:-}"
 TRIVY_RPM_OS_VERSION="${TRIVY_RPM_OS_VERSION:-}"
+SCAN_RESULT_RETENTION_DAYS="${SCAN_RESULT_RETENTION_DAYS:-0}"
 HOSTS_MOUNT="${HOSTS_MOUNT:-/etc/hosts}"
 EXTRA_HOSTS="${EXTRA_HOSTS:-}"
 
@@ -70,7 +71,7 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 1
 fi
 
-mkdir -p "$APP_DIR/pgdata" "$APP_DIR/redis"
+mkdir -p "$APP_DIR/pgdata" "$APP_DIR/redis" "$APP_DIR/scan-results"
 
 if [ ! -f "$IMAGE_ARCHIVE" ]; then
     if [ -f "$IMAGE_TAR" ]; then
@@ -113,8 +114,11 @@ DOCKER_RUN_ARGS=(
   -e "DB_PASSWORD=${DB_PASSWORD}"
   -e "REDIS_URL=${REDIS_URL}"
   -e "DATABASE_URL=${DATABASE_URL}"
+  -e "SCAN_RESULT_DIR=/app/jasca/scan-results"
+  -e "SCAN_RESULT_RETENTION_DAYS=${SCAN_RESULT_RETENTION_DAYS}"
   -v "${APP_DIR}/pgdata:/var/lib/postgresql/data"
   -v "${APP_DIR}/redis:/var/lib/redis"
+  -v "${APP_DIR}/scan-results:/app/jasca/scan-results"
 )
 
 if [ -n "$TRIVY_RPM_OS_FAMILY" ]; then

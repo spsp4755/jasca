@@ -16,6 +16,11 @@ TRIVY_UPLOAD_MAX_BYTES="${TRIVY_UPLOAD_MAX_BYTES:-2147483648}"
 SYFT_BINARY_PATH="${SYFT_BINARY_PATH:-syft}"
 TRIVY_RPM_OS_FAMILY="${TRIVY_RPM_OS_FAMILY:-redhat}"
 TRIVY_RPM_OS_VERSION="${TRIVY_RPM_OS_VERSION:-}"
+SCAN_RESULT_DIR="${SCAN_RESULT_DIR:-/app/jasca/scan-results}"
+SCAN_RESULT_RETENTION_DAYS="${SCAN_RESULT_RETENTION_DAYS:-0}"
+
+# Ensure the persistent scan-result directory exists (feature: raw result download).
+mkdir -p "$SCAN_RESULT_DIR"
 
 if [ -z "${JWT_SECRET:-}" ]; then
     echo "Error: JWT_SECRET must be provided with docker run -e JWT_SECRET=..."
@@ -31,6 +36,7 @@ DATABASE_URL="${DATABASE_URL:-postgresql://jasca:${DB_PASSWORD}@127.0.0.1:5432/j
 
 export DB_PASSWORD DATABASE_URL REDIS_URL CORS_ORIGIN TRIVY_CACHE_DIR JWT_SECRET
 export TRIVY_UPLOAD_MAX_BYTES SYFT_BINARY_PATH TRIVY_RPM_OS_FAMILY TRIVY_RPM_OS_VERSION
+export SCAN_RESULT_DIR SCAN_RESULT_RETENTION_DAYS
 
 # Ensure permissions
 chown -R postgres:postgres "$PG_DATA"

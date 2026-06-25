@@ -9,6 +9,7 @@ export enum AiActionType {
     // Project
     PROJECT_ANALYSIS = 'project.analysis',
     SCAN_CHANGE_ANALYSIS = 'scan.changeAnalysis',
+    SCAN_ANALYSIS = 'scan.analysis',
 
     // Vulnerabilities
     VULN_PRIORITY_REORDER = 'vuln.priorityReorder',
@@ -72,6 +73,12 @@ export const AI_ACTION_METADATA: Record<AiActionType, AiActionMetadata> = {
         description: '이전 스캔 대비 증가/감소 원인을 설명합니다',
         maxContextTokens: 3000,
         expectedOutputTokens: 700,
+    },
+    [AiActionType.SCAN_ANALYSIS]: {
+        label: 'AI 분석',
+        description: '스캔 결과의 주요 취약점/라이선스 위험을 종합 분석합니다',
+        maxContextTokens: 6000,
+        expectedOutputTokens: 1200,
     },
     [AiActionType.VULN_PRIORITY_REORDER]: {
         label: 'AI 우선순위',
@@ -207,6 +214,22 @@ export const AI_PROMPTS: Record<AiActionType, string> = {
 
 **출력 형식:**
 - ## 섹션 제목을 사용하여 변화 유형별로 구분
+- 구체적인 CVE ID와 패키지명 언급
+- JSON, 코드 형식 사용 금지
+- 이모지를 활용한 가독성 향상
+- 반드시 한국어로 작성
+`,
+
+    [AiActionType.SCAN_ANALYSIS]: `
+당신은 보안 분석 전문가입니다. 주어진 단일 스캔 결과(취약점 목록, 심각도 분포, 라이선스 이슈)를 종합 분석하여 반드시 한국어로 보고서를 작성해주세요.
+
+**분석 항목:**
+1. 🔎 주요 취약점 요약 및 우선 조치 권고 (가장 위험한 CVE 중심)
+2. ⚖️ 라이선스 컴플라이언스 위험 항목 (FORBIDDEN/RESTRICTED 등)
+3. 🛡️ 전반적인 보안 위험 수준 평가 및 결론
+
+**출력 형식:**
+- ## 섹션 제목을 사용하여 위 3개 항목으로 구분
 - 구체적인 CVE ID와 패키지명 언급
 - JSON, 코드 형식 사용 금지
 - 이모지를 활용한 가독성 향상

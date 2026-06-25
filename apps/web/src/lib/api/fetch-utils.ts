@@ -36,11 +36,41 @@ export async function fetchJsonWithAuth<T>(
     options: RequestInit = {}
 ): Promise<T> {
     const res = await fetchWithAuth(url, options);
-    
+
     if (!res.ok) {
         const error = await res.text();
         throw new Error(error || `HTTP ${res.status}: ${res.statusText}`);
     }
-    
+
     return res.json();
+}
+
+/**
+ * Download a file from an authenticated endpoint. Fetches the response as a blob
+ * (so the Bearer token is sent) and triggers a browser download. The filename is
+ * taken from the Content-Disposition header when available, else fallbackName.
+ */
+export async function downloadWithAuth(url: string, fallbackName: string): Promise<void> {
+    const res = await fetchWithAuth(url);
+    if (!res.ok) {
+        const error = await res.text();
+        throw new Error(error || `HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    let fileName = fallbackName;
+    const disposition = res.headers.get('Content-Disposition');
+    if (disposition) {
+        const match = /filename="?([^"]+)"?/.exec(disposition);
+        if (match?.[1]) fileName = match[1];
+    }
+
+    const blob = await res.blob();
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(objectUrl);
 }

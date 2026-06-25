@@ -15,6 +15,48 @@ import {
 export class ProjectsService {
     constructor(private readonly prisma: PrismaService) { }
 
+    /**
+     * Aggregate vulnerability counts for a set of projects by summing the latest
+     * scan per distinct artifact (imageRef) within each project. Previously the
+     * project view only reflected the single most-recent scan, so vulnerabilities
+     * from scans on other artifacts of the same project were dropped from the
+     * aggregate. (Bug fix: project-level aggregation.)
+     */
+    private async computeProjectAggregates(projectIds: string[]) {
+        const result = new Map<string, { critical: number; high: number; medium: number; low: number; total: number; lastScanAt?: Date }>();
+        if (projectIds.length === 0) return result;
+
+        const scans = await this.prisma.scanResult.findMany({
+            where: { projectId: { in: projectIds } },
+            include: { summary: true },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        const seenArtifact = new Map<string, Set<string>>();
+        for (const scan of scans) {
+            const agg = result.get(scan.projectId) || { critical: 0, high: 0, medium: 0, low: 0, total: 0, lastScanAt: undefined as Date | undefined };
+            if (!agg.lastScanAt || scan.createdAt > agg.lastScanAt) {
+                agg.lastScanAt = scan.createdAt;
+            }
+
+            const artifactKey = scan.imageRef || scan.artifactName || scan.id;
+            const seen = seenArtifact.get(scan.projectId) || new Set<string>();
+            if (!seen.has(artifactKey)) {
+                seen.add(artifactKey);
+                seenArtifact.set(scan.projectId, seen);
+                if (scan.summary) {
+                    agg.critical += scan.summary.critical || 0;
+                    agg.high += scan.summary.high || 0;
+                    agg.medium += scan.summary.medium || 0;
+                    agg.low += scan.summary.low || 0;
+                    agg.total += scan.summary.totalVulns || 0;
+                }
+            }
+            result.set(scan.projectId, agg);
+        }
+        return result;
+    }
+
     private buildProjectAccessWhere(currentUser: RequestUser, organizationId?: string) {
         if (isSystemAdmin(currentUser)) {
             return organizationId ? { organizationId } : {};
@@ -95,19 +137,21 @@ export class ProjectsService {
         // Get total count for pagination
         const total = await this.prisma.project.count({ where });
 
+        // Aggregate vulnerabilities across all scans (latest per artifact) per project.
+        const aggregates = await this.computeProjectAggregates(projects.map((p) => p.id));
+
         // Transform projects to include stats like findById does
         const data = projects.map(project => {
-            const latestScan = project.scanResults[0];
-            const summary = latestScan?.summary;
+            const aggregate = aggregates.get(project.id);
             const stats = {
                 totalScans: project._count.scanResults,
-                lastScanAt: latestScan?.createdAt?.toISOString(),
+                lastScanAt: (aggregate?.lastScanAt || project.scanResults[0]?.createdAt)?.toISOString(),
                 vulnerabilities: {
-                    critical: summary?.critical || 0,
-                    high: summary?.high || 0,
-                    medium: summary?.medium || 0,
-                    low: summary?.low || 0,
-                    total: summary?.totalVulns || 0,
+                    critical: aggregate?.critical || 0,
+                    high: aggregate?.high || 0,
+                    medium: aggregate?.medium || 0,
+                    low: aggregate?.low || 0,
+                    total: aggregate?.total || 0,
                 },
             };
 
@@ -159,18 +203,18 @@ export class ProjectsService {
             assertProjectAccess(currentUser, project);
         }
 
-        // Calculate stats from the latest scan result
-        const latestScan = project.scanResults[0];
-        const summary = latestScan?.summary;
+        // Aggregate vulnerabilities across all scans (latest per artifact).
+        const aggregates = await this.computeProjectAggregates([project.id]);
+        const aggregate = aggregates.get(project.id);
         const stats = {
             totalScans: project._count.scanResults,
-            lastScanAt: latestScan?.createdAt?.toISOString(),
+            lastScanAt: (aggregate?.lastScanAt || project.scanResults[0]?.createdAt)?.toISOString(),
             vulnerabilities: {
-                critical: summary?.critical || 0,
-                high: summary?.high || 0,
-                medium: summary?.medium || 0,
-                low: summary?.low || 0,
-                total: summary?.totalVulns || 0,
+                critical: aggregate?.critical || 0,
+                high: aggregate?.high || 0,
+                medium: aggregate?.medium || 0,
+                low: aggregate?.low || 0,
+                total: aggregate?.total || 0,
             },
         };
 
