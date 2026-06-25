@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
     FileSearch,
     Calendar,
@@ -182,6 +183,7 @@ function VulnerabilityBar({ summary }: { summary?: { critical: number; high: num
 // ============ Main Component ============
 
 export default function ScansPage() {
+    const router = useRouter();
     const { data, isLoading, error, refetch } = useScans();
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     
@@ -965,14 +967,21 @@ export default function ScansPage() {
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             {paginatedScans.map((scan: any) => (
-                                <tr 
-                                    key={scan.id} 
+                                <tr
+                                    key={scan.id}
+                                    onClick={() => {
+                                        if (!compareMode && !bulkSelectMode) {
+                                            router.push(`/dashboard/scans/${scan.id}`);
+                                        }
+                                    }}
                                     className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${
+                                        !compareMode && !bulkSelectMode ? 'cursor-pointer' : ''
+                                    } ${
                                         selectedScans.includes(scan.id) ? 'bg-purple-50 dark:bg-purple-900/20' : ''
                                     }`}
                                 >
                                     {compareMode && (
-                                        <td className="px-4 py-4">
+                                        <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                                             <input
                                                 type="checkbox"
                                                 checked={selectedScans.includes(scan.id)}

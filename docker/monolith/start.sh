@@ -14,6 +14,7 @@ TRIVY_CACHE_MOUNT="${TRIVY_CACHE_MOUNT:-}"
 JWT_SECRET="${JWT_SECRET:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 CORS_ORIGIN="${CORS_ORIGIN:-http://localhost:${WEB_PORT}}"
+SCAN_RESULT_RETENTION_DAYS="${SCAN_RESULT_RETENTION_DAYS:-0}"
 
 if [ -z "$JWT_SECRET" ]; then
     echo "Error: JWT_SECRET must be set, for example: JWT_SECRET='<long-random-secret>' ./start.sh"
@@ -57,6 +58,7 @@ esac
 echo "Ensuring persistent Docker volumes exist..."
 docker volume create jasca_postgres_data >/dev/null
 docker volume create jasca_redis_data >/dev/null
+docker volume create jasca_scan_results >/dev/null
 
 if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then
     echo "Replacing existing container: $CONTAINER_NAME"
@@ -74,8 +76,10 @@ DOCKER_RUN_ARGS=(
   -e "JWT_SECRET=${JWT_SECRET}"
   -e "DB_PASSWORD=${DB_PASSWORD}"
   -e "CORS_ORIGIN=${CORS_ORIGIN}"
+  -e "SCAN_RESULT_RETENTION_DAYS=${SCAN_RESULT_RETENTION_DAYS}"
   -v jasca_postgres_data:/var/lib/postgresql/data
   -v jasca_redis_data:/var/lib/redis
+  -v jasca_scan_results:/app/jasca/scan-results
 )
 
 if [ -n "$TRIVY_CACHE_MOUNT" ]; then

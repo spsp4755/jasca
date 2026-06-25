@@ -66,6 +66,7 @@ const BASE_PROMPT_TOKENS: Record<AiActionType, number> = {
     'dashboard.riskAnalysis': 800,
     'project.analysis': 600,
     'scan.changeAnalysis': 700,
+    'scan.analysis': 1200,
     'vuln.priorityReorder': 400,
     'vuln.actionGuide': 500,
     'vuln.impactAnalysis': 600,

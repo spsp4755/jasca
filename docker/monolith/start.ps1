@@ -7,7 +7,8 @@ param(
     [string]$TrivyCacheMount = "",
     [string]$JwtSecret = $env:JWT_SECRET,
     [string]$DbPassword = $env:DB_PASSWORD,
-    [string]$CorsOrigin = $env:CORS_ORIGIN
+    [string]$CorsOrigin = $env:CORS_ORIGIN,
+    [string]$ScanResultRetentionDays = "0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -84,6 +85,7 @@ try {
 Write-Host "Ensuring persistent Docker volumes exist..."
 docker volume create jasca_postgres_data | Out-Null
 docker volume create jasca_redis_data | Out-Null
+docker volume create jasca_scan_results | Out-Null
 
 $existing = docker ps -aq -f "name=^/$ContainerName$"
 if ($existing) {
@@ -102,8 +104,10 @@ $dockerRunArgs = @(
     "-e", "JWT_SECRET=$JwtSecret",
     "-e", "DB_PASSWORD=$DbPassword",
     "-e", "CORS_ORIGIN=$CorsOrigin",
+    "-e", "SCAN_RESULT_RETENTION_DAYS=$ScanResultRetentionDays",
     "-v", "jasca_postgres_data:/var/lib/postgresql/data",
-    "-v", "jasca_redis_data:/var/lib/redis"
+    "-v", "jasca_redis_data:/var/lib/redis",
+    "-v", "jasca_scan_results:/app/jasca/scan-results"
 )
 
 if ($TrivyCacheMount) {

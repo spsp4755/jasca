@@ -5,6 +5,8 @@ import { VulnSyncService } from './services/vuln-sync.service';
 import { LicenseParserService } from '../licenses/services/license-parser.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { PolicyEngineService } from '../policies/policy-engine.service';
 import { ManualAdvisoriesService } from '../manual-advisories/manual-advisories.service';
 import {
@@ -19,6 +21,8 @@ import {
 @Injectable()
 export class ScansService {
     private readonly logger = new Logger(ScansService.name);
+    private readonly scanResultDir = process.env.SCAN_RESULT_DIR || '/app/jasca/scan-results';
+    private readonly scanResultRetentionDays = Number(process.env.SCAN_RESULT_RETENTION_DAYS || 0);
 
     constructor(
         private readonly prisma: PrismaService,
@@ -295,6 +299,24 @@ export class ScansService {
 
         // Create summary
         await this.createSummary(scanResult.id);
+
+        // Persist the raw Trivy JSON to a durable location so it can be
+        // re-downloaded or reused for AI analysis after the temp upload dir is
+        // cleaned up. Best-effort: never fail the scan if persistence fails.
+        try {
+            const filePath = await this.persistRawResult(scanResult.id, rawResult);
+            if (filePath) {
+                await this.prisma.scanResult.update({
+                    where: { id: scanResult.id },
+                    data: { resultFilePath: filePath },
+                });
+            }
+        } catch (error) {
+            this.logger.warn(`Failed to persist raw scan result for ${scanResult.id}: ${(error as Error).message}`);
+        }
+
+        // Opportunistically prune expired result files.
+        this.cleanupExpiredResultFiles().catch(() => undefined);
 
         let policyEvaluation;
         try {
@@ -587,7 +609,185 @@ export class ScansService {
 
     async delete(id: string, currentUser?: RequestUser) {
         await this.findById(id, currentUser);
+        const scan = await this.prisma.scanResult.findUnique({ where: { id }, select: { resultFilePath: true } });
+        if (scan?.resultFilePath) {
+            await fs.promises.rm(scan.resultFilePath, { force: true }).catch(() => undefined);
+        }
         return this.prisma.scanResult.delete({ where: { id } });
+    }
+
+    // ===== Raw result persistence (feature 5) =====
+
+    private async persistRawResult(scanId: string, rawResult: any): Promise<string | null> {
+        await fs.promises.mkdir(this.scanResultDir, { recursive: true });
+        const filePath = path.join(this.scanResultDir, `${scanId}.json`);
+        await fs.promises.writeFile(filePath, JSON.stringify(rawResult), 'utf-8');
+        return filePath;
+    }
+
+    private async cleanupExpiredResultFiles(): Promise<void> {
+        if (!this.scanResultRetentionDays || this.scanResultRetentionDays <= 0) return;
+        const cutoff = Date.now() - this.scanResultRetentionDays * 24 * 60 * 60 * 1000;
+        let entries: string[] = [];
+        try {
+            entries = await fs.promises.readdir(this.scanResultDir);
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            if (!entry.endsWith('.json')) continue;
+            const fullPath = path.join(this.scanResultDir, entry);
+            try {
+                const stat = await fs.promises.stat(fullPath);
+                if (stat.mtimeMs < cutoff) {
+                    await fs.promises.rm(fullPath, { force: true });
+                    this.logger.log(`Pruned expired scan result file: ${entry}`);
+                }
+            } catch {
+                // ignore individual file errors
+            }
+        }
+    }
+
+    /** Returns the raw Trivy JSON for a scan as a string, from disk if available, else from DB. */
+    async getRawResult(id: string, currentUser?: RequestUser): Promise<{ json: string; fileName: string }> {
+        const scan = await this.prisma.scanResult.findUnique({
+            where: { id },
+            include: { project: true },
+        });
+        if (!scan) throw new NotFoundException('Scan result not found');
+        if (currentUser) assertProjectAccess(currentUser, scan.project);
+
+        const fileName = `${id}.json`;
+        if (scan.resultFilePath) {
+            try {
+                const json = await fs.promises.readFile(scan.resultFilePath, 'utf-8');
+                return { json, fileName };
+            } catch {
+                this.logger.warn(`resultFilePath missing on disk for scan ${id}, falling back to DB rawResult`);
+            }
+        }
+        return { json: JSON.stringify(scan.rawResult, null, 2), fileName };
+    }
+
+    // ===== Exports (features 2 & 4) =====
+
+    private async loadScanVulnerabilitiesForExport(id: string, currentUser?: RequestUser) {
+        const scan = await this.prisma.scanResult.findUnique({
+            where: { id },
+            include: {
+                project: true,
+                vulnerabilities: { include: { vulnerability: true } },
+            },
+        });
+        if (!scan) throw new NotFoundException('Scan result not found');
+        if (currentUser) assertProjectAccess(currentUser, scan.project);
+        return scan;
+    }
+
+    async exportVulnerabilities(id: string, format: 'csv' | 'json', currentUser?: RequestUser) {
+        const scan = await this.loadScanVulnerabilitiesForExport(id, currentUser);
+        const rows = scan.vulnerabilities.map((v) => ({
+            cveId: v.vulnerability?.cveId || '',
+            severity: v.vulnerability?.severity || '',
+            pkgName: v.pkgName,
+            installedVersion: v.pkgVersion,
+            fixedVersion: v.fixedVersion || '',
+            cvssScore: v.vulnerability?.cvssV3Score ?? '',
+            title: v.vulnerability?.title || '',
+            description: (v.vulnerability?.description || '').replace(/\r?\n/g, ' '),
+            status: v.status,
+        }));
+
+        if (format === 'json') {
+            return { content: JSON.stringify(rows, null, 2), fileName: `scan-${id}-vulnerabilities.json`, contentType: 'application/json' };
+        }
+        const headers = ['cveId', 'severity', 'pkgName', 'installedVersion', 'fixedVersion', 'cvssScore', 'title', 'description', 'status'];
+        return { content: this.toCsv(headers, rows), fileName: `scan-${id}-vulnerabilities.csv`, contentType: 'text/csv' };
+    }
+
+    async exportLicenses(id: string, format: 'csv' | 'json', currentUser?: RequestUser) {
+        const scan = await this.prisma.scanResult.findUnique({
+            where: { id },
+            include: { project: true, packageLicenses: { include: { license: true } } },
+        });
+        if (!scan) throw new NotFoundException('Scan result not found');
+        if (currentUser) assertProjectAccess(currentUser, scan.project);
+
+        const rows = scan.packageLicenses.map((l) => ({
+            pkgName: l.pkgName,
+            pkgVersion: l.pkgVersion,
+            licenseName: l.licenseName,
+            spdxId: l.license?.spdxId || '',
+            classification: l.license?.classification || '',
+            pkgPath: l.pkgPath || '',
+        }));
+
+        if (format === 'json') {
+            return { content: JSON.stringify(rows, null, 2), fileName: `scan-${id}-licenses.json`, contentType: 'application/json' };
+        }
+        const headers = ['pkgName', 'pkgVersion', 'licenseName', 'spdxId', 'classification', 'pkgPath'];
+        return { content: this.toCsv(headers, rows), fileName: `scan-${id}-licenses.csv`, contentType: 'text/csv' };
+    }
+
+    private toCsv(headers: string[], rows: Array<Record<string, any>>): string {
+        const escape = (value: any) => {
+            const str = value === null || value === undefined ? '' : String(value);
+            if (/[",\n]/.test(str)) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        };
+        const lines = [headers.join(',')];
+        for (const row of rows) {
+            lines.push(headers.map((h) => escape(row[h])).join(','));
+        }
+        // Prepend BOM so Excel opens UTF-8 (Korean) correctly.
+        return '﻿' + lines.join('\r\n');
+    }
+
+    // ===== Project aggregate recomputation (feature 6) =====
+
+    /**
+     * Recompute and return per-project vulnerability aggregates by summing the
+     * latest scan per distinct artifact (imageRef) in each project. This fixes
+     * the bug where a project only reflected its single most-recent scan and
+     * scans on other artifacts were dropped from the aggregate.
+     */
+    async aggregateProjectVulnerabilities(projectIds: string[]): Promise<Map<string, { critical: number; high: number; medium: number; low: number; total: number; lastScanAt?: Date }>> {
+        const result = new Map<string, { critical: number; high: number; medium: number; low: number; total: number; lastScanAt?: Date }>();
+        if (projectIds.length === 0) return result;
+
+        const scans = await this.prisma.scanResult.findMany({
+            where: { projectId: { in: projectIds } },
+            include: { summary: true },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        // For each project, keep only the latest scan per distinct imageRef.
+        const seenArtifact = new Map<string, Set<string>>();
+        for (const scan of scans) {
+            const agg = result.get(scan.projectId) || { critical: 0, high: 0, medium: 0, low: 0, total: 0, lastScanAt: undefined as Date | undefined };
+            if (!agg.lastScanAt || scan.createdAt > agg.lastScanAt) {
+                agg.lastScanAt = scan.createdAt;
+            }
+
+            const artifactKey = scan.imageRef || scan.artifactName || scan.id;
+            const seen = seenArtifact.get(scan.projectId) || new Set<string>();
+            if (!seen.has(artifactKey)) {
+                seen.add(artifactKey);
+                seenArtifact.set(scan.projectId, seen);
+                if (scan.summary) {
+                    agg.critical += scan.summary.critical || 0;
+                    agg.high += scan.summary.high || 0;
+                    agg.medium += scan.summary.medium || 0;
+                    agg.low += scan.summary.low || 0;
+                    agg.total += scan.summary.totalVulns || 0;
+                }
+            }
+            result.set(scan.projectId, agg);
+        }
+        return result;
     }
 
     /**

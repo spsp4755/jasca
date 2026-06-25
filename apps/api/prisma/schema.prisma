@@ -211,6 +211,7 @@ model ScanResult {
   schemaVersion   String?
   
   rawResult       Json      // Original scan result
+  resultFilePath  String?   // Path to the persisted raw Trivy JSON on disk (SCAN_RESULT_DIR)
   artifactName    String?
   artifactType    String?   // container_image, filesystem, etc.
   

@@ -21,8 +21,13 @@ import {
     HelpCircle,
     ChevronDown,
     ChevronUp,
+    Download,
+    FileJson,
 } from 'lucide-react';
 import { useScan, useLicensesByScan, LicenseClassification } from '@/lib/api-hooks';
+import { AiButton, AiResultPanel } from '@/components/ai';
+import { useAiExecution } from '@/hooks/use-ai-execution';
+import { downloadWithAuth } from '@/lib/api/fetch-utils';
 
 // License classification config
 const CLASSIFICATION_CONFIG: Record<LicenseClassification, { label: string; color: string; bgColor: string }> = {
@@ -102,6 +107,20 @@ export default function ScanDetailPage() {
     const { data: scan, isLoading, error, refetch } = useScan(id);
     const { data: licenses, isLoading: licensesLoading } = useLicensesByScan(id);
     const [showLicenses, setShowLicenses] = useState(false);
+    const [downloading, setDownloading] = useState<string | null>(null);
+
+    // AI analysis (feature: scan detail AI analysis)
+    const {
+        execute: executeAiAnalysis,
+        isLoading: aiLoading,
+        result: aiResult,
+        previousResults: aiPreviousResults,
+        estimateTokens,
+        cancel: cancelAi,
+        progress: aiProgress,
+        isPanelOpen: aiPanelOpen,
+        closePanel: closeAiPanel,
+    } = useAiExecution('scan.analysis', { entityId: id });
 
     if (isLoading) {
         return (
@@ -134,6 +153,64 @@ export default function ScanDetailPage() {
     const evidence = (scan as any).scanEvidence;
     const evidenceSummary = evidence?.resultSummary;
 
+    const hasVulnerabilities = vulnerabilities.length > 0;
+    const hasLicenses = Array.isArray(licenses) && licenses.length > 0;
+
+    // Build a compact context for AI analysis (cap vuln list to keep tokens sane).
+    const buildAiContext = () => ({
+        screen: 'scanDetail',
+        target: targetName,
+        project: (scan as any).project?.name,
+        summary,
+        topVulnerabilities: vulnerabilities.slice(0, 40).map((v: any) => ({
+            cveId: v.vulnerability?.cveId,
+            severity: v.vulnerability?.severity,
+            pkgName: v.pkgName,
+            installedVersion: v.installedVersion,
+            fixedVersion: v.fixedVersion,
+            title: v.vulnerability?.title,
+        })),
+        licenseIssues: (licenses || [])
+            .filter((l: any) => ['FORBIDDEN', 'RESTRICTED', 'RECIPROCAL'].includes(l.classification))
+            .slice(0, 40)
+            .map((l: any) => ({ name: l.name, spdxId: l.spdxId, classification: l.classification, packages: l.packageCount })),
+        timestamp: new Date().toISOString(),
+    });
+
+    const handleAiAnalyze = () => {
+        executeAiAnalysis(buildAiContext());
+    };
+
+    const aiEstimatedTokens = estimateTokens(buildAiContext());
+
+    const handleDownload = async (type: 'vulnerabilities' | 'licenses', format: 'csv' | 'json') => {
+        const key = `${type}-${format}`;
+        setDownloading(key);
+        try {
+            await downloadWithAuth(
+                `/api/scans/${id}/export/${type}?format=${format}`,
+                `scan-${id}-${type}.${format}`,
+            );
+        } catch (e) {
+            console.error('Download failed', e);
+            alert('다운로드에 실패했습니다.');
+        } finally {
+            setDownloading(null);
+        }
+    };
+
+    const handleDownloadRaw = async () => {
+        setDownloading('raw');
+        try {
+            await downloadWithAuth(`/api/scans/${id}/result/raw`, `${id}.json`);
+        } catch (e) {
+            console.error('Raw download failed', e);
+            alert('원본 결과 다운로드에 실패했습니다.');
+        } finally {
+            setDownloading(null);
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -151,6 +228,76 @@ export default function ScanDetailPage() {
                     <p className="text-slate-600 dark:text-slate-400 mt-1">
                         {targetName}
                     </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    {/* AI analysis */}
+                    <AiButton
+                        action="scan.analysis"
+                        variant="primary"
+                        size="md"
+                        estimatedTokens={aiEstimatedTokens}
+                        loading={aiLoading}
+                        onExecute={handleAiAnalyze}
+                        onCancel={cancelAi}
+                    />
+
+                    {/* Download dropdown */}
+                    <div className="relative group">
+                        <button className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">
+                            <Download className="h-4 w-4" />
+                            다운로드
+                            <ChevronDown className="h-4 w-4" />
+                        </button>
+                        <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20 py-1">
+                            <p className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase">취약점 목록</p>
+                            <button
+                                disabled={!hasVulnerabilities || downloading !== null}
+                                onClick={() => handleDownload('vulnerabilities', 'csv')}
+                                className="w-full px-3 py-2 text-xs text-left hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                📄 CSV 다운로드
+                            </button>
+                            <button
+                                disabled={!hasVulnerabilities || downloading !== null}
+                                onClick={() => handleDownload('vulnerabilities', 'json')}
+                                className="w-full px-3 py-2 text-xs text-left hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                📋 JSON 다운로드
+                            </button>
+                            <p className="px-3 py-1 mt-1 text-[11px] font-semibold text-slate-400 uppercase">패키지 라이선스</p>
+                            <button
+                                disabled={!hasLicenses || downloading !== null}
+                                onClick={() => handleDownload('licenses', 'csv')}
+                                className="w-full px-3 py-2 text-xs text-left hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                📄 CSV 다운로드
+                            </button>
+                            <button
+                                disabled={!hasLicenses || downloading !== null}
+                                onClick={() => handleDownload('licenses', 'json')}
+                                className="w-full px-3 py-2 text-xs text-left hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                📋 JSON 다운로드
+                            </button>
+                            <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
+                            <button
+                                disabled={downloading !== null}
+                                onClick={handleDownloadRaw}
+                                className="w-full flex items-center gap-1.5 px-3 py-2 text-xs text-left hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <FileJson className="h-3.5 w-3.5" />
+                                원본 결과(JSON) 다운로드
+                            </button>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => refetch()}
+                        className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        <RefreshCw className="h-4 w-4" />
+                        새로고침
+                    </button>
                 </div>
             </div>
 
@@ -596,6 +743,18 @@ export default function ScanDetailPage() {
                     </div>
                 )}
             </div>
+
+            {/* AI Analysis Result Panel */}
+            <AiResultPanel
+                isOpen={aiPanelOpen}
+                onClose={closeAiPanel}
+                result={aiResult}
+                previousResults={aiPreviousResults}
+                loading={aiLoading}
+                loadingProgress={aiProgress}
+                onRegenerate={handleAiAnalyze}
+                action="scan.analysis"
+            />
         </div>
     );
 }

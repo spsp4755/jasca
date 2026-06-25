@@ -11,8 +11,9 @@ import {
     UploadedFile,
     BadRequestException,
     Req,
+    Res,
 } from '@nestjs/common';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import * as fs from 'fs';
@@ -422,6 +423,59 @@ export class ScansController {
         @Req() req: Request,
     ) {
         return this.scansService.compareScan(baseScanId, compareScanId, (req as any).user);
+    }
+
+    @Get(':id/result/raw')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Download the original Trivy JSON result for a scan' })
+    async downloadRawResult(@Param('id') id: string, @Req() req: Request, @Res() res: Response) {
+        const { json, fileName } = await this.scansService.getRawResult(id, (req as any).user);
+        res.set({
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${fileName}"`,
+        });
+        res.send(json);
+    }
+
+    @Get(':id/export/vulnerabilities')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Export a scan\'s vulnerabilities as CSV or JSON' })
+    @ApiQuery({ name: 'format', required: false, enum: ['csv', 'json'] })
+    async exportVulnerabilities(
+        @Param('id') id: string,
+        @Query('format') format: string | undefined,
+        @Req() req: Request,
+        @Res() res: Response,
+    ) {
+        const fmt = format === 'json' ? 'json' : 'csv';
+        const { content, fileName, contentType } = await this.scansService.exportVulnerabilities(id, fmt, (req as any).user);
+        res.set({
+            'Content-Type': `${contentType}; charset=utf-8`,
+            'Content-Disposition': `attachment; filename="${fileName}"`,
+        });
+        res.send(content);
+    }
+
+    @Get(':id/export/licenses')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Export a scan\'s package licenses as CSV or JSON' })
+    @ApiQuery({ name: 'format', required: false, enum: ['csv', 'json'] })
+    async exportLicenses(
+        @Param('id') id: string,
+        @Query('format') format: string | undefined,
+        @Req() req: Request,
+        @Res() res: Response,
+    ) {
+        const fmt = format === 'json' ? 'json' : 'csv';
+        const { content, fileName, contentType } = await this.scansService.exportLicenses(id, fmt, (req as any).user);
+        res.set({
+            'Content-Type': `${contentType}; charset=utf-8`,
+            'Content-Disposition': `attachment; filename="${fileName}"`,
+        });
+        res.send(content);
     }
 }
 

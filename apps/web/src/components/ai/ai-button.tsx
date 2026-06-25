@@ -42,6 +42,7 @@ export type AiActionType =
     // Project
     | 'project.analysis'
     | 'scan.changeAnalysis'
+    | 'scan.analysis'
     // Vulnerabilities
     | 'vuln.priorityReorder'
     | 'vuln.actionGuide'
@@ -81,6 +82,10 @@ const AI_ACTION_CONFIG: Record<AiActionType, { label: string; tooltip: string; r
     'scan.changeAnalysis': {
         label: 'AI 변화 분석',
         tooltip: '이전 스캔 대비 증가/감소 원인을 설명합니다',
+    },
+    'scan.analysis': {
+        label: 'AI 분석',
+        tooltip: '스캔 결과의 주요 취약점/라이선스 위험을 종합 분석합니다',
     },
     'vuln.priorityReorder': {
         label: 'AI 우선순위',
