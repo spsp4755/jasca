@@ -609,10 +609,27 @@ export class TrivyScanService {
             'cyclonedx',
             '--output',
             sbomPath,
+            '--cache-dir',
+            settings.cacheDir,
             '--scanners',
             'vuln',
-            target.targetPath,
         ];
+
+        // Mirror the offline flags used by buildTrivyArgs() so the SBOM generation
+        // phase never attempts to download the vulnerability DB in air-gapped
+        // environments. Without these, RPM Helper scans fail with a 503 even when
+        // trivy-db is already bundled in the cache dir.
+        if (options.skipDbUpdate !== false) {
+            sbomArgs.push('--skip-db-update');
+        }
+        if (options.skipJavaDbUpdate !== false) {
+            sbomArgs.push('--skip-java-db-update');
+        }
+        if (options.offlineScan) {
+            sbomArgs.push('--offline-scan');
+        }
+
+        sbomArgs.push(target.targetPath);
 
         const rpmStartedAt = Date.now();
         this.logger.log(`Generating RPM SBOM. operationId=${operationId || 'n/a'} file=${path.basename(target.targetPath)}`);
