@@ -64,7 +64,40 @@ export async function downloadWithAuth(url: string, fallbackName: string): Promi
         if (match?.[1]) fileName = match[1];
     }
 
-    const blob = await res.blob();
+    triggerBlobDownload(await res.blob(), fileName);
+}
+
+/**
+ * Download a file from an authenticated POST endpoint (e.g. bulk export where
+ * the list of ids is sent in the request body). Same download behavior as
+ * downloadWithAuth.
+ */
+export async function downloadPostWithAuth(
+    url: string,
+    body: unknown,
+    fallbackName: string,
+): Promise<void> {
+    const res = await fetchWithAuth(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+        const error = await res.text();
+        throw new Error(error || `HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    let fileName = fallbackName;
+    const disposition = res.headers.get('Content-Disposition');
+    if (disposition) {
+        const match = /filename="?([^"]+)"?/.exec(disposition);
+        if (match?.[1]) fileName = match[1];
+    }
+
+    triggerBlobDownload(await res.blob(), fileName);
+}
+
+function triggerBlobDownload(blob: Blob, fileName: string): void {
     const objectUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;
