@@ -425,6 +425,41 @@ export class ScansController {
         return this.scansService.compareScan(baseScanId, compareScanId, (req as any).user);
     }
 
+    @Post('bulk-export')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Export multiple scans as a single combined CSV or JSON file' })
+    async bulkExport(
+        @Body() body: { ids?: string[]; format?: string },
+        @Req() req: Request,
+        @Res() res: Response,
+    ) {
+        const ids = Array.isArray(body?.ids) ? body.ids : [];
+        if (ids.length === 0) {
+            throw new BadRequestException('ids must be a non-empty array of scan ids.');
+        }
+        const fmt = body?.format === 'json' ? 'json' : 'csv';
+        const { content, fileName, contentType } = await this.scansService.bulkExport(ids, fmt, (req as any).user);
+        res.set({
+            'Content-Type': `${contentType}; charset=utf-8`,
+            'Content-Disposition': `attachment; filename="${fileName}"`,
+        });
+        res.send(content);
+    }
+
+    @Post('bulk-delete')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles('PROJECT_ADMIN', 'ORG_ADMIN')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Delete multiple scan results at once' })
+    async bulkDelete(@Body() body: { ids?: string[] }, @Req() req: Request) {
+        const ids = Array.isArray(body?.ids) ? body.ids : [];
+        if (ids.length === 0) {
+            throw new BadRequestException('ids must be a non-empty array of scan ids.');
+        }
+        return this.scansService.bulkDelete(ids, (req as any).user);
+    }
+
     @Get(':id/result/raw')
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()

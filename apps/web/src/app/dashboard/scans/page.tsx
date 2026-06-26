@@ -41,6 +41,8 @@ import { UploadScanModal } from '@/components/upload-scan-modal';
 import { AiButton, AiResultPanel } from '@/components/ai';
 import { useAiExecution } from '@/hooks/use-ai-execution';
 import { useAiStore } from '@/stores/ai-store';
+import { downloadPostWithAuth, fetchWithAuth } from '@/lib/api/fetch-utils';
+import { CheckSquare, FileJson } from 'lucide-react';
 
 // ============ Helper Functions ============
 
@@ -217,6 +219,8 @@ export default function ScansPage() {
     // Bulk selection
     const [bulkSelectMode, setBulkSelectMode] = useState(false);
     const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
+    const [bulkBusy, setBulkBusy] = useState<'idle' | 'downloading' | 'deleting'>('idle');
+    const [bulkError, setBulkError] = useState<string>('');
 
     // AI Execution for scan diff analysis
     const {
@@ -483,6 +487,67 @@ export default function ScansPage() {
             setBulkSelectedIds([]);
         } else {
             setBulkSelectedIds(paginatedScans.map((scan: any) => scan.id));
+        }
+    };
+
+    const toggleBulkSelectMode = () => {
+        setBulkSelectMode((prev) => !prev);
+        setBulkSelectedIds([]);
+        setBulkError('');
+        // Selection and compare modes are mutually exclusive.
+        if (!bulkSelectMode) {
+            setCompareMode(false);
+            setSelectedScans([]);
+        }
+    };
+
+    // Download the selected scans as one combined file (with full vuln/license content).
+    const handleBulkDownload = async (format: 'csv' | 'json') => {
+        if (bulkSelectedIds.length === 0) return;
+        setBulkBusy('downloading');
+        setBulkError('');
+        try {
+            await downloadPostWithAuth(
+                '/api/scans/bulk-export',
+                { ids: bulkSelectedIds, format },
+                `scans-export.${format}`,
+            );
+        } catch (err: any) {
+            setBulkError(err?.message || '다운로드에 실패했습니다.');
+        } finally {
+            setBulkBusy('idle');
+        }
+    };
+
+    // Delete the selected scans after confirmation.
+    const handleBulkDelete = async () => {
+        if (bulkSelectedIds.length === 0) return;
+        const count = bulkSelectedIds.length;
+        if (!window.confirm(`선택한 ${count}개의 스캔 결과를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
+            return;
+        }
+        setBulkBusy('deleting');
+        setBulkError('');
+        try {
+            const res = await fetchWithAuth('/api/scans/bulk-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: bulkSelectedIds }),
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || `삭제 실패: HTTP ${res.status}`);
+            }
+            const result = await res.json().catch(() => ({ deleted: count, failed: 0 }));
+            setBulkSelectedIds([]);
+            if (result.failed > 0) {
+                setBulkError(`${result.deleted}개 삭제 완료, ${result.failed}개는 권한이 없어 건너뛰었습니다.`);
+            }
+            await refetch();
+        } catch (err: any) {
+            setBulkError(err?.message || '삭제에 실패했습니다.');
+        } finally {
+            setBulkBusy('idle');
         }
     };
 
@@ -833,11 +898,28 @@ export default function ScansPage() {
                             </div>
                         </div>
 
+                        {/* Selection Mode Toggle */}
+                        <button
+                            onClick={toggleBulkSelectMode}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                bulkSelectMode
+                                    ? 'bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-400'
+                                    : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            <CheckSquare className="h-3 w-3" />
+                            선택 모드
+                        </button>
+
                         {/* Compare Mode Toggle */}
                         <button
                             onClick={() => {
                                 setCompareMode(!compareMode);
                                 setSelectedScans([]);
+                                if (!compareMode) {
+                                    setBulkSelectMode(false);
+                                    setBulkSelectedIds([]);
+                                }
                             }}
                             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                                 compareMode
@@ -895,6 +977,65 @@ export default function ScansPage() {
                         </div>
                     </div>
                 )}
+
+                {/* Selection Mode Action Bar */}
+                {bulkSelectMode && (
+                    <div className="mt-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
+                                <CheckSquare className="h-4 w-4" />
+                                <span>
+                                    {bulkSelectedIds.length > 0
+                                        ? `${bulkSelectedIds.length}개 선택됨`
+                                        : '다운로드하거나 삭제할 스캔을 선택하세요'}
+                                </span>
+                                {bulkSelectedIds.length > 0 && (
+                                    <button
+                                        onClick={() => setBulkSelectedIds([])}
+                                        className="text-xs text-slate-500 underline hover:text-slate-700 dark:hover:text-slate-300"
+                                    >
+                                        선택 해제
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handleBulkDownload('csv')}
+                                    disabled={bulkSelectedIds.length === 0 || bulkBusy !== 'idle'}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {bulkBusy === 'downloading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                                    CSV 다운로드
+                                </button>
+                                <button
+                                    onClick={() => handleBulkDownload('json')}
+                                    disabled={bulkSelectedIds.length === 0 || bulkBusy !== 'idle'}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {bulkBusy === 'downloading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileJson className="h-3.5 w-3.5" />}
+                                    JSON 다운로드
+                                </button>
+                                <button
+                                    onClick={handleBulkDelete}
+                                    disabled={bulkSelectedIds.length === 0 || bulkBusy !== 'idle'}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {bulkBusy === 'deleting' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                    삭제
+                                </button>
+                            </div>
+                        </div>
+                        {bulkError && (
+                            <div className="mt-2 flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                                {bulkError}
+                            </div>
+                        )}
+                        <p className="mt-2 text-xs text-emerald-600/80 dark:text-emerald-400/70">
+                            다운로드 파일에는 선택한 각 스캔의 대상·요약과 함께 검출된 취약점 목록(CVE, 심각도, 패키지, 수정버전 등)이 포함됩니다. JSON에는 라이선스 정보도 포함됩니다.
+                        </p>
+                    </div>
+                )}
             </div>
 
             {/* Scans List */}
@@ -914,6 +1055,22 @@ export default function ScansPage() {
                     <table className="w-full">
                         <thead className="bg-slate-50 dark:bg-slate-700/50">
                             <tr>
+                                {bulkSelectMode && (
+                                    <th className="px-4 py-3 text-left w-12">
+                                        <input
+                                            type="checkbox"
+                                            checked={paginatedScans.length > 0 && bulkSelectedIds.length === paginatedScans.length}
+                                            ref={(el) => {
+                                                if (el) {
+                                                    el.indeterminate = bulkSelectedIds.length > 0 && bulkSelectedIds.length < paginatedScans.length;
+                                                }
+                                            }}
+                                            onChange={handleSelectAll}
+                                            className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                                            title="전체 선택"
+                                        />
+                                    </th>
+                                )}
                                 {compareMode && (
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider w-12">
                                         선택
@@ -978,8 +1135,20 @@ export default function ScansPage() {
                                         !compareMode && !bulkSelectMode ? 'cursor-pointer' : ''
                                     } ${
                                         selectedScans.includes(scan.id) ? 'bg-purple-50 dark:bg-purple-900/20' : ''
+                                    } ${
+                                        bulkSelectMode && bulkSelectedIds.includes(scan.id) ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''
                                     }`}
                                 >
+                                    {bulkSelectMode && (
+                                        <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                                            <input
+                                                type="checkbox"
+                                                checked={bulkSelectedIds.includes(scan.id)}
+                                                onChange={() => handleBulkSelect(scan.id)}
+                                                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                                            />
+                                        </td>
+                                    )}
                                     {compareMode && (
                                         <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                                             <input
@@ -1063,10 +1232,20 @@ export default function ScansPage() {
                             key={scan.id}
                             className={`bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 hover:shadow-lg transition-all hover:-translate-y-1 ${
                                 selectedScans.includes(scan.id) ? 'ring-2 ring-purple-500' : ''
+                            } ${
+                                bulkSelectMode && bulkSelectedIds.includes(scan.id) ? 'ring-2 ring-emerald-500' : ''
                             }`}
                         >
                             <div className="flex items-start justify-between mb-4">
                                 <div className="flex items-center gap-3">
+                                    {bulkSelectMode && (
+                                        <input
+                                            type="checkbox"
+                                            checked={bulkSelectedIds.includes(scan.id)}
+                                            onChange={() => handleBulkSelect(scan.id)}
+                                            className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                                        />
+                                    )}
                                     {compareMode && (
                                         <input
                                             type="checkbox"

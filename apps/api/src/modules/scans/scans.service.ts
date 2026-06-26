@@ -730,6 +730,169 @@ export class ScansService {
         return { content: this.toCsv(headers, rows), fileName: `scan-${id}-licenses.csv`, contentType: 'text/csv' };
     }
 
+    /**
+     * Export multiple scans as a single combined file.
+     *
+     *  - JSON: a structured report with each scan's metadata, vulnerability
+     *    summary, full vulnerability list, and license list.
+     *  - CSV: one flat vulnerability table where each row carries its scan's
+     *    context columns (scan, target, project) so rows from different scans
+     *    stay distinguishable in Excel.
+     *
+     * Scans the user cannot access are skipped silently rather than failing the
+     * whole download.
+     */
+    async bulkExport(
+        ids: string[],
+        format: 'csv' | 'json',
+        currentUser?: RequestUser,
+    ): Promise<{ content: string; fileName: string; contentType: string }> {
+        const uniqueIds = Array.from(new Set(ids)).filter(Boolean);
+        if (uniqueIds.length === 0) {
+            throw new BadRequestException('No scan ids were provided for export.');
+        }
+
+        const scans: Array<{
+            id: string;
+            target: string;
+            project: string;
+            status: string;
+            createdAt: string;
+            summary: { critical: number; high: number; medium: number; low: number; unknown: number; total: number };
+            vulnerabilities: Array<Record<string, any>>;
+            licenses: Array<Record<string, any>>;
+        }> = [];
+
+        for (const id of uniqueIds) {
+            const scan = await this.prisma.scanResult.findUnique({
+                where: { id },
+                include: {
+                    project: true,
+                    summary: true,
+                    vulnerabilities: { include: { vulnerability: true } },
+                    packageLicenses: { include: { license: true } },
+                },
+            });
+            if (!scan) continue;
+            if (currentUser) {
+                try {
+                    assertProjectAccess(currentUser, scan.project);
+                } catch {
+                    continue; // skip scans the user cannot access
+                }
+            }
+
+            scans.push({
+                id: scan.id,
+                target: this.getDisplayTargetName(scan),
+                project: scan.project?.name || '-',
+                status: scan.summary ? 'COMPLETED' : 'PENDING',
+                createdAt: scan.createdAt.toISOString(),
+                summary: {
+                    critical: scan.summary?.critical ?? 0,
+                    high: scan.summary?.high ?? 0,
+                    medium: scan.summary?.medium ?? 0,
+                    low: scan.summary?.low ?? 0,
+                    unknown: scan.summary?.unknown ?? 0,
+                    total: scan.summary?.totalVulns ?? 0,
+                },
+                vulnerabilities: scan.vulnerabilities.map((v) => ({
+                    cveId: v.vulnerability?.cveId || '',
+                    severity: v.vulnerability?.severity || '',
+                    pkgName: v.pkgName,
+                    installedVersion: v.pkgVersion,
+                    fixedVersion: v.fixedVersion || '',
+                    cvssScore: v.vulnerability?.cvssV3Score ?? '',
+                    title: v.vulnerability?.title || '',
+                    description: (v.vulnerability?.description || '').replace(/\r?\n/g, ' '),
+                    status: v.status,
+                })),
+                licenses: scan.packageLicenses.map((l) => ({
+                    pkgName: l.pkgName,
+                    pkgVersion: l.pkgVersion,
+                    licenseName: l.licenseName,
+                    spdxId: l.license?.spdxId || '',
+                    classification: l.license?.classification || '',
+                    pkgPath: l.pkgPath || '',
+                })),
+            });
+        }
+
+        if (scans.length === 0) {
+            throw new NotFoundException('None of the requested scans are available for export.');
+        }
+
+        const stamp = new Date().toISOString().slice(0, 10);
+
+        if (format === 'json') {
+            const report = {
+                generatedAt: new Date().toISOString(),
+                scanCount: scans.length,
+                totals: scans.reduce(
+                    (acc, s) => ({
+                        critical: acc.critical + s.summary.critical,
+                        high: acc.high + s.summary.high,
+                        medium: acc.medium + s.summary.medium,
+                        low: acc.low + s.summary.low,
+                        unknown: acc.unknown + s.summary.unknown,
+                        total: acc.total + s.summary.total,
+                    }),
+                    { critical: 0, high: 0, medium: 0, low: 0, unknown: 0, total: 0 },
+                ),
+                scans,
+            };
+            return {
+                content: JSON.stringify(report, null, 2),
+                fileName: `scans-export-${stamp}.json`,
+                contentType: 'application/json',
+            };
+        }
+
+        // CSV: flat vulnerability table with scan context columns.
+        const headers = [
+            'scan', 'target', 'project', 'scannedAt',
+            'cveId', 'severity', 'pkgName', 'installedVersion', 'fixedVersion',
+            'cvssScore', 'title', 'description', 'status',
+        ];
+        const rows: Array<Record<string, any>> = [];
+        for (const s of scans) {
+            if (s.vulnerabilities.length === 0) {
+                // Still record the scan so "no vulnerabilities" is visible.
+                rows.push({
+                    scan: s.id, target: s.target, project: s.project, scannedAt: s.createdAt,
+                    cveId: '', severity: '', pkgName: '', installedVersion: '', fixedVersion: '',
+                    cvssScore: '', title: '(취약점 없음)', description: '', status: '',
+                });
+                continue;
+            }
+            for (const v of s.vulnerabilities) {
+                rows.push({ scan: s.id, target: s.target, project: s.project, scannedAt: s.createdAt, ...v });
+            }
+        }
+
+        return {
+            content: this.toCsv(headers, rows),
+            fileName: `scans-export-${stamp}.csv`,
+            contentType: 'text/csv',
+        };
+    }
+
+    /** Delete multiple scans, skipping ones the user cannot access. */
+    async bulkDelete(ids: string[], currentUser?: RequestUser): Promise<{ deleted: number; failed: number }> {
+        const uniqueIds = Array.from(new Set(ids)).filter(Boolean);
+        let deleted = 0;
+        let failed = 0;
+        for (const id of uniqueIds) {
+            try {
+                await this.delete(id, currentUser);
+                deleted++;
+            } catch {
+                failed++;
+            }
+        }
+        return { deleted, failed };
+    }
+
     private toCsv(headers: string[], rows: Array<Record<string, any>>): string {
         const escape = (value: any) => {
             const str = value === null || value === undefined ? '' : String(value);

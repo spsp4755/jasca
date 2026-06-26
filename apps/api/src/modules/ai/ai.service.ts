@@ -726,71 +726,74 @@ export class AiService {
     }
 
     /**
-     * Remove all <tag>...</tag> blocks from `text` using case-insensitive
-     * string search.  Also removes unclosed opening tags (to end-of-string)
-     * and orphaned closing tags left over after block removal.
+     * Remove reasoning blocks for a single tag name using case-insensitive
+     * string search.  Driven by the CLOSING tag, which is the reliable anchor:
+     *
+     *   1. Find the first  </tag>.
+     *   2. Look back for the nearest <tag ...> before it.
+     *        - found    → remove from that opening tag .. closing tag
+     *                     (preserves any legitimate text before the block)
+     *        - NOT found → remove from the START of the string .. closing tag.
+     *          This is the critical case: reasoning models (DeepSeek-R1, QwQ)
+     *          have their chat template auto-prepend "<think>", so the model's
+     *          emitted content carries only "reasoning...</think>answer" with
+     *          NO opening tag.  Everything up to and including </tag> is then
+     *          chain-of-thought and must be dropped.
+     *   3. Repeat until no closing tags remain.
+     *   4. Finally, drop any leftover unclosed <tag ...> (model truncated mid
+     *      reasoning) by removing from it to end-of-string.
      */
     private stripXmlTag(text: string, tag: string): string {
-        const openPrefix = `<${tag}`;   // matches <think> or <think ...>
+        const openPrefix = `<${tag}`;     // matches <think> or <think ...>
         const closeStr   = `</${tag}>`;
         const cLen = closeStr.length;
 
         let result = text;
 
-        // Remove complete <tag>...</tag> pairs one by one until none remain.
-        for (;;) {
-            const lower  = result.toLowerCase();
-            const oIdx   = lower.indexOf(openPrefix);
-            if (oIdx === -1) break;
-
-            // The character immediately after the tag name must be '>', space,
-            // tab, or CR/LF — anything else means it is a different element
-            // (e.g. <thinker>) and we should not strip it.
-            const charAfter = lower[oIdx + openPrefix.length];
-            if (charAfter !== '>' && charAfter !== ' ' && charAfter !== '\t' &&
-                charAfter !== '\r' && charAfter !== '\n') {
-                // Not a reasoning tag.  Advance past this position and try again.
-                // To avoid infinite loops, break if there are no more candidates.
-                const nextIdx = lower.indexOf(openPrefix, oIdx + openPrefix.length);
-                if (nextIdx === -1) break;
-                // Rebuild result skipping ahead — simple: just try the portion after
-                // the false-positive tag name.
-                result = result.slice(0, oIdx) + '\x00' + result.slice(oIdx + openPrefix.length);
-                continue;
-            }
-
-            // Find the closing '>' of the opening tag.
-            const tagClose = lower.indexOf('>', oIdx);
-            if (tagClose === -1) {
-                // Malformed opening tag — remove to end of string.
-                result = result.slice(0, oIdx);
-                break;
-            }
-
-            // Find the matching closing tag.
-            const cIdx = lower.indexOf(closeStr, tagClose + 1);
-            if (cIdx === -1) {
-                // Unclosed tag — remove from opening tag to end of string.
-                result = result.slice(0, oIdx);
-                break;
-            }
-
-            // Remove the entire block (open tag + content + close tag).
-            result = result.slice(0, oIdx) + result.slice(cIdx + cLen);
-        }
-
-        // Clean up the placeholder we inserted for false-positive tag names.
-        result = result.replace(/\x00/g, openPrefix);
-
-        // Remove any orphaned closing tags (can appear after nested-block removal).
+        // Step 1-3: consume every closing tag.
         for (;;) {
             const lower = result.toLowerCase();
-            const idx   = lower.indexOf(closeStr);
-            if (idx === -1) break;
-            result = result.slice(0, idx) + result.slice(idx + cLen);
+            const cIdx  = lower.indexOf(closeStr);
+            if (cIdx === -1) break;
+
+            // Nearest opening tag strictly before this closing tag.
+            const oIdx = this.findOpeningTagBefore(lower, openPrefix, cIdx);
+            const removeFrom = oIdx === -1 ? 0 : oIdx;
+
+            result = result.slice(0, removeFrom) + result.slice(cIdx + cLen);
+        }
+
+        // Step 4: any remaining (unclosed) opening tag → strip to end.
+        const lowerFinal = result.toLowerCase();
+        const danglingOpen = this.findOpeningTagBefore(lowerFinal, openPrefix, lowerFinal.length);
+        if (danglingOpen !== -1) {
+            result = result.slice(0, danglingOpen);
         }
 
         return result;
+    }
+
+    /**
+     * Find the index of the last valid opening tag (`<think>` / `<think ...>`)
+     * that begins before `limit`.  A valid opening tag must be followed by
+     * `>`, whitespace, or `/` so that unrelated elements like `<thinker>` are
+     * not matched.  Returns -1 when none is found.
+     */
+    private findOpeningTagBefore(lower: string, openPrefix: string, limit: number): number {
+        let searchFrom = 0;
+        let found = -1;
+        for (;;) {
+            const idx = lower.indexOf(openPrefix, searchFrom);
+            if (idx === -1 || idx >= limit) break;
+
+            const after = lower[idx + openPrefix.length];
+            if (after === '>' || after === ' ' || after === '\t' ||
+                after === '\r' || after === '\n' || after === '/' || after === undefined) {
+                found = idx;
+            }
+            searchFrom = idx + openPrefix.length;
+        }
+        return found;
     }
 
     /**
