@@ -688,14 +688,14 @@ export class AiService {
      *
      * Reasoning models served via vLLM or SGLang (DeepSeek-R1, QwQ, etc.) may
      * embed chain-of-thought inside the assistant content field using XML-style
-     * tags.  The exact tag name and whether the server separates reasoning into
-     * a dedicated field (reasoning_content) or leaves it in content varies by
-     * model and server version, so we strip all known patterns here.
+     * tags.  Uses a string-indexOf approach rather than regex so that edge cases
+     * (large inputs, unusual whitespace, repeated blocks) are handled reliably.
      *
      * Patterns handled:
      *  - <think>...</think>  /  <thinking>...</thinking>
      *  - <analysis>...</analysis>  /  <reasoning>...</reasoning>
      *  - Unclosed opening tags (model cut off mid-reasoning)
+     *  - Orphaned closing tags left after nested-tag removal
      *  - Markdown fenced blocks (```thinking ... ```)
      *  - "Thinking: ..." prefix lines
      */
@@ -704,30 +704,10 @@ export class AiService {
 
         let cleaned = content;
 
-        // Tag names used by common reasoning models.
         const REASONING_TAGS = ['think', 'thinking', 'analysis', 'reasoning'];
 
         for (const tag of REASONING_TAGS) {
-            // Strip fully-closed blocks.  Loop until no more matches so that
-            // consecutive blocks (e.g. two <think>…</think> sections) are all
-            // removed in one call.
-            //   Opening  : <tag> or <tag ...attrs...>  — tag name word-boundary,
-            //              optional attributes, closing >
-            //   Closing  : </tag>  with optional trailing whitespace before >
-            //              (guards against </think > with a stray space)
-            const closedRe = new RegExp(
-                `<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}\\s*>`,
-                'gi',
-            );
-            let prev = '';
-            while (prev !== cleaned) {
-                prev = cleaned;
-                cleaned = cleaned.replace(closedRe, '');
-            }
-
-            // Strip unclosed opening tag to end-of-string (model cut off).
-            const unclosedRe = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*$`, 'gi');
-            cleaned = cleaned.replace(unclosedRe, '');
+            cleaned = this.stripXmlTag(cleaned, tag);
         }
 
         // Markdown-fenced reasoning blocks.
@@ -743,6 +723,74 @@ export class AiService {
         );
 
         return cleaned.trim();
+    }
+
+    /**
+     * Remove all <tag>...</tag> blocks from `text` using case-insensitive
+     * string search.  Also removes unclosed opening tags (to end-of-string)
+     * and orphaned closing tags left over after block removal.
+     */
+    private stripXmlTag(text: string, tag: string): string {
+        const openPrefix = `<${tag}`;   // matches <think> or <think ...>
+        const closeStr   = `</${tag}>`;
+        const cLen = closeStr.length;
+
+        let result = text;
+
+        // Remove complete <tag>...</tag> pairs one by one until none remain.
+        for (;;) {
+            const lower  = result.toLowerCase();
+            const oIdx   = lower.indexOf(openPrefix);
+            if (oIdx === -1) break;
+
+            // The character immediately after the tag name must be '>', space,
+            // tab, or CR/LF — anything else means it is a different element
+            // (e.g. <thinker>) and we should not strip it.
+            const charAfter = lower[oIdx + openPrefix.length];
+            if (charAfter !== '>' && charAfter !== ' ' && charAfter !== '\t' &&
+                charAfter !== '\r' && charAfter !== '\n') {
+                // Not a reasoning tag.  Advance past this position and try again.
+                // To avoid infinite loops, break if there are no more candidates.
+                const nextIdx = lower.indexOf(openPrefix, oIdx + openPrefix.length);
+                if (nextIdx === -1) break;
+                // Rebuild result skipping ahead — simple: just try the portion after
+                // the false-positive tag name.
+                result = result.slice(0, oIdx) + '\x00' + result.slice(oIdx + openPrefix.length);
+                continue;
+            }
+
+            // Find the closing '>' of the opening tag.
+            const tagClose = lower.indexOf('>', oIdx);
+            if (tagClose === -1) {
+                // Malformed opening tag — remove to end of string.
+                result = result.slice(0, oIdx);
+                break;
+            }
+
+            // Find the matching closing tag.
+            const cIdx = lower.indexOf(closeStr, tagClose + 1);
+            if (cIdx === -1) {
+                // Unclosed tag — remove from opening tag to end of string.
+                result = result.slice(0, oIdx);
+                break;
+            }
+
+            // Remove the entire block (open tag + content + close tag).
+            result = result.slice(0, oIdx) + result.slice(cIdx + cLen);
+        }
+
+        // Clean up the placeholder we inserted for false-positive tag names.
+        result = result.replace(/\x00/g, openPrefix);
+
+        // Remove any orphaned closing tags (can appear after nested-block removal).
+        for (;;) {
+            const lower = result.toLowerCase();
+            const idx   = lower.indexOf(closeStr);
+            if (idx === -1) break;
+            result = result.slice(0, idx) + result.slice(idx + cLen);
+        }
+
+        return result;
     }
 
     /**
