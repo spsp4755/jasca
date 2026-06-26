@@ -593,10 +593,19 @@ export class AiService {
 
                 const data = await response.json();
                 
-                // Handle chat completions response
-                if (isChatEndpoint && data.choices?.[0]?.message?.content) {
+                // Handle chat completions response.
+                // vLLM / SGLang reasoning models (DeepSeek-R1, QwQ, …) may put
+                // the chain-of-thought in a dedicated `reasoning_content` field
+                // and leave the final answer in `content`.  We deliberately
+                // ignore `reasoning_content` here; `stripReasoningContent` in
+                // the caller removes any leftover <think> blocks that the server
+                // did NOT separate into that field.
+                if (isChatEndpoint && data.choices?.[0]?.message !== undefined) {
+                    const msg = data.choices[0].message;
+                    const rawContent: string = (typeof msg.content === 'string' ? msg.content : '') ||
+                        (typeof msg.reasoning_content === 'string' && !msg.content ? '' : '');
                     return {
-                        content: data.choices[0].message.content,
+                        content: rawContent,
                         model: data.model || model,
                     };
                 }
@@ -676,23 +685,62 @@ export class AiService {
 
     /**
      * Remove model-internal reasoning blocks before storing or rendering AI output.
-     * Some private/vLLM-served reasoning models return <think>...</think> in the
-     * assistant message even when the UI should only show the final answer.
+     *
+     * Reasoning models served via vLLM or SGLang (DeepSeek-R1, QwQ, etc.) may
+     * embed chain-of-thought inside the assistant content field using XML-style
+     * tags.  The exact tag name and whether the server separates reasoning into
+     * a dedicated field (reasoning_content) or leaves it in content varies by
+     * model and server version, so we strip all known patterns here.
+     *
+     * Patterns handled:
+     *  - <think>...</think>  /  <thinking>...</thinking>
+     *  - <analysis>...</analysis>  /  <reasoning>...</reasoning>
+     *  - Unclosed opening tags (model cut off mid-reasoning)
+     *  - Markdown fenced blocks (```thinking ... ```)
+     *  - "Thinking: ..." prefix lines
      */
     private stripReasoningContent(content: string): string {
         if (!content) return content;
 
-        let cleaned = content
-            .replace(/<think(?:ing)?\b[^>]*>[\s\S]*?<\/think(?:ing)?>/gi, '')
-            .replace(/<analysis\b[^>]*>[\s\S]*?<\/analysis>/gi, '')
-            .replace(/```(?:thinking|think|analysis)\s*[\s\S]*?```/gi, '')
-            .replace(/^\s*(?:thinking|thought|reasoning)\s*:\s*[\s\S]*?(?=\n\s*\n|$)/i, '');
+        let cleaned = content;
 
-        // If a model emits an opening reasoning tag without closing it, avoid
-        // leaking the hidden chain-of-thought. Prefer an empty answer over
-        // showing internal reasoning.
-        cleaned = cleaned.replace(/<think(?:ing)?\b[^>]*>[\s\S]*$/gi, '');
-        cleaned = cleaned.replace(/<analysis\b[^>]*>[\s\S]*$/gi, '');
+        // Tag names used by common reasoning models.
+        const REASONING_TAGS = ['think', 'thinking', 'analysis', 'reasoning'];
+
+        for (const tag of REASONING_TAGS) {
+            // Strip fully-closed blocks.  Loop until no more matches so that
+            // consecutive blocks (e.g. two <think>…</think> sections) are all
+            // removed in one call.
+            //   Opening  : <tag> or <tag ...attrs...>  — tag name word-boundary,
+            //              optional attributes, closing >
+            //   Closing  : </tag>  with optional trailing whitespace before >
+            //              (guards against </think > with a stray space)
+            const closedRe = new RegExp(
+                `<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}\\s*>`,
+                'gi',
+            );
+            let prev = '';
+            while (prev !== cleaned) {
+                prev = cleaned;
+                cleaned = cleaned.replace(closedRe, '');
+            }
+
+            // Strip unclosed opening tag to end-of-string (model cut off).
+            const unclosedRe = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*$`, 'gi');
+            cleaned = cleaned.replace(unclosedRe, '');
+        }
+
+        // Markdown-fenced reasoning blocks.
+        cleaned = cleaned.replace(
+            /^```[ \t]*(?:think(?:ing)?|analysis|reasoning)[ \t]*\r?\n[\s\S]*?^```[ \t]*$/gim,
+            '',
+        );
+
+        // "Thinking:\n...\n\n" or "Thought:\n...\n\n" prefix blocks.
+        cleaned = cleaned.replace(
+            /^\s*(?:Thinking|Thought|Reasoning)\s*:[\s\S]*?(?=\n[ \t]*\n|\n#+[ \t]|$)/im,
+            '',
+        );
 
         return cleaned.trim();
     }
