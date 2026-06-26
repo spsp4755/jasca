@@ -602,13 +602,11 @@ export class TrivyScanService {
         operationId?: string,
         commands: TrivyExecutionEvidence['commands'] = [],
     ): Promise<string> {
-        // Extract the RPM payload to disk and scan it as a filesystem so Trivy's
-        // file-level analyzers (gobinary, jar, node, python, ...) inspect the
-        // binaries *inside* the package. The previous TRIVY_EXPERIMENTAL_RPM_ARCHIVE
-        // SBOM flow only recorded the RPM as a single package component and never
-        // looked inside it, so application RPMs that bundle a Go binary (e.g.
-        // grafana-alloy) reported 0 vulnerabilities even though the embedded
-        // binary contained hundreds of vulnerable Go modules.
+        // Step 1: Extract RPM payload and scan as a filesystem so Trivy's file-level
+        // analyzers (gobinary, jar, node, python, ...) inspect binaries *inside* the
+        // package. This is the primary path for application RPMs (e.g. grafana-alloy)
+        // that bundle a Go binary — the old TRIVY_EXPERIMENTAL_RPM_ARCHIVE SBOM flow
+        // treated the RPM as a single package component and missed those binaries.
         const extractDir = path.join(path.dirname(target.targetPath), 'rpm-extracted');
         await fs.promises.mkdir(extractDir, { recursive: true });
 
@@ -620,7 +618,19 @@ export class TrivyScanService {
 
         const fsTarget: PreparedScanTarget = { ...target, mode: 'fs', targetPath: extractDir, archiveType: null };
         const scanArgs = this.buildTrivyArgs(settings, fsTarget, options);
-        return this.runTrivy(this.trackCommand(commands, 'rpm-fs-scan', scanArgs, fsTarget), timeoutMs, operationId);
+        const fsOutput = await this.runTrivy(this.trackCommand(commands, 'rpm-fs-scan', scanArgs, fsTarget), timeoutMs, operationId);
+
+        // Step 2 (auto strategy only): If the fs scan returned no packages — which
+        // happens with OS/system RPMs that don't embed Go/Java/Python binaries but
+        // carry RPM package metadata — fall back to Syft SBOM on the *original* RPM
+        // file. Syft can extract the RPM package metadata and produce a CycloneDX SBOM
+        // that trivy sbom can then match against the vulnerability DB.
+        if (options.analysisStrategy !== 'direct' && this.shouldFallbackToSyft(fsOutput)) {
+            this.logger.warn(`RPM fs scan returned no packages. Falling back to Syft SBOM on original RPM. operationId=${operationId || 'n/a'} file=${path.basename(target.targetPath)}`);
+            return this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands);
+        }
+
+        return fsOutput;
     }
 
     private extractRpmPayload(
