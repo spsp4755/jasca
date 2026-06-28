@@ -22,6 +22,8 @@ import {
     Key,
     Scale,
     Book,
+    Menu,
+    X,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { authApi } from '@/lib/auth-api';
@@ -73,6 +75,7 @@ export default function DashboardLayout({
     const router = useRouter();
     const searchParams = useSearchParams();
     const [collapsed, setCollapsed] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const { user, isAuthenticated, refreshToken, logout, setTokens, setUser } = useAuthStore();
     const hasMounted = useHasMounted();
 
@@ -151,13 +154,36 @@ export default function DashboardLayout({
         return null;
     }
 
+    const renderNavigation = (isCollapsed: boolean, onNavigate?: () => void) => (
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
+            {navigation.map((item) => {
+                const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
+                return (
+                    <Link
+                        key={item.name}
+                        href={item.href}
+                        onClick={onNavigate}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
+                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                            : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700/50'
+                            }`}
+                        title={isCollapsed ? item.name : undefined}
+                    >
+                        <item.icon className="h-5 w-5 flex-shrink-0" />
+                        {!isCollapsed && <span>{item.name}</span>}
+                    </Link>
+                );
+            })}
+        </nav>
+    );
+
     return (
         <ToastProvider>
             <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
                 {/* Sidebar */}
                 <aside
                     className={`${collapsed ? 'w-20' : 'w-64'
-                        } bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 flex flex-col`}
+                        } hidden md:flex flex-shrink-0 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 flex-col`}
                 >
                     {/* Logo */}
                     <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-200 dark:border-slate-700">
@@ -170,25 +196,7 @@ export default function DashboardLayout({
                     </div>
 
                     {/* Navigation */}
-                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
-                        {navigation.map((item) => {
-                            const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
-                            return (
-                                <Link
-                                    key={item.name}
-                                    href={item.href}
-                                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
-                                        ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700/50'
-                                        }`}
-                                    title={collapsed ? item.name : undefined}
-                                >
-                                    <item.icon className="h-5 w-5 flex-shrink-0" />
-                                    {!collapsed && <span>{item.name}</span>}
-                                </Link>
-                            );
-                        })}
-                    </nav>
+                    {renderNavigation(collapsed)}
 
                     {/* Recent Projects Section */}
                     {!collapsed && (
@@ -216,17 +224,55 @@ export default function DashboardLayout({
                     </div>
                 </aside>
 
+                {mobileMenuOpen && (
+                    <div className="fixed inset-0 z-50 md:hidden">
+                        <button
+                            type="button"
+                            aria-label="모바일 메뉴 닫기"
+                            className="absolute inset-0 bg-slate-900/40"
+                            onClick={() => setMobileMenuOpen(false)}
+                        />
+                        <aside className="relative flex h-full w-72 max-w-[85vw] flex-col bg-white shadow-xl dark:bg-slate-800">
+                            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+                                <div className="flex items-center gap-3">
+                                    <Shield className="h-7 w-7 text-blue-600 flex-shrink-0" />
+                                    <span className="text-lg font-bold text-slate-900 dark:text-white">JASCA</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+                                    aria-label="모바일 메뉴 닫기"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                            {renderNavigation(false, () => setMobileMenuOpen(false))}
+                        </aside>
+                    </div>
+                )}
+
                 {/* Main content */}
-                <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
                     {/* Header */}
-                    <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-6">
-                        <div className="flex flex-col">
-                            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-                                {navigation.find((n) => pathname?.startsWith(n.href))?.name || '대시보드'}
-                            </h1>
-                            <Breadcrumb className="mt-0.5" />
+                    <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 px-4 sm:px-6">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setMobileMenuOpen(true)}
+                                className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 md:hidden"
+                                aria-label="모바일 메뉴 열기"
+                            >
+                                <Menu className="h-5 w-5" />
+                            </button>
+                            <div className="min-w-0 flex flex-col">
+                                <h1 className="truncate text-lg font-semibold text-slate-900 dark:text-white">
+                                    {navigation.find((n) => pathname?.startsWith(n.href))?.name || '대시보드'}
+                                </h1>
+                                <Breadcrumb className="mt-0.5" />
+                            </div>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-shrink-0 items-center gap-2 sm:gap-4">
                             {/* User info */}
                             {user && (
                                 <Link
@@ -236,7 +282,7 @@ export default function DashboardLayout({
                                     <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                                         <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                                     </div>
-                                    <span className="text-sm font-medium">{user.name || user.email}</span>
+                                    <span className="hidden text-sm font-medium sm:inline">{user.name || user.email}</span>
                                 </Link>
                             )}
                             {/* Admin link - only for admin users */}
@@ -246,7 +292,7 @@ export default function DashboardLayout({
                                     className="flex items-center gap-2 px-3 py-2 text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 transition-colors rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 border border-purple-200 dark:border-purple-800"
                                 >
                                     <Settings className="h-4 w-4" />
-                                    <span>관리자</span>
+                                    <span className="hidden sm:inline">관리자</span>
                                 </Link>
                             )}
                             {/* Logout button */}
@@ -255,7 +301,7 @@ export default function DashboardLayout({
                                 className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:text-red-600 dark:text-slate-300 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
                             >
                                 <LogOut className="h-4 w-4" />
-                                <span>로그아웃</span>
+                                <span className="hidden sm:inline">로그아웃</span>
                             </button>
                         </div>
                     </header>
@@ -267,4 +313,3 @@ export default function DashboardLayout({
         </ToastProvider>
     );
 }
-
