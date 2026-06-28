@@ -22,6 +22,7 @@ interface ToastStore {
 // Simple in-memory store
 let toasts: Toast[] = [];
 let listeners: ((toasts: Toast[]) => void)[] = [];
+let toastCounter = 0;
 
 const notify = () => {
     listeners.forEach(listener => listener(toasts));
@@ -29,7 +30,8 @@ const notify = () => {
 
 export const toast = {
     show: (toast: Omit<Toast, 'id'>) => {
-        const id = Date.now().toString();
+        toastCounter = (toastCounter + 1) % Number.MAX_SAFE_INTEGER;
+        const id = `${Date.now()}-${toastCounter}`;
         toasts = [...toasts, { ...toast, id }];
         notify();
         
@@ -167,4 +169,3 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         </>
     );
 }
-

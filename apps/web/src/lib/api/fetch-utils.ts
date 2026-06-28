@@ -57,14 +57,25 @@ export async function downloadWithAuth(url: string, fallbackName: string): Promi
         throw new Error(error || `HTTP ${res.status}: ${res.statusText}`);
     }
 
-    let fileName = fallbackName;
-    const disposition = res.headers.get('Content-Disposition');
-    if (disposition) {
-        const match = /filename="?([^"]+)"?/.exec(disposition);
-        if (match?.[1]) fileName = match[1];
-    }
+    const fileName = getDownloadFileName(res.headers.get('Content-Disposition'), fallbackName);
 
     triggerBlobDownload(await res.blob(), fileName);
+}
+
+function getDownloadFileName(disposition: string | null, fallbackName: string): string {
+    if (!disposition) return fallbackName;
+
+    const encodedMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+    if (encodedMatch?.[1]) {
+        try {
+            return decodeURIComponent(encodedMatch[1]);
+        } catch {
+            return encodedMatch[1];
+        }
+    }
+
+    const match = /filename="?([^";]+)"?/i.exec(disposition);
+    return match?.[1] || fallbackName;
 }
 
 /**
@@ -87,12 +98,7 @@ export async function downloadPostWithAuth(
         throw new Error(error || `HTTP ${res.status}: ${res.statusText}`);
     }
 
-    let fileName = fallbackName;
-    const disposition = res.headers.get('Content-Disposition');
-    if (disposition) {
-        const match = /filename="?([^"]+)"?/.exec(disposition);
-        if (match?.[1]) fileName = match[1];
-    }
+    const fileName = getDownloadFileName(res.headers.get('Content-Disposition'), fallbackName);
 
     triggerBlobDownload(await res.blob(), fileName);
 }
@@ -104,6 +110,8 @@ function triggerBlobDownload(blob: Blob, fileName: string): void {
     link.download = fileName;
     document.body.appendChild(link);
     link.click();
-    link.remove();
-    window.URL.revokeObjectURL(objectUrl);
+    window.setTimeout(() => {
+        link.remove();
+        window.URL.revokeObjectURL(objectUrl);
+    }, 1000);
 }

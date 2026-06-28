@@ -43,6 +43,7 @@ import { useAiExecution } from '@/hooks/use-ai-execution';
 import { useAiStore } from '@/stores/ai-store';
 import { downloadPostWithAuth, fetchWithAuth } from '@/lib/api/fetch-utils';
 import { CheckSquare, FileJson } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 // ============ Helper Functions ============
 
@@ -329,7 +330,7 @@ export default function ScansPage() {
         });
         
         return scans;
-    }, [data?.results, searchQuery, statusFilter, sourceFilter, sortField, sortDirection]);
+    }, [data?.results, searchQuery, statusFilter, sourceFilter, severityFilter, dateFilter, sortField, sortDirection]);
 
     // Paginated data
     const paginatedScans = useMemo(() => {
@@ -338,6 +339,14 @@ export default function ScansPage() {
     }, [filteredScans, currentPage, pageSize]);
 
     const totalPages = Math.ceil(filteredScans.length / pageSize);
+    const paginatedScanIds = useMemo(
+        () => paginatedScans.map((scan: any) => scan.id),
+        [paginatedScans],
+    );
+    const selectedPageCount = useMemo(
+        () => paginatedScanIds.filter(id => bulkSelectedIds.includes(id)).length,
+        [bulkSelectedIds, paginatedScanIds],
+    );
 
     // Statistics
     const statistics = useMemo(() => {
@@ -483,10 +492,12 @@ export default function ScansPage() {
     };
 
     const handleSelectAll = () => {
-        if (bulkSelectedIds.length === paginatedScans.length) {
-            setBulkSelectedIds([]);
+        if (paginatedScanIds.length === 0) return;
+
+        if (selectedPageCount === paginatedScanIds.length) {
+            setBulkSelectedIds(bulkSelectedIds.filter(id => !paginatedScanIds.includes(id)));
         } else {
-            setBulkSelectedIds(paginatedScans.map((scan: any) => scan.id));
+            setBulkSelectedIds(Array.from(new Set([...bulkSelectedIds, ...paginatedScanIds])));
         }
     };
 
@@ -512,6 +523,7 @@ export default function ScansPage() {
                 { ids: bulkSelectedIds, format },
                 `scans-export.${format}`,
             );
+            toast.success('다운로드 시작', `선택한 ${bulkSelectedIds.length}개의 스캔을 ${format.toUpperCase()} 파일로 다운로드합니다.`);
         } catch (err: any) {
             setBulkError(err?.message || '다운로드에 실패했습니다.');
         } finally {
@@ -1051,18 +1063,18 @@ export default function ScansPage() {
                 </div>
             ) : viewMode === 'table' ? (
                 /* Table View */
-                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                    <table className="w-full">
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto">
+                    <table className="w-full min-w-[980px]">
                         <thead className="bg-slate-50 dark:bg-slate-700/50">
                             <tr>
                                 {bulkSelectMode && (
                                     <th className="px-4 py-3 text-left w-12">
                                         <input
                                             type="checkbox"
-                                            checked={paginatedScans.length > 0 && bulkSelectedIds.length === paginatedScans.length}
+                                            checked={paginatedScanIds.length > 0 && selectedPageCount === paginatedScanIds.length}
                                             ref={(el) => {
                                                 if (el) {
-                                                    el.indeterminate = bulkSelectedIds.length > 0 && bulkSelectedIds.length < paginatedScans.length;
+                                                    el.indeterminate = selectedPageCount > 0 && selectedPageCount < paginatedScanIds.length;
                                                 }
                                             }}
                                             onChange={handleSelectAll}
