@@ -3,6 +3,7 @@ param(
     [string]$BundleName = "",
     [string]$OutputDir = "dist\offline-bundle",
     [string]$DockerContext = $env:DOCKER_CONTEXT,
+    [string]$Platform = $(if ($env:TARGET_PLATFORM) { $env:TARGET_PLATFORM } else { "linux/amd64" }),
     [switch]$SkipBuild,
     [switch]$KeepTar
 )
@@ -41,6 +42,25 @@ function Get-DockerArgs {
     }
 
     return $Arguments
+}
+
+function Assert-ImagePlatform {
+    param(
+        [Parameter(Mandatory = $true)][string]$Image,
+        [Parameter(Mandatory = $true)][string]$ExpectedPlatform
+    )
+
+    $inspectArgs = Get-DockerArgs @("image", "inspect", $Image, "--format", "{{.Os}}/{{.Architecture}}")
+    $actualPlatform = (& docker @inspectArgs).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to inspect Docker image platform: $Image"
+    }
+
+    if ($actualPlatform -ne $ExpectedPlatform) {
+        throw "Docker image platform mismatch. Expected $ExpectedPlatform, got $actualPlatform. Rebuild with -Platform $ExpectedPlatform."
+    }
+
+    Write-Host "Verified Docker image platform: $actualPlatform"
 }
 
 function Compress-TarGzip {
@@ -90,11 +110,13 @@ New-Item -ItemType Directory -Force -Path $BundlePath | Out-Null
 Push-Location $ProjectRoot
 try {
     if (-not $SkipBuild) {
-        Write-Host "Building Docker image: $ImageName"
-        Invoke-Native docker (Get-DockerArgs @("build", "-f", "docker/monolith/Dockerfile", "-t", $ImageName, "."))
+        Write-Host "Building Docker image: $ImageName ($Platform)"
+        Invoke-Native docker (Get-DockerArgs @("build", "--platform", $Platform, "-f", "docker/monolith/Dockerfile", "-t", $ImageName, "."))
     } else {
         Write-Host "Skipping Docker build. Using existing image: $ImageName"
     }
+
+    Assert-ImagePlatform -Image $ImageName -ExpectedPlatform $Platform
 
     Write-Host "Saving Docker image to $ImageTar"
     Invoke-Native docker (Get-DockerArgs @("save", $ImageName, "-o", $ImageTar))
@@ -121,6 +143,7 @@ try {
         apiPort = 3001
         includesTrivyCli = $true
         dockerContext = $DockerContext
+        targetPlatform = $Platform
         trivyDbPathInImage = "/app/trivy-db"
         supportsHostTrivyCacheMount = $true
         notes = @(

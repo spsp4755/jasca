@@ -7,8 +7,8 @@
 - `jasca-offline.tar.gz`: Docker 이미지 아카이브
 - `start.sh`: Linux 기본 실행 스크립트
 - `start.ps1`: Windows PowerShell 기본 실행 스크립트
-- `deploy-existing-layout.sh`: host-path 기반 Linux 배포 스크립트
-- `deploy-existing-layout.env.example`: 운영 환경 설정 템플릿
+- `deploy-existing-layout.sh`: 기존 `/app/jasca` host-path 구조용 Linux 배포 스크립트
+- `deploy-existing-layout.env.example`: 운영 환경 설정 예시
 - `manifest.json`: 번들 메타데이터
 - `README-OFFLINE.md`: 이 문서
 
@@ -16,7 +16,9 @@ Docker 이미지는 PostgreSQL, Redis, JASCA API, JASCA Web, Trivy CLI, Syft CLI
 
 JASCA의 직접 스캔은 폐쇄망 업로드 파일 분석 전용입니다. AWS, 클라우드 계정, 원격 Kubernetes 클러스터처럼 외부 API 연결이 필요한 Trivy 대상은 운영 범위에서 제외합니다.
 
-## 온라인 빌드 장비에서 번들 생성
+## x86_64 서버용 이미지
+
+배포 서버가 x86_64이면 Docker 플랫폼은 `linux/amd64`여야 합니다. 이 번들의 빌드 스크립트는 기본값을 `linux/amd64`로 고정하고, 이미지 저장 전에 실제 아키텍처를 검사합니다.
 
 Windows PowerShell:
 
@@ -24,15 +26,19 @@ Windows PowerShell:
 .\script\build-offline-bundle.ps1
 ```
 
+명시적으로 지정하려면:
+
+```powershell
+.\script\build-offline-bundle.ps1 -Platform linux/amd64
+```
+
 Linux 또는 macOS:
 
 ```bash
-sh ./script/build-offline-bundle.sh
+TARGET_PLATFORM=linux/amd64 sh ./script/build-offline-bundle.sh
 ```
 
-생성된 번들은 `dist/offline-bundle/` 아래에 만들어집니다. 생성된 폴더 또는 `*-bundle.tar.gz` 파일을 폐쇄망으로 반입하면 됩니다.
-
-Trivy DB가 마운트되지 않으면 파일 직접 스캔 시 `Trivy vulnerability DB is not available` 오류가 표시됩니다. 이 경우 Trivy 캐시 경로를 확인해 다시 마운트하세요.
+Apple Silicon 또는 ARM 장비에서 빌드하더라도 위 설정을 사용하면 폐쇄망 x86_64 서버에서 실행 가능한 amd64 이미지를 생성합니다. 단, Docker Desktop 또는 Docker 엔진에서 amd64 에뮬레이션이 가능해야 합니다.
 
 ## 폐쇄망 서버의 기존 Trivy 캐시 사용
 
@@ -63,12 +69,13 @@ trivy image --download-java-db-only
 
 ## 기존 `/app/jasca` 구조로 배포
 
-기존 운영 서버처럼 `/app/jasca/pgdata`, `/app/jasca/redis`를 host-path로 사용하고 웹 포트 `3005`를 유지하려면 아래 절차를 사용하세요.
+기존 운영 서버처럼 `/app/jasca/pgdata`, `/app/jasca/redis`를 host-path로 사용하고 포트 `3005`를 유지하려면 아래 절차를 사용하세요.
 
 ```bash
 mkdir -p /app/jasca
-tar -xzf jasca-offline-manual-advisory-20260619-bundle.tar.gz
-cd jasca-offline-manual-advisory-20260619
+cd /app/jasca
+tar -xzf jasca-offline-v0.2.x-bundle.tar.gz
+cd jasca-offline-v0.2.x
 cp deploy-existing-layout.env.example deploy-existing-layout.env
 vi deploy-existing-layout.env
 chmod +x deploy-existing-layout.sh
@@ -76,7 +83,7 @@ chmod +x deploy-existing-layout.sh
 docker logs -f jasca
 ```
 
-`deploy-existing-layout.env`에서 최소한 아래 값은 운영 환경에 맞게 수정해야 합니다.
+`deploy-existing-layout.env`에서 최소한 아래 값을 운영 환경에 맞게 수정해야 합니다.
 
 ```bash
 CORS_ORIGIN=https://your-jasca.example.com
@@ -92,9 +99,46 @@ TRIVY_RPM_OS_VERSION=8
 
 기존 배포를 교체하는 경우 `DB_PASSWORD`는 기존 PostgreSQL 데이터 디렉터리와 호환되는 값이어야 합니다. 현재 서버에서 이미 사용 중인 DB 비밀번호가 있다면 같은 값을 `deploy-existing-layout.env`에 넣으세요.
 
-v0.2.4부터는 수동 취약점 Advisory 기능을 위해 `ManualAdvisory` 테이블이 추가됩니다. 기존 데이터를 유지하려면 `/app/jasca/pgdata`, `/app/jasca/redis`를 삭제하지 말고 백업 후 그대로 마운트하세요.
+## 대용량 파일 업로드
 
-이 스크립트는 내부적으로 다음과 같은 Docker 실행 구조를 사용합니다.
+브라우저에서 직접 Trivy 스캔 파일을 업로드할 때 큰 RPM/압축 파일을 검사해야 하면 아래 값을 늘리세요.
+
+```bash
+TRIVY_UPLOAD_MAX_BYTES=2147483648
+```
+
+사내 reverse proxy, L7, WAF를 `https://jasca...` 앞단에 두고 있다면 해당 장비의 업로드 제한도 별도로 2GB 이상으로 올려야 합니다. 예를 들어 Nginx는 `client_max_body_size`, Apache는 `LimitRequestBody` 설정을 확인합니다.
+
+## Syft SBOM 보강 검사
+
+JASCA는 폐쇄망에서 업로드 파일을 먼저 Trivy로 직접 검사하고, 결과가 비어 있거나 패키지 식별이 부족하면 Syft로 SBOM을 생성한 뒤 `trivy sbom`으로 재검사할 수 있습니다. 이 기능은 컨테이너 내부의 Syft 바이너리를 사용하므로 런타임 인터넷 연결이 필요하지 않습니다.
+
+검사 화면의 `Analysis strategy`는 다음 기준으로 사용하세요.
+
+- `폐쇄망 자동 보강`: 기본값입니다. Trivy 직접 검사 결과가 부족하면 Syft SBOM 경유 검사를 자동 수행합니다.
+- `Trivy 직접 검사만`: 기존 Trivy 명령 결과만 확인하고 싶을 때 사용합니다.
+- `Syft SBOM 우선`: Alloy 같은 소스/릴리즈 압축본에서 직접 검사 누락이 의심될 때 사용합니다.
+
+## Standalone RPM 검사
+
+Standalone RPM 파일을 업로드해서 스캔할 때는 취약점 DB 매칭을 위해 RPM이 어느 배포판/버전 기준인지 알아야 합니다. 업로드 화면에서 직접 입력할 수 있고, 운영 기본값은 `deploy-existing-layout.env`에서 지정할 수 있습니다.
+
+```bash
+TRIVY_RPM_OS_FAMILY=redhat
+TRIVY_RPM_OS_VERSION=8
+```
+
+예시는 `redhat/8`, `redhat/9`, `rocky/9`, `alma/9`, `centos/7`처럼 운영 환경에 맞춰 지정하세요.
+
+## 롤백
+
+새 이미지 배포 전 기존 이미지를 태그로 남겨두면 빠르게 롤백할 수 있습니다.
+
+```bash
+docker tag jasca-offline:latest jasca-offline:rollback-before-upgrade
+```
+
+문제가 발생하면 기존 컨테이너를 내리고 롤백 태그로 다시 실행합니다.
 
 ```bash
 docker stop jasca || true
@@ -113,128 +157,5 @@ docker run -d \
   -v /app/jasca/redis:/var/lib/redis \
   -v /etc/hosts:/etc/hosts:ro \
   -v /root/.cache/trivy:/app/trivy-db:ro \
-  jasca-offline:latest
-```
-
-Trivy 캐시 위치가 다르면 `deploy-existing-layout.env`에서 아래 값만 변경하면 됩니다.
-
-```bash
-TRIVY_CACHE_MOUNT=/app/trivy-cache
-```
-
-브라우저에서 직접 Trivy 스캔 파일을 업로드할 때 큰 RPM/압축 파일을 검사해야 하면 아래 값을 늘리세요.
-
-```bash
-TRIVY_UPLOAD_MAX_BYTES=2147483648       # 2GB
-```
-
-사내 reverse proxy나 L7 장비를 `https://jasca...` 앞단에 두고 있다면 해당 장비의 업로드 제한도 별도로 2GB 이상으로 올려야 합니다. 예를 들어 Nginx는 `client_max_body_size`, Apache는 `LimitRequestBody` 설정을 확인합니다.
-
-JASCA는 폐쇄망에서 업로드 파일을 먼저 Trivy로 직접 검사하고, 결과가 비어 있거나 패키지 식별이 부족하면 Syft로 SBOM을 생성한 뒤 `trivy sbom`으로 재검사할 수 있습니다. 이 기능은 컨테이너 내부의 Syft 바이너리를 사용하므로 런타임 인터넷 연결이 필요하지 않습니다.
-
-```bash
-SYFT_BINARY_PATH=syft
-```
-
-검사 화면의 `Analysis strategy`는 다음 기준으로 사용하세요.
-
-- `폐쇄망 자동 보강`: 기본값입니다. Trivy 직접 검사 결과가 부족하면 Syft SBOM 경유 검사를 자동 수행합니다.
-- `Trivy 직접 검사만`: 기존 Trivy 명령 결과만 확인하고 싶을 때 사용합니다.
-- `Syft SBOM 우선`: Alloy 같은 소스/릴리즈 압축본에서 직접 검사 누락이 의심될 때 사용합니다.
-
-Standalone RPM 파일을 업로드해서 스캔할 때는 취약점 DB 매칭을 위해 RPM이 어느 배포판/버전 기준인지 알아야 합니다. 업로드 화면에서 직접 입력할 수 있고, 운영 기본값은 `deploy-existing-layout.env`에서 지정할 수 있습니다.
-
-```bash
-TRIVY_RPM_OS_FAMILY=redhat   # 예: redhat, rocky, alma, centos
-TRIVY_RPM_OS_VERSION=8       # 예: 8, 9
-```
-
-사내 AI/vLLM 서버가 컨테이너 안에서만 DNS 해석이 안 되는 경우에는 먼저 서버의 `/etc/hosts`에 등록하고 `HOSTS_MOUNT=/etc/hosts`를 유지하세요. 서버 hosts 파일을 건드리기 어렵다면 아래처럼 Docker `--add-host` 항목을 env로 넘길 수 있습니다.
-
-```bash
-EXTRA_HOSTS=ai-gateway.internal:10.10.10.20,vllm.internal:10.10.10.21
-```
-
-컨테이너 안에서 직접 확인하려면 다음처럼 테스트합니다.
-
-```bash
-docker exec -it jasca sh -lc 'curl -v --max-time 10 http://vllm.internal:8000/v1/models'
-```
-
-API 포트를 임시 진단용으로 호스트에 노출해야 한다면 아래 값을 설정하세요.
-
-```bash
-EXPOSE_API_PORT=1
-```
-
-## 기본 Linux 실행
-
-Docker volume 기반 기본 실행을 사용할 수도 있습니다.
-
-```bash
-chmod +x start.sh
-JWT_SECRET=replace-with-a-long-random-secret DB_PASSWORD=replace-with-db-password ./start.sh
-```
-
-포트를 변경하려면 다음처럼 실행합니다.
-
-```bash
-WEB_PORT=8080 API_PORT=8081 JWT_SECRET=replace-with-a-long-random-secret DB_PASSWORD=replace-with-db-password ./start.sh
-```
-
-## Windows 실행
-
-```powershell
-.\start.ps1 -JwtSecret "replace-with-a-long-random-secret" -DbPassword "replace-with-db-password"
-```
-
-포트를 변경하려면 다음처럼 실행합니다.
-
-```powershell
-.\start.ps1 -WebPort 8080 -ApiPort 8081 -JwtSecret "replace-with-a-long-random-secret" -DbPassword "replace-with-db-password"
-```
-
-## 포트
-
-- Web: `http://localhost:3000`
-- API: `http://localhost:3001`
-- Swagger: `http://localhost:3001/api/docs`
-
-기존 `/app/jasca` 배포 스크립트의 기본 웹 포트는 `3005`입니다.
-
-## 데이터 보존
-
-기본 실행 스크립트는 다음 Docker volume을 보존합니다.
-
-- `jasca_postgres_data`
-- `jasca_redis_data`
-
-기존 `/app/jasca` 배포 스크립트는 다음 host-path를 보존합니다.
-
-- `/app/jasca/pgdata`
-- `/app/jasca/redis`
-
-스크립트는 실행 중인 컨테이너만 교체하고, 데이터 디렉터리나 volume은 삭제하지 않습니다.
-
-## 로그 확인
-
-```bash
-docker logs -f jasca
-```
-
-## 수동 실행 예시
-
-```bash
-gzip -dc jasca-offline.tar.gz | docker load
-docker volume create jasca_postgres_data
-docker volume create jasca_redis_data
-docker run -d --name jasca --restart unless-stopped \
-  -p 3000:3000 \
-  -p 3001:3001 \
-  -e JWT_SECRET="replace-with-a-long-random-secret" \
-  -e DB_PASSWORD="replace-with-db-password" \
-  -v jasca_postgres_data:/var/lib/postgresql/data \
-  -v jasca_redis_data:/var/lib/redis \
-  -v /root/.cache/trivy:/app/trivy-db:ro \
-  jasca-offline:latest
+  jasca-offline:rollback-before-upgrade
 ```

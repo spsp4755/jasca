@@ -7,6 +7,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-dist/offline-bundle}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 KEEP_TAR="${KEEP_TAR:-0}"
 DOCKER_CONTEXT="${DOCKER_CONTEXT:-}"
+TARGET_PLATFORM="${TARGET_PLATFORM:-linux/amd64}"
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PROJECT_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
@@ -37,11 +38,19 @@ mkdir -p "$BUNDLE_PATH"
 cd "$PROJECT_ROOT"
 
 if [ "$SKIP_BUILD" != "1" ]; then
-    echo "Building Docker image: $IMAGE_NAME"
-    docker_cmd build -f docker/monolith/Dockerfile -t "$IMAGE_NAME" .
+    echo "Building Docker image: $IMAGE_NAME ($TARGET_PLATFORM)"
+    docker_cmd build --platform "$TARGET_PLATFORM" -f docker/monolith/Dockerfile -t "$IMAGE_NAME" .
 else
     echo "Skipping Docker build. Using existing image: $IMAGE_NAME"
 fi
+
+ACTUAL_PLATFORM="$(docker_cmd image inspect "$IMAGE_NAME" --format '{{.Os}}/{{.Architecture}}')"
+if [ "$ACTUAL_PLATFORM" != "$TARGET_PLATFORM" ]; then
+    echo "Docker image platform mismatch. Expected $TARGET_PLATFORM, got $ACTUAL_PLATFORM." >&2
+    echo "Rebuild with TARGET_PLATFORM=$TARGET_PLATFORM." >&2
+    exit 1
+fi
+echo "Verified Docker image platform: $ACTUAL_PLATFORM"
 
 echo "Saving Docker image to $IMAGE_TAR"
 docker_cmd save "$IMAGE_NAME" -o "$IMAGE_TAR"
@@ -71,6 +80,7 @@ cat > "$BUNDLE_PATH/manifest.json" <<EOF
   "apiPort": 3001,
   "includesTrivyCli": true,
   "dockerContext": "$DOCKER_CONTEXT",
+  "targetPlatform": "$TARGET_PLATFORM",
   "trivyDbPathInImage": "/app/trivy-db",
   "supportsHostTrivyCacheMount": true,
   "notes": [
