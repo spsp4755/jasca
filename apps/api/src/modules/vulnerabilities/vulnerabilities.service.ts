@@ -179,7 +179,12 @@ export class VulnerabilitiesService {
             assertProjectAccess(currentUser, vuln.scanResult.project);
         }
 
-        return vuln;
+        const vulnPortalIntel = await this.prisma.vulnPortalIntel.findMany({
+            where: { cveId: vuln.vulnerability.cveId },
+            orderBy: [{ type: 'asc' }, { lastSyncedAt: 'desc' }],
+        });
+
+        return { ...vuln, vulnPortalIntel };
     }
 
     async findByCveId(cveId: string, currentUser?: RequestUser) {
@@ -210,7 +215,12 @@ export class VulnerabilitiesService {
             throw new NotFoundException('CVE not found');
         }
 
-        return vuln;
+        const vulnPortalIntel = await this.prisma.vulnPortalIntel.findMany({
+            where: { cveId },
+            orderBy: [{ type: 'asc' }, { lastSyncedAt: 'desc' }],
+        });
+
+        return { ...vuln, vulnPortalIntel };
     }
 
     async updateStatus(id: string, status: VulnStatus, userId: string, userRole?: string, currentUser?: RequestUser) {
