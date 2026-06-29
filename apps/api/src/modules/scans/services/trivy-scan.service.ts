@@ -42,6 +42,11 @@ interface PreparedScanTarget {
     archiveType?: ArchiveType | null;
 }
 
+interface TrivyScanExecution {
+    stdout: string;
+    target: PreparedScanTarget;
+}
+
 interface TrivyExecutionEvidence {
     executedBy: 'jasca';
     completed: true;
@@ -126,13 +131,15 @@ export class TrivyScanService {
             this.logger.log(`Trivy scan prepared. operationId=${operationId || 'n/a'} mode=${scanTarget.mode} file=${path.basename(filePath)} size=${fileStats.size}B prepareMs=${Date.now() - startedAt}`);
 
             const commands: TrivyExecutionEvidence['commands'] = [];
-            const stdout = scanTarget.mode === 'rpm'
+            const execution = scanTarget.mode === 'rpm'
                 ? await this.runRpmArchiveScan(settings, scanTarget, normalizedOptions, timeoutMs, operationId, commands)
                 : await this.runScanWithStrategy(settings, scanTarget, normalizedOptions, timeoutMs, operationId, commands);
+            const finalTarget = execution.target;
+            const stdout = execution.stdout;
 
             this.assertNotCancelled(operationId);
             const completedAt = Date.now();
-            this.logger.log(`Trivy scan completed. operationId=${operationId || 'n/a'} mode=${scanTarget.mode} durationMs=${completedAt - startedAt}`);
+            this.logger.log(`Trivy scan completed. operationId=${operationId || 'n/a'} mode=${finalTarget.mode} durationMs=${completedAt - startedAt}`);
 
             const result = JSON.parse(stdout);
             this.attachExecutionEvidence(result, {
@@ -143,9 +150,9 @@ export class TrivyScanService {
                 durationMs: completedAt - startedAt,
                 originalFileName: path.basename(filePath),
                 fileSizeBytes: fileStats.size,
-                scanMode: scanTarget.mode,
-                archiveType: scanTarget.archiveType,
-                targetKind: this.getTargetKind(scanTarget),
+                scanMode: finalTarget.mode,
+                archiveType: finalTarget.archiveType,
+                targetKind: this.getTargetKind(finalTarget),
                 cacheDir: settings.cacheDir,
                 options: {
                     scanners: this.effectiveScanners(settings, normalizedOptions),
@@ -190,8 +197,8 @@ export class TrivyScanService {
                 );
             }
 
-            this.logger.error(`Trivy scan failed: ${(error as Error).message}`, (error as Error).stack);
-            throw new ServiceUnavailableException(`Trivy scan failed: ${(error as Error).message}`);
+            this.logger.error(`Trivy scan failed: ${(error as Error).message}${details ? `\n${this.truncateLog(details)}` : ''}`, (error as Error).stack);
+            throw new ServiceUnavailableException(`Trivy scan failed: ${(error as Error).message}${details ? `: ${this.truncateLog(details)}` : ''}`);
         } finally {
             this.cleanupUploadDir(uploadDir);
         }
@@ -363,7 +370,7 @@ export class TrivyScanService {
         timeoutMs: number,
         operationId: string | undefined,
         commands: TrivyExecutionEvidence['commands'],
-    ): Promise<string> {
+    ): Promise<TrivyScanExecution> {
         const strategy = options.analysisStrategy || 'auto';
         const supportsSyft = ['fs', 'rootfs', 'repo'].includes(target.mode);
 
@@ -371,21 +378,76 @@ export class TrivyScanService {
             if (!supportsSyft) {
                 throw new BadRequestException('Syft SBOM strategy supports fs, rootfs, and repo scan modes only.');
             }
-            return this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands);
+            return {
+                stdout: await this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands),
+                target,
+            };
         }
 
-        const directOutput = await this.runTrivy(
-            this.trackCommand(commands, 'trivy-direct-scan', this.buildTrivyArgs(settings, target, options), target),
-            timeoutMs,
-            operationId,
-        );
+        let directOutput: string;
+        try {
+            directOutput = await this.runTrivy(
+                this.trackCommand(commands, 'trivy-direct-scan', this.buildTrivyArgs(settings, target, options), target),
+                timeoutMs,
+                operationId,
+            );
+        } catch (error) {
+            if (strategy === 'auto' && target.mode === 'image' && target.archiveType) {
+                this.logger.warn(`Trivy image scan failed in auto mode. Falling back to extracted archive scan. target=${path.basename(target.targetPath)} error=${this.truncateLog(this.formatProcessError(error))}`);
+                return this.runExtractedArchiveFallback(settings, target, options, timeoutMs, operationId, commands);
+            }
+
+            throw error;
+        }
 
         if (strategy === 'direct' || !supportsSyft || !this.shouldFallbackToSyft(directOutput)) {
-            return directOutput;
+            return { stdout: directOutput, target };
         }
 
         this.logger.warn(`Trivy direct scan produced weak inventory. Falling back to Syft SBOM. mode=${target.mode} target=${path.basename(target.targetPath)}`);
-        return this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands);
+        return {
+            stdout: await this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands),
+            target,
+        };
+    }
+
+    private async runExtractedArchiveFallback(
+        settings: TrivySettings,
+        target: PreparedScanTarget,
+        options: TrivyScanOptions,
+        timeoutMs: number,
+        operationId: string | undefined,
+        commands: TrivyExecutionEvidence['commands'],
+    ): Promise<TrivyScanExecution> {
+        if (!target.archiveType) {
+            throw new BadRequestException('Archive fallback requires an uploaded archive.');
+        }
+
+        const extractDir = path.join(path.dirname(target.targetPath), 'auto-image-fallback-extracted');
+        fs.mkdirSync(extractDir, { recursive: true });
+        await this.extractArchive(target.targetPath, target.archiveType, extractDir);
+        this.assertNotCancelled(operationId);
+
+        const fallbackMode: TrivyScanMode = this.looksLikeRootfs(extractDir) ? 'rootfs' : 'fs';
+        const fallbackTarget: PreparedScanTarget = {
+            mode: fallbackMode,
+            targetPath: extractDir,
+            archiveType: target.archiveType,
+        };
+
+        commands.push({
+            phase: 'auto-image-fallback',
+            command: `image scan failed; retrying extracted archive as ${fallbackMode}`,
+        });
+
+        return this.runScanWithStrategy(
+            settings,
+            fallbackTarget,
+            { ...options, scanMode: fallbackMode },
+            timeoutMs,
+            operationId,
+            commands,
+        );
     }
 
     private shouldFallbackToSyft(stdout: string): boolean {
@@ -395,6 +457,21 @@ export class TrivyScanService {
         } catch {
             return false;
         }
+    }
+
+    private formatProcessError(error: unknown): string {
+        return [
+            (error as any)?.stderr,
+            (error as any)?.stdout,
+            (error as Error)?.message,
+        ].filter(Boolean).join('\n') || 'unknown error';
+    }
+
+    private truncateLog(value: string, maxLength = 2000): string {
+        const normalized = value.replace(/\s+$/g, '');
+        return normalized.length > maxLength
+            ? `${normalized.slice(0, maxLength)}...`
+            : normalized;
     }
 
     private async runSyftThenTrivySbom(
@@ -602,7 +679,7 @@ export class TrivyScanService {
         timeoutMs: number,
         operationId?: string,
         commands: TrivyExecutionEvidence['commands'] = [],
-    ): Promise<string> {
+    ): Promise<TrivyScanExecution> {
         // Step 1: Extract RPM payload and scan as a filesystem so Trivy's file-level
         // analyzers (gobinary, jar, node, python, ...) inspect binaries *inside* the
         // package. This is the primary path for application RPMs (e.g. grafana-alloy)
@@ -628,10 +705,13 @@ export class TrivyScanService {
         // that trivy sbom can then match against the vulnerability DB.
         if (options.analysisStrategy !== 'direct' && this.shouldFallbackToSyft(fsOutput)) {
             this.logger.warn(`RPM fs scan returned no packages. Falling back to Syft SBOM on original RPM. operationId=${operationId || 'n/a'} file=${path.basename(target.targetPath)}`);
-            return this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands);
+            return {
+                stdout: await this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands),
+                target,
+            };
         }
 
-        return fsOutput;
+        return { stdout: fsOutput, target };
     }
 
     private extractRpmPayload(
