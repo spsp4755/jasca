@@ -313,10 +313,6 @@ export default function LoginPage() {
                     )}
                 </div>
 
-                {/* Test accounts hint */}
-                <div className="mt-6 text-center text-slate-500 text-xs">
-                    <p>테스트 계정: admin@acme.com / admin123</p>
-                </div>
             </div>
         </div>
     );

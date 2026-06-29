@@ -30,6 +30,7 @@ import {
     Scale,
     Code2,
     KeyRound,
+    Globe2,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useHasMounted } from '@/hooks/use-has-mounted';
@@ -49,6 +50,7 @@ const adminNavigation = [
 ];
 
 const systemNavigation = [
+    { name: 'Vuln Portal 연동', href: '/admin/vuln-portal', icon: Globe2 },
     { name: 'SSO 설정', href: '/admin/sso-settings', icon: KeyRound },
     { name: 'API 토큰', href: '/admin/api-tokens', icon: Key },
     { name: 'Trivy 설정', href: '/admin/trivy-settings', icon: Cpu },
