@@ -50,7 +50,7 @@ export default function NewScanPage() {
     const cancelRequestedRef = useRef(false);
     const uploadAbortControllerRef = useRef<AbortController | null>(null);
     const [trivyOptions, setTrivyOptions] = useState<Required<TrivyScanOptions>>({
-        scanMode: 'auto',
+        scanMode: 'fs',
         analysisStrategy: 'auto',
         rpmOsFamily: 'redhat',
         rpmOsVersion: '',
