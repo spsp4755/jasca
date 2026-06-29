@@ -576,7 +576,8 @@ export class TrivyScanService {
         }
 
         const entries = await this.validateArchiveEntries(filePath, archiveType);
-        if (requestedMode === 'auto' && this.looksLikeContainerImageArchive(entries)) {
+        const shouldAutoPreferRootfs = requestedMode === 'auto' && this.looksLikeRootfsArchive(entries);
+        if (requestedMode === 'auto' && !shouldAutoPreferRootfs && this.looksLikeContainerImageArchive(entries)) {
             return { mode: 'image', targetPath: filePath, archiveType };
         }
 
@@ -585,7 +586,7 @@ export class TrivyScanService {
 
         await this.extractArchive(filePath, archiveType, extractDir);
 
-        const mode: TrivyScanMode = requestedMode === 'rootfs' || (requestedMode === 'auto' && this.looksLikeRootfs(extractDir))
+        const mode: TrivyScanMode = requestedMode === 'rootfs' || shouldAutoPreferRootfs || (requestedMode === 'auto' && this.looksLikeRootfs(extractDir))
             ? 'rootfs'
             : requestedMode === 'repo'
                 ? 'repo'
@@ -864,12 +865,14 @@ export class TrivyScanService {
     }
 
     private looksLikeContainerImageArchive(entries: string[]): boolean {
-        const normalized = entries.map((entry) => entry.replace(/\\/g, '/'));
-        return normalized.some((entry) => entry === 'manifest.json' || entry.endsWith('/manifest.json')) ||
-            normalized.some((entry) => entry === 'oci-layout' || entry.endsWith('/oci-layout')) ||
-            normalized.some((entry) => entry === 'repositories' || entry.endsWith('/repositories')) ||
-            normalized.some((entry) => entry.endsWith('/blobs/sha256/')) ||
-            normalized.some((entry) => /^blobs\/sha256\/[a-f0-9]{64}$/i.test(entry));
+        const normalized = entries.map((entry) => this.normalizeArchiveEntry(entry));
+        const hasDockerManifest = normalized.includes('manifest.json');
+        const hasDockerLayer = normalized.some((entry) => entry === 'layer.tar' || entry.endsWith('/layer.tar'));
+        const hasDockerRepositories = normalized.includes('repositories');
+        const hasOciLayout = normalized.includes('oci-layout') && normalized.includes('index.json');
+        const hasOciBlob = normalized.some((entry) => /^blobs\/sha256\/[a-f0-9]{64}$/i.test(entry));
+
+        return (hasDockerManifest && (hasDockerLayer || hasDockerRepositories)) || (hasOciLayout && hasOciBlob);
     }
 
     private looksLikeRootfs(rootPath: string): boolean {
@@ -884,6 +887,38 @@ export class TrivyScanService {
         ];
 
         return indicators.some((indicator) => fs.existsSync(path.join(rootPath, indicator)));
+    }
+
+    private looksLikeRootfsArchive(entries: string[]): boolean {
+        const indicators = [
+            'etc/os-release',
+            'usr/lib/os-release',
+            'var/lib/dpkg/status',
+            'var/lib/rpm',
+            'usr/lib/sysimage/rpm',
+            'lib/apk/db/installed',
+            'var/lib/apk/db/installed',
+        ];
+
+        return entries
+            .map((entry) => this.normalizeArchiveEntry(entry))
+            .some((entry) => {
+                const candidates = this.archiveEntrySuffixes(entry);
+                return candidates.some((candidate) => indicators.some((indicator) => candidate === indicator || candidate.startsWith(`${indicator}/`)));
+            });
+    }
+
+    private archiveEntrySuffixes(entry: string): string[] {
+        const parts = entry.split('/').filter(Boolean);
+        return parts.map((_, index) => parts.slice(index).join('/'));
+    }
+
+    private normalizeArchiveEntry(entry: string): string {
+        return entry
+            .replace(/\\/g, '/')
+            .replace(/^\.\//, '')
+            .replace(/\/+$/, '')
+            .trim();
     }
 
     private shouldScanSingleFile(filePath: string): boolean {
