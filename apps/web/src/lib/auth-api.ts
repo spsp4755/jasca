@@ -392,9 +392,14 @@ class AuthApi {
     }
 
     async updateNotificationSettings(settings: {
-        emailAlerts: boolean;
-        criticalOnly: boolean;
-        weeklyDigest: boolean;
+        emailAlerts?: boolean;
+        criticalOnly?: boolean;
+        weeklyDigest?: boolean;
+        scanComplete?: boolean;
+        criticalVulns?: boolean;
+        highVulns?: boolean;
+        policyViolations?: boolean;
+        exceptionAlerts?: boolean;
     }): Promise<any> {
         try {
             const response = await fetchWithRetry(`${API_BASE}/users/me/notification-settings`, {
@@ -426,6 +431,11 @@ class AuthApi {
         emailAlerts: boolean;
         criticalOnly: boolean;
         weeklyDigest: boolean;
+        scanComplete: boolean;
+        criticalVulns: boolean;
+        highVulns: boolean;
+        policyViolations: boolean;
+        exceptionAlerts: boolean;
     }> {
         try {
             const response = await fetchWithRetry(`${API_BASE}/users/me/notification-settings`, {
@@ -439,6 +449,11 @@ class AuthApi {
                     emailAlerts: true,
                     criticalOnly: false,
                     weeklyDigest: true,
+                    scanComplete: true,
+                    criticalVulns: true,
+                    highVulns: true,
+                    policyViolations: true,
+                    exceptionAlerts: true,
                 };
             }
 
@@ -447,6 +462,11 @@ class AuthApi {
                 emailAlerts: true,
                 criticalOnly: false,
                 weeklyDigest: true,
+                scanComplete: true,
+                criticalVulns: true,
+                highVulns: true,
+                policyViolations: true,
+                exceptionAlerts: true,
             };
         } catch {
             // 에러 시 기본값 반환
@@ -454,6 +474,11 @@ class AuthApi {
                 emailAlerts: true,
                 criticalOnly: false,
                 weeklyDigest: true,
+                scanComplete: true,
+                criticalVulns: true,
+                highVulns: true,
+                policyViolations: true,
+                exceptionAlerts: true,
             };
         }
     }

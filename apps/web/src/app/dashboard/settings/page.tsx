@@ -57,6 +57,11 @@ export default function SettingsPage() {
         emailAlerts: true,
         criticalOnly: false,
         weeklyDigest: true,
+        scanComplete: true,
+        criticalVulns: true,
+        highVulns: true,
+        policyViolations: true,
+        exceptionAlerts: true,
     });
 
     // Theme state
@@ -80,7 +85,7 @@ export default function SettingsPage() {
         const loadNotificationSettings = async () => {
             try {
                 const settings = await authApi.getNotificationSettings();
-                setNotifications(settings);
+                setNotifications(prev => ({ ...prev, ...settings }));
             } catch (error) {
                 console.error('Failed to load notification settings:', error);
             }
@@ -585,48 +590,40 @@ export default function SettingsPage() {
                                 알림 설정
                             </h3>
                             <div className="space-y-4">
-                                <label className="flex items-center justify-between cursor-pointer">
-                                    <div>
-                                        <p className="font-medium text-slate-900 dark:text-white">이메일 알림</p>
-                                        <p className="text-sm text-slate-500">새로운 취약점 발견 시 이메일로 알림을 받습니다.</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setNotifications(prev => ({ ...prev, emailAlerts: !prev.emailAlerts }))}
-                                        className={`w-12 h-6 rounded-full transition-colors ${notifications.emailAlerts ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
-                                            }`}
-                                    >
-                                        <span className={`block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${notifications.emailAlerts ? 'translate-x-6' : 'translate-x-0.5'
-                                            }`} />
-                                    </button>
-                                </label>
-                                <label className="flex items-center justify-between cursor-pointer">
-                                    <div>
-                                        <p className="font-medium text-slate-900 dark:text-white">Critical만 알림</p>
-                                        <p className="text-sm text-slate-500">Critical 심각도 취약점만 알림을 받습니다.</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setNotifications(prev => ({ ...prev, criticalOnly: !prev.criticalOnly }))}
-                                        className={`w-12 h-6 rounded-full transition-colors ${notifications.criticalOnly ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
-                                            }`}
-                                    >
-                                        <span className={`block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${notifications.criticalOnly ? 'translate-x-6' : 'translate-x-0.5'
-                                            }`} />
-                                    </button>
-                                </label>
-                                <label className="flex items-center justify-between cursor-pointer">
-                                    <div>
-                                        <p className="font-medium text-slate-900 dark:text-white">주간 요약</p>
-                                        <p className="text-sm text-slate-500">매주 취약점 현황 요약 이메일을 받습니다.</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setNotifications(prev => ({ ...prev, weeklyDigest: !prev.weeklyDigest }))}
-                                        className={`w-12 h-6 rounded-full transition-colors ${notifications.weeklyDigest ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
-                                            }`}
-                                    >
-                                        <span className={`block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${notifications.weeklyDigest ? 'translate-x-6' : 'translate-x-0.5'
-                                            }`} />
-                                    </button>
-                                </label>
+                                {[
+                                    { key: 'emailAlerts' as const, label: '전체 알림', desc: '끄면 스캔 완료, 취약점, 정책 위반 등 모든 개인 알림 생성이 중지됩니다.' },
+                                    { key: 'scanComplete' as const, label: '스캔 완료', desc: '스캔이 완료될 때마다 알림을 받습니다.' },
+                                    { key: 'criticalVulns' as const, label: 'Critical 취약점', desc: 'Critical 취약점이 발견되면 알림을 받습니다.' },
+                                    { key: 'highVulns' as const, label: 'High 취약점', desc: 'High 취약점이 발견되면 알림을 받습니다.' },
+                                    { key: 'policyViolations' as const, label: '정책 위반', desc: '정책 위반 결과가 생기면 알림을 받습니다.' },
+                                    { key: 'exceptionAlerts' as const, label: '예외 처리', desc: '예외 생성, 만료, 상태 변경 알림을 받습니다.' },
+                                    { key: 'criticalOnly' as const, label: 'Critical 전용', desc: '취약점/정책 알림은 Critical 등급만 받습니다. 스캔 완료 알림은 제외되지 않습니다.' },
+                                    { key: 'weeklyDigest' as const, label: '주간 요약', desc: '주요 현황을 주간 요약 형태로 받습니다.' },
+                                ].map((item) => (
+                                    <label key={item.key} className="flex items-center justify-between gap-4 cursor-pointer">
+                                        <div>
+                                            <p className="font-medium text-slate-900 dark:text-white">{item.label}</p>
+                                            <p className="text-sm text-slate-500">{item.desc}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setNotifications(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
+                                            disabled={item.key !== 'emailAlerts' && !notifications.emailAlerts}
+                                            className={`w-12 h-6 rounded-full transition-colors disabled:opacity-50 ${notifications[item.key] ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                                                }`}
+                                        >
+                                            <span className={`block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${notifications[item.key] ? 'translate-x-6' : 'translate-x-0.5'
+                                                }`} />
+                                        </button>
+                                    </label>
+                                ))}
+                                <Link
+                                    href="/dashboard/settings/notifications"
+                                    className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                                >
+                                    상세 알림 설정으로 이동
+                                    <ExternalLink className="h-4 w-4" />
+                                </Link>
                             </div>
                             <button
                                 onClick={handleSaveNotifications}

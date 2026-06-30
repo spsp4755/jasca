@@ -88,6 +88,11 @@ export class ScansService {
                     select: {
                         emailAlerts: true,
                         criticalOnly: true,
+                        scanComplete: true,
+                        criticalVulns: true,
+                        highVulns: true,
+                        policyViolations: true,
+                        exceptionAlerts: true,
                     },
                 },
             },
@@ -105,21 +110,47 @@ export class ScansService {
     }
 
     private filterNotificationRecipients(
-        recipients: Array<{ id: string; notificationSettings?: { emailAlerts: boolean; criticalOnly: boolean } | null }>,
+        recipients: Array<{
+            id: string;
+            notificationSettings?: {
+                emailAlerts: boolean;
+                criticalOnly: boolean;
+                criticalVulns?: boolean;
+                highVulns?: boolean;
+                policyViolations?: boolean;
+                exceptionAlerts?: boolean;
+            } | null;
+        }>,
         severity?: string,
+        category: 'vulnerability' | 'policy' | 'exception' = 'vulnerability',
     ) {
-        const isCritical = severity?.toUpperCase() === 'CRITICAL';
+        const normalizedSeverity = severity?.toUpperCase();
+        const isCritical = normalizedSeverity === 'CRITICAL';
+        const isHigh = normalizedSeverity === 'HIGH';
+
         return recipients
             .filter((user) => user.notificationSettings?.emailAlerts !== false)
             .filter((user) => !user.notificationSettings?.criticalOnly || isCritical)
+            .filter((user) => {
+                const settings = user.notificationSettings;
+                if (category === 'policy') return settings?.policyViolations !== false;
+                if (category === 'exception') return settings?.exceptionAlerts !== false;
+                if (isCritical) return settings?.criticalVulns !== false;
+                if (isHigh) return settings?.highVulns !== false;
+                return true;
+            })
             .map((user) => user.id);
     }
 
     private filterScanCompleteRecipients(
-        recipients: Array<{ id: string; notificationSettings?: { emailAlerts: boolean; criticalOnly: boolean } | null }>,
+        recipients: Array<{
+            id: string;
+            notificationSettings?: { emailAlerts: boolean; scanComplete?: boolean } | null;
+        }>,
     ) {
         return recipients
             .filter((user) => user.notificationSettings?.emailAlerts !== false)
+            .filter((user) => user.notificationSettings?.scanComplete !== false)
             .map((user) => user.id);
     }
 
@@ -183,7 +214,7 @@ export class ScansService {
             const title = `정책 위반: ${violation.policyName}`;
             const message = `${violation.ruleName} 규칙에 ${violation.count}건이 매칭되었습니다.`;
             await this.notificationsService.createNotificationsForUsers(
-                this.filterNotificationRecipients(recipients, violation.severity),
+                this.filterNotificationRecipients(recipients, violation.severity, 'policy'),
                 'policy_violation',
                 title,
                 message,

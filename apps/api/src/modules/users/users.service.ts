@@ -396,7 +396,16 @@ export class UsersService {
         });
     }
 
-    async getNotificationSettings(userId: string): Promise<{ emailAlerts: boolean; criticalOnly: boolean; weeklyDigest: boolean }> {
+    async getNotificationSettings(userId: string): Promise<{
+        emailAlerts: boolean;
+        criticalOnly: boolean;
+        weeklyDigest: boolean;
+        scanComplete: boolean;
+        criticalVulns: boolean;
+        highVulns: boolean;
+        policyViolations: boolean;
+        exceptionAlerts: boolean;
+    }> {
         const settings = await this.prisma.userNotificationSetting.upsert({
             where: { userId },
             update: {},
@@ -405,11 +414,21 @@ export class UsersService {
                 emailAlerts: true,
                 criticalOnly: false,
                 weeklyDigest: true,
+                scanComplete: true,
+                criticalVulns: true,
+                highVulns: true,
+                policyViolations: true,
+                exceptionAlerts: true,
             },
             select: {
                 emailAlerts: true,
                 criticalOnly: true,
                 weeklyDigest: true,
+                scanComplete: true,
+                criticalVulns: true,
+                highVulns: true,
+                policyViolations: true,
+                exceptionAlerts: true,
             },
         });
 
@@ -418,25 +437,58 @@ export class UsersService {
 
     async updateNotificationSettings(
         userId: string,
-        dto: { emailAlerts?: boolean; criticalOnly?: boolean; weeklyDigest?: boolean },
-    ): Promise<{ emailAlerts: boolean; criticalOnly: boolean; weeklyDigest: boolean }> {
+        dto: {
+            emailAlerts?: boolean;
+            criticalOnly?: boolean;
+            weeklyDigest?: boolean;
+            scanComplete?: boolean;
+            criticalVulns?: boolean;
+            highVulns?: boolean;
+            policyViolations?: boolean;
+            exceptionAlerts?: boolean;
+        },
+    ): Promise<{
+        emailAlerts: boolean;
+        criticalOnly: boolean;
+        weeklyDigest: boolean;
+        scanComplete: boolean;
+        criticalVulns: boolean;
+        highVulns: boolean;
+        policyViolations: boolean;
+        exceptionAlerts: boolean;
+    }> {
         return this.prisma.userNotificationSetting.upsert({
             where: { userId },
             update: {
                 ...(dto.emailAlerts !== undefined && { emailAlerts: dto.emailAlerts }),
                 ...(dto.criticalOnly !== undefined && { criticalOnly: dto.criticalOnly }),
                 ...(dto.weeklyDigest !== undefined && { weeklyDigest: dto.weeklyDigest }),
+                ...(dto.scanComplete !== undefined && { scanComplete: dto.scanComplete }),
+                ...(dto.criticalVulns !== undefined && { criticalVulns: dto.criticalVulns }),
+                ...(dto.highVulns !== undefined && { highVulns: dto.highVulns }),
+                ...(dto.policyViolations !== undefined && { policyViolations: dto.policyViolations }),
+                ...(dto.exceptionAlerts !== undefined && { exceptionAlerts: dto.exceptionAlerts }),
             },
             create: {
                 userId,
                 emailAlerts: dto.emailAlerts ?? true,
                 criticalOnly: dto.criticalOnly ?? false,
                 weeklyDigest: dto.weeklyDigest ?? true,
+                scanComplete: dto.scanComplete ?? true,
+                criticalVulns: dto.criticalVulns ?? true,
+                highVulns: dto.highVulns ?? true,
+                policyViolations: dto.policyViolations ?? true,
+                exceptionAlerts: dto.exceptionAlerts ?? true,
             },
             select: {
                 emailAlerts: true,
                 criticalOnly: true,
                 weeklyDigest: true,
+                scanComplete: true,
+                criticalVulns: true,
+                highVulns: true,
+                policyViolations: true,
+                exceptionAlerts: true,
             },
         });
     }
