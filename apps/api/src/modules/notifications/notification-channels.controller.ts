@@ -8,6 +8,7 @@ import {
     Body,
     UseGuards,
     NotFoundException,
+    BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -32,6 +33,9 @@ export class NotificationChannelsController {
     @ApiOperation({ summary: 'Get all notification channels' })
     async findAll() {
         return this.prisma.notificationChannel.findMany({
+            where: {
+                type: { not: 'SLACK' },
+            },
             include: {
                 rules: true,
             },
@@ -54,11 +58,15 @@ export class NotificationChannelsController {
         @Body()
         data: {
             name: string;
-            type: 'SLACK' | 'MATTERMOST' | 'EMAIL' | 'WEBHOOK';
+            type: 'MATTERMOST' | 'EMAIL' | 'WEBHOOK';
             config: Prisma.InputJsonValue;
             isActive?: boolean;
         },
     ) {
+        if ((data.type as string) === 'SLACK') {
+            throw new BadRequestException('Slack notifications are disabled in this deployment. Use Email, Mattermost, or Webhook.');
+        }
+
         return this.prisma.notificationChannel.create({
             data: {
                 name: data.name,

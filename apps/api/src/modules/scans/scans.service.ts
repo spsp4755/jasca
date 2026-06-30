@@ -115,6 +115,14 @@ export class ScansService {
             .map((user) => user.id);
     }
 
+    private filterScanCompleteRecipients(
+        recipients: Array<{ id: string; notificationSettings?: { emailAlerts: boolean; criticalOnly: boolean } | null }>,
+    ) {
+        return recipients
+            .filter((user) => user.notificationSettings?.emailAlerts !== false)
+            .map((user) => user.id);
+    }
+
     private async emitScanNotifications(
         projectId: string,
         scan: any,
@@ -130,7 +138,7 @@ export class ScansService {
         const link = `/dashboard/scans/${scan.id}`;
         const scanTitle = `스캔 완료: ${targetName}`;
         const scanMessage = `취약점 ${total}건이 발견되었습니다. Critical ${critical}건, High ${high}건입니다.`;
-        const scanRecipients = this.filterNotificationRecipients(recipients, 'INFO');
+        const scanRecipients = this.filterScanCompleteRecipients(recipients);
 
         await this.notificationsService.createNotificationsForUsers(
             scanRecipients,
