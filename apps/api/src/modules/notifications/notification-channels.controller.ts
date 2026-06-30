@@ -7,16 +7,20 @@ import {
     Param,
     Body,
     UseGuards,
+    NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
 import { Prisma } from '@prisma/client';
 
 @ApiTags('Notification Channels')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SYSTEM_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
 @Controller('notification-channels')
 export class NotificationChannelsController {
     constructor(
@@ -135,7 +139,7 @@ export class NotificationChannelsController {
         });
         
         if (!rule) {
-            throw new Error('Notification rule not found');
+            throw new NotFoundException('Notification rule not found');
         }
 
         return this.prisma.notificationRule.update({

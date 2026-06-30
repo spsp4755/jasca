@@ -396,19 +396,23 @@ export class UsersService {
         });
     }
 
-    // In-memory storage for notification settings (in production, add to User model)
-    private notificationSettings: Map<string, { emailAlerts: boolean; criticalOnly: boolean; weeklyDigest: boolean }> = new Map();
-
     async getNotificationSettings(userId: string): Promise<{ emailAlerts: boolean; criticalOnly: boolean; weeklyDigest: boolean }> {
-        const settings = this.notificationSettings.get(userId);
-        if (!settings) {
-            // Return default settings
-            return {
+        const settings = await this.prisma.userNotificationSetting.upsert({
+            where: { userId },
+            update: {},
+            create: {
+                userId,
                 emailAlerts: true,
                 criticalOnly: false,
                 weeklyDigest: true,
-            };
-        }
+            },
+            select: {
+                emailAlerts: true,
+                criticalOnly: true,
+                weeklyDigest: true,
+            },
+        });
+
         return settings;
     }
 
@@ -416,14 +420,25 @@ export class UsersService {
         userId: string,
         dto: { emailAlerts?: boolean; criticalOnly?: boolean; weeklyDigest?: boolean },
     ): Promise<{ emailAlerts: boolean; criticalOnly: boolean; weeklyDigest: boolean }> {
-        const currentSettings = await this.getNotificationSettings(userId);
-        const updatedSettings = {
-            emailAlerts: dto.emailAlerts ?? currentSettings.emailAlerts,
-            criticalOnly: dto.criticalOnly ?? currentSettings.criticalOnly,
-            weeklyDigest: dto.weeklyDigest ?? currentSettings.weeklyDigest,
-        };
-        this.notificationSettings.set(userId, updatedSettings);
-        return updatedSettings;
+        return this.prisma.userNotificationSetting.upsert({
+            where: { userId },
+            update: {
+                ...(dto.emailAlerts !== undefined && { emailAlerts: dto.emailAlerts }),
+                ...(dto.criticalOnly !== undefined && { criticalOnly: dto.criticalOnly }),
+                ...(dto.weeklyDigest !== undefined && { weeklyDigest: dto.weeklyDigest }),
+            },
+            create: {
+                userId,
+                emailAlerts: dto.emailAlerts ?? true,
+                criticalOnly: dto.criticalOnly ?? false,
+                weeklyDigest: dto.weeklyDigest ?? true,
+            },
+            select: {
+                emailAlerts: true,
+                criticalOnly: true,
+                weeklyDigest: true,
+            },
+        });
     }
 }
 

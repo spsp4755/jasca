@@ -123,6 +123,7 @@ model User {
   passwordHistory     PasswordHistory[]
   sentInvitations     UserInvitation[] @relation("InvitedBy")
   notifications       UserNotification[]
+  notificationSettings UserNotificationSetting?
   
   // Additional auth fields
   emailVerifiedAt     DateTime?
@@ -579,6 +580,19 @@ model UserNotification {
   @@index([userId])
   @@index([userId, isRead])
   @@index([createdAt])
+}
+
+model UserNotificationSetting {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  emailAlerts  Boolean  @default(true)
+  criticalOnly Boolean  @default(false)
+  weeklyDigest Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 // ============================================

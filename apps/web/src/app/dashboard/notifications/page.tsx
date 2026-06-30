@@ -582,7 +582,7 @@ export default function NotificationsPage() {
                                         </button>
                                     )}
                                     <Link
-                                        href={`/dashboard/vulnerabilities`}
+                                        href={notification.link || '/dashboard/vulnerabilities'}
                                         className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                         title="상세 보기"
                                     >

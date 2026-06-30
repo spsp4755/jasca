@@ -12,6 +12,7 @@ interface PolicyRuleType {
     conditions: any;
     action: string;
     message: string | null;
+    sendNotification?: boolean;
 }
 
 interface PolicyExceptionType {
@@ -39,6 +40,7 @@ export interface PolicyViolation {
     severity: Severity;
     count: number;
     cveIds: string[];
+    sendNotification: boolean;
 }
 
 export interface PolicyEvaluation {
@@ -154,6 +156,7 @@ export class PolicyEngineService {
                         severity: this.getPrimarySeverity(matchedVulns),
                         count: matchedVulns.length,
                         cveIds: matchedVulns.map((v) => v.vulnerability.cveId),
+                        sendNotification: Boolean(rule.sendNotification),
                     };
 
                     if (rule.action === 'BLOCK') {

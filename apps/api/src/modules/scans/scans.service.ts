@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { NotificationEventType, Role, RoleScope } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TrivyParserService, ParsedScanResult } from './services/trivy-parser.service';
 import { VulnSyncService } from './services/vuln-sync.service';
@@ -9,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PolicyEngineService } from '../policies/policy-engine.service';
 import { ManualAdvisoriesService } from '../manual-advisories/manual-advisories.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
     RequestUser,
     assertOrganizationAccess,
@@ -31,6 +33,7 @@ export class ScansService {
         private readonly vulnSyncService: VulnSyncService,
         private readonly policyEngine: PolicyEngineService,
         private readonly manualAdvisoriesService: ManualAdvisoriesService,
+        private readonly notificationsService: NotificationsService,
     ) { }
 
     private getDisplayTargetName(scan: { imageRef?: string | null; artifactName?: string | null }) {
@@ -39,6 +42,159 @@ export class ScansService {
 
     private getScanEvidence(rawResult: any) {
         return rawResult?.Metadata?.JascaScanEvidence || null;
+    }
+
+    private getTotalFindingCount(summary?: { critical?: number; high?: number; medium?: number; low?: number; unknown?: number; total?: number }) {
+        if (!summary) return 0;
+        return summary.total ?? (
+            (summary.critical || 0) +
+            (summary.high || 0) +
+            (summary.medium || 0) +
+            (summary.low || 0) +
+            (summary.unknown || 0)
+        );
+    }
+
+    private async getScanNotificationRecipients(projectId: string, uploadedById?: string) {
+        const project = await this.prisma.project.findUnique({
+            where: { id: projectId },
+            select: { organizationId: true },
+        });
+
+        const users = await this.prisma.user.findMany({
+            where: {
+                isActive: true,
+                OR: [
+                    uploadedById ? { id: uploadedById } : undefined,
+                    {
+                        roles: {
+                            some: {
+                                OR: [
+                                    { role: Role.SYSTEM_ADMIN, scope: { in: [RoleScope.GLOBAL, RoleScope.SYSTEM] } },
+                                    { role: Role.SECURITY_ADMIN, scope: { in: [RoleScope.GLOBAL, RoleScope.SYSTEM] } },
+                                    project?.organizationId
+                                        ? { role: { in: [Role.ORG_ADMIN, Role.SECURITY_ADMIN] }, scope: RoleScope.ORGANIZATION, scopeId: project.organizationId }
+                                        : undefined,
+                                    { role: { in: [Role.PROJECT_ADMIN, Role.SECURITY_ADMIN] }, scope: RoleScope.PROJECT, scopeId: projectId },
+                                ].filter(Boolean) as any[],
+                            },
+                        },
+                    },
+                ].filter(Boolean) as any[],
+            },
+            select: {
+                id: true,
+                notificationSettings: {
+                    select: {
+                        emailAlerts: true,
+                        criticalOnly: true,
+                    },
+                },
+            },
+        });
+
+        return users;
+    }
+
+    private async sendExternalNotification(payload: Parameters<NotificationsService['notify']>[0]) {
+        try {
+            await this.notificationsService.notify(payload);
+        } catch (error) {
+            this.logger.warn(`Failed to send external notification: ${(error as Error).message}`);
+        }
+    }
+
+    private filterNotificationRecipients(
+        recipients: Array<{ id: string; notificationSettings?: { emailAlerts: boolean; criticalOnly: boolean } | null }>,
+        severity?: string,
+    ) {
+        const isCritical = severity?.toUpperCase() === 'CRITICAL';
+        return recipients
+            .filter((user) => user.notificationSettings?.emailAlerts !== false)
+            .filter((user) => !user.notificationSettings?.criticalOnly || isCritical)
+            .map((user) => user.id);
+    }
+
+    private async emitScanNotifications(
+        projectId: string,
+        scan: any,
+        policyEvaluation: any,
+        uploadedById?: string,
+    ) {
+        const recipients = await this.getScanNotificationRecipients(projectId, uploadedById);
+        const targetName = scan.targetName || scan.imageRef || scan.artifactName || 'Unknown target';
+        const summary = scan.summary || {};
+        const critical = summary.critical || 0;
+        const high = summary.high || 0;
+        const total = this.getTotalFindingCount(summary);
+        const link = `/dashboard/scans/${scan.id}`;
+        const scanTitle = `스캔 완료: ${targetName}`;
+        const scanMessage = `취약점 ${total}건이 발견되었습니다. Critical ${critical}건, High ${high}건입니다.`;
+        const scanRecipients = this.filterNotificationRecipients(recipients, 'INFO');
+
+        await this.notificationsService.createNotificationsForUsers(
+            scanRecipients,
+            'scan_complete',
+            scanTitle,
+            scanMessage,
+            link,
+        );
+        await this.sendExternalNotification({
+            eventType: NotificationEventType.SCAN_COMPLETED,
+            title: scanTitle,
+            message: scanMessage,
+            severity: total > 0 ? 'INFO' : 'LOW',
+            projectId,
+            link,
+        });
+
+        if (critical > 0 || high > 0) {
+            const severity = critical > 0 ? 'CRITICAL' : 'HIGH';
+            const type = critical > 0 ? 'critical_vuln' : 'high_vuln';
+            const title = `${severity} 취약점 발견: ${targetName}`;
+            const message = `Critical ${critical}건, High ${high}건이 발견되었습니다. 상세 화면에서 조치 대상을 확인하세요.`;
+            const alertRecipients = this.filterNotificationRecipients(recipients, severity);
+
+            await this.notificationsService.createNotificationsForUsers(alertRecipients, type, title, message, link);
+            await this.sendExternalNotification({
+                eventType: critical > 0 ? NotificationEventType.NEW_CRITICAL_VULN : NotificationEventType.NEW_HIGH_VULN,
+                title,
+                message,
+                severity,
+                projectId,
+                link,
+            });
+        }
+
+        const policyAlerts = [
+            ...(policyEvaluation?.violations || []),
+            ...(policyEvaluation?.warnings || []),
+        ].filter((violation) => violation.sendNotification);
+
+        for (const violation of policyAlerts) {
+            const title = `정책 위반: ${violation.policyName}`;
+            const message = `${violation.ruleName} 규칙에 ${violation.count}건이 매칭되었습니다.`;
+            await this.notificationsService.createNotificationsForUsers(
+                this.filterNotificationRecipients(recipients, violation.severity),
+                'policy_violation',
+                title,
+                message,
+                link,
+            );
+            try {
+                await this.notificationsService.notifyPolicyViolation({
+                    policyName: violation.policyName,
+                    ruleName: violation.ruleName,
+                    action: violation.action,
+                    severity: violation.severity,
+                    projectName: scan.project?.name,
+                    cveId: violation.cveIds?.[0],
+                    details: message,
+                });
+            } catch (error) {
+                this.logger.warn(`Failed to send policy violation notification: ${(error as Error).message}`);
+            }
+        }
     }
 
     private basename(value?: string | null) {
@@ -326,6 +482,12 @@ export class ScansService {
         }
 
         const savedScan = await this.findById(scanResult.id, currentUser);
+        try {
+            await this.emitScanNotifications(resolvedProjectId, savedScan, policyEvaluation, sourceInfo?.uploadedById);
+        } catch (error) {
+            this.logger.warn(`Failed to emit scan notifications for ${scanResult.id}: ${(error as Error).message}`);
+        }
+
         return {
             ...savedScan,
             policyEvaluation,
@@ -1046,4 +1208,3 @@ export class ScansService {
         };
     }
 }
-
