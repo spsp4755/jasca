@@ -1455,7 +1455,7 @@ export interface NotificationRule {
 export interface NotificationChannel {
     id: string;
     name: string;
-    type: 'SLACK' | 'MATTERMOST' | 'EMAIL' | 'WEBHOOK';
+    type: 'MATTERMOST' | 'EMAIL' | 'WEBHOOK';
     config: Record<string, unknown>;
     isActive: boolean;
     rules?: NotificationRule[];
@@ -1483,7 +1483,7 @@ export function useCreateNotificationChannel() {
     return useMutation({
         mutationFn: (data: {
             name: string;
-            type: 'SLACK' | 'MATTERMOST' | 'EMAIL' | 'WEBHOOK';
+            type: 'MATTERMOST' | 'EMAIL' | 'WEBHOOK';
             config: Record<string, unknown>;
             isActive?: boolean;
         }) =>
@@ -1763,6 +1763,8 @@ export function useNotifications() {
     return useQuery<Notification[]>({
         queryKey: ['notifications'],
         queryFn: () => authFetch(`${API_BASE}/notifications`),
+        refetchInterval: 10000,
+        refetchOnWindowFocus: true,
     });
 }
 
@@ -1782,6 +1784,31 @@ export function useMarkAllNotificationsRead() {
     return useMutation({
         mutationFn: () =>
             authFetch(`${API_BASE}/notifications/read-all`, { method: 'POST' }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        },
+    });
+}
+
+export function useDeleteNotification() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id: string) =>
+            authFetch(`${API_BASE}/notifications/${id}`, { method: 'DELETE' }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        },
+    });
+}
+
+export function useDeleteNotifications() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (ids: string[]) =>
+            authFetch(`${API_BASE}/notifications/delete-bulk`, {
+                method: 'POST',
+                body: JSON.stringify({ ids }),
+            }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['notifications'] });
         },

@@ -59,13 +59,6 @@ const eventTypes = [
 // Channel templates for quick setup
 const channelTemplates = [
     {
-        id: 'security-slack',
-        name: '보안팀 Slack',
-        type: 'SLACK' as const,
-        description: 'Critical/High 취약점과 정책 위반 알림',
-        rules: ['NEW_CRITICAL_VULN', 'NEW_HIGH_VULN', 'POLICY_VIOLATION', 'POLICY_BLOCK'],
-    },
-    {
         id: 'daily-digest',
         name: '일일 다이제스트',
         type: 'EMAIL' as const,
@@ -100,7 +93,6 @@ function getChannelIcon(type: string) {
     switch (type) {
         case 'EMAIL':
             return <Mail className="h-5 w-5" />;
-        case 'SLACK':
         case 'MATTERMOST':
             return <MessageSquare className="h-5 w-5" />;
         case 'WEBHOOK':
@@ -113,7 +105,6 @@ function getChannelIcon(type: string) {
 function getChannelColor(type: string) {
     switch (type) {
         case 'EMAIL': return 'blue';
-        case 'SLACK': return 'purple';
         case 'MATTERMOST': return 'indigo';
         case 'WEBHOOK': return 'orange';
         default: return 'slate';
@@ -137,7 +128,7 @@ export default function NotificationSettingsPage() {
     const [activeTab, setActiveTab] = useState<TabType>('channels');
     const [showAddModal, setShowAddModal] = useState(false);
     const [showTemplateModal, setShowTemplateModal] = useState(false);
-    const [newChannelType, setNewChannelType] = useState<'SLACK' | 'EMAIL' | 'WEBHOOK' | 'MATTERMOST'>('SLACK');
+    const [newChannelType, setNewChannelType] = useState<'EMAIL' | 'WEBHOOK' | 'MATTERMOST'>('EMAIL');
     const [newChannelName, setNewChannelName] = useState('');
     const [newChannelConfig, setNewChannelConfig] = useState('');
     
@@ -277,7 +268,7 @@ export default function NotificationSettingsPage() {
 
         try {
             const config: Record<string, unknown> = {};
-            if (newChannelType === 'SLACK' || newChannelType === 'MATTERMOST' || newChannelType === 'WEBHOOK') {
+            if (newChannelType === 'MATTERMOST' || newChannelType === 'WEBHOOK') {
                 config.webhookUrl = newChannelConfig;
             } else if (newChannelType === 'EMAIL') {
                 config.recipients = newChannelConfig.split(',').map(s => s.trim());
@@ -476,7 +467,6 @@ export default function NotificationSettingsPage() {
                                 <span 
                                     key={type} 
                                     className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
-                                        type === 'SLACK' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
                                         type === 'EMAIL' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                                         type === 'WEBHOOK' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
                                         'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
@@ -507,7 +497,6 @@ export default function NotificationSettingsPage() {
                             className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white"
                         >
                             <option value="all">모든 유형</option>
-                            <option value="SLACK">Slack</option>
                             <option value="EMAIL">Email</option>
                             <option value="WEBHOOK">Webhook</option>
                             <option value="MATTERMOST">Mattermost</option>
@@ -590,7 +579,7 @@ export default function NotificationSettingsPage() {
                                 {channels.length === 0 ? '알림 채널이 없습니다' : '검색 결과가 없습니다'}
                             </h3>
                             <p className="text-slate-600 dark:text-slate-400 mb-4">
-                                {channels.length === 0 ? '이메일, Slack 또는 Webhook 채널을 추가하세요.' : '필터를 변경하거나 검색어를 수정해 보세요.'}
+                                {channels.length === 0 ? '이메일, Mattermost 또는 Webhook 채널을 추가하세요.' : '필터를 변경하거나 검색어를 수정해 보세요.'}
                             </p>
                             {channels.length === 0 && (
                                 <button
@@ -640,7 +629,6 @@ export default function NotificationSettingsPage() {
                                                     />
                                                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
                                                         color === 'blue' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' :
-                                                        color === 'purple' ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30' :
                                                         color === 'orange' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30' :
                                                         'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30'
                                                     }`}>
@@ -858,7 +846,6 @@ export default function NotificationSettingsPage() {
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">채널 유형</label>
                                 <div className="grid grid-cols-4 gap-2">
                                     {[
-                                        { type: 'SLACK', label: 'Slack', icon: <MessageSquare className="h-5 w-5" /> },
                                         { type: 'EMAIL', label: '이메일', icon: <Mail className="h-5 w-5" /> },
                                         { type: 'WEBHOOK', label: 'Webhook', icon: <Webhook className="h-5 w-5" /> },
                                         { type: 'MATTERMOST', label: 'Mattermost', icon: <MessageSquare className="h-5 w-5" /> },
@@ -896,7 +883,7 @@ export default function NotificationSettingsPage() {
                                     type="text"
                                     value={newChannelConfig}
                                     onChange={e => setNewChannelConfig(e.target.value)}
-                                    placeholder={newChannelType === 'EMAIL' ? 'security@example.com' : 'https://hooks.slack.com/...'}
+                                    placeholder={newChannelType === 'EMAIL' ? 'security@example.com' : 'https://example.internal/webhook'}
                                     className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                                 />
                             </div>

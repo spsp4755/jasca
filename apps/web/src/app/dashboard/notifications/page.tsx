@@ -25,6 +25,8 @@ import {
     useNotifications,
     useMarkNotificationRead,
     useMarkAllNotificationsRead,
+    useDeleteNotification,
+    useDeleteNotifications,
     type Notification
 } from '@/lib/api-hooks';
 import { AiButton, AiResultPanel } from '@/components/ai';
@@ -125,6 +127,8 @@ export default function NotificationsPage() {
     const { data: notifications = [], isLoading, error, refetch } = useNotifications();
     const markReadMutation = useMarkNotificationRead();
     const markAllReadMutation = useMarkAllNotificationsRead();
+    const deleteNotificationMutation = useDeleteNotification();
+    const deleteNotificationsMutation = useDeleteNotifications();
 
     // Filter & Sort State
     const [typeFilter, setTypeFilter] = useState<NotificationType>('all');
@@ -232,6 +236,32 @@ export default function NotificationsPage() {
             await handleMarkAsRead(id);
         }
         clearSelection();
+    };
+
+    const handleDeleteNotification = async (id: string) => {
+        if (!confirm('이 알림을 삭제하시겠습니까?')) return;
+        try {
+            await deleteNotificationMutation.mutateAsync(id);
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
+        } catch (err) {
+            console.error('Failed to delete notification:', err);
+        }
+    };
+
+    const handleDeleteSelected = async () => {
+        const ids = Array.from(selectedIds);
+        if (ids.length === 0) return;
+        if (!confirm(`선택한 알림 ${ids.length}개를 삭제하시겠습니까?`)) return;
+        try {
+            await deleteNotificationsMutation.mutateAsync(ids);
+            clearSelection();
+        } catch (err) {
+            console.error('Failed to delete selected notifications:', err);
+        }
     };
 
     // AI handlers
@@ -462,6 +492,14 @@ export default function NotificationsPage() {
                             읽음 처리
                         </button>
                         <button
+                            onClick={handleDeleteSelected}
+                            disabled={deleteNotificationsMutation.isPending}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white dark:bg-slate-800 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50"
+                        >
+                            {deleteNotificationsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            삭제
+                        </button>
+                        <button
                             onClick={clearSelection}
                             className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors"
                         >
@@ -588,6 +626,18 @@ export default function NotificationsPage() {
                                     >
                                         <ExternalLink className="h-4 w-4" />
                                     </Link>
+                                    <button
+                                        onClick={() => handleDeleteNotification(notification.id)}
+                                        disabled={deleteNotificationMutation.isPending}
+                                        className="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                                        title="삭제"
+                                    >
+                                        {deleteNotificationMutation.isPending ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Trash2 className="h-4 w-4" />
+                                        )}
+                                    </button>
                                 </div>
                             </div>
                         ))}

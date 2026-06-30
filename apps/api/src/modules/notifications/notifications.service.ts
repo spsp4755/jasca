@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChannelType, NotificationEventType } from '@prisma/client';
 import * as nodemailer from 'nodemailer';
@@ -64,6 +64,33 @@ export class NotificationsService {
         });
 
         return { success: true };
+    }
+
+    async deleteUserNotification(notificationId: string, userId: string): Promise<{ success: boolean }> {
+        await this.prisma.userNotification.deleteMany({
+            where: {
+                id: notificationId,
+                userId,
+            },
+        });
+
+        return { success: true };
+    }
+
+    async deleteUserNotifications(notificationIds: string[], userId: string): Promise<{ success: boolean; deleted: number }> {
+        const ids = [...new Set(notificationIds)].filter(Boolean);
+        if (ids.length === 0) {
+            throw new BadRequestException('No notification IDs were provided');
+        }
+
+        const result = await this.prisma.userNotification.deleteMany({
+            where: {
+                id: { in: ids },
+                userId,
+            },
+        });
+
+        return { success: true, deleted: result.count };
     }
 
     // Creates a user notification (called internally when events happen)
@@ -149,19 +176,28 @@ export class NotificationsService {
         });
 
         for (const rule of rules) {
-            // Check conditions
-            if (rule.conditions) {
-                const conditions = rule.conditions as any;
-
-                if (conditions.severity && payload.severity) {
-                    if (!conditions.severity.includes(payload.severity)) {
-                        continue;
-                    }
-                }
+            if (rule.channel.type === 'SLACK') {
+                this.logger.warn(`Skipping Slack notification channel ${rule.channel.id}; Slack is disabled in this deployment.`);
+                continue;
             }
 
-            // Send notification based on channel type
-            await this.sendToChannel(rule.channel, payload);
+            try {
+                // Check conditions
+                if (rule.conditions) {
+                    const conditions = rule.conditions as any;
+
+                    if (conditions.severity && payload.severity) {
+                        if (!conditions.severity.includes(payload.severity)) {
+                            continue;
+                        }
+                    }
+                }
+
+                // A broken channel must not block the remaining channels.
+                await this.sendToChannel(rule.channel, payload);
+            } catch (error) {
+                this.logger.error(`Notification rule ${rule.id} failed: ${(error as Error).message}`);
+            }
         }
     }
 
@@ -209,19 +245,23 @@ export class NotificationsService {
         });
 
         if (!channel) {
-            return { success: false, message: '채널을 찾을 수 없습니다.' };
+            return { success: false, message: '알림 채널을 찾을 수 없습니다.' };
+        }
+
+        if (channel.type === 'SLACK') {
+            return { success: false, message: 'Slack 알림은 현재 배포에서 사용하지 않습니다. Email, Mattermost 또는 Webhook을 사용하세요.' };
         }
 
         const testPayload: NotificationPayload = {
             eventType: 'SCAN_COMPLETED' as NotificationEventType,
-            title: '🔔 테스트 알림',
-            message: 'JASCA 알림 채널 테스트입니다. 이 메시지가 수신되면 채널이 올바르게 설정되었습니다.',
+            title: 'JASCA 테스트 알림',
+            message: 'JASCA 알림 채널 테스트입니다. 이 메시지가 수신되면 채널이 정상적으로 설정된 것입니다.',
             severity: 'INFO',
         };
 
         try {
             await this.sendToChannel(channel as any, testPayload);
-            return { success: true, message: '테스트 알림이 성공적으로 발송되었습니다.' };
+            return { success: true, message: '테스트 알림을 성공적으로 발송했습니다.' };
         } catch (error) {
             this.logger.error(`Test notification failed for channel ${channelId}:`, error);
             return { 
@@ -240,8 +280,8 @@ export class NotificationsService {
         try {
             switch (channel.type) {
                 case 'SLACK':
-                    await this.sendSlackNotification(config, payload);
-                    break;
+                    this.logger.warn(`Skipping Slack notification channel ${channel.id}; Slack is disabled in this deployment.`);
+                    return;
                 case 'MATTERMOST':
                     await this.sendMattermostNotification(config, payload);
                     break;
@@ -258,45 +298,6 @@ export class NotificationsService {
                 `Failed to send notification to channel ${channel.id}: ${error}`,
             );
             throw error;
-        }
-    }
-
-    private async sendSlackNotification(config: any, payload: NotificationPayload) {
-        const webhookUrl = config.webhookUrl || config.url;
-        if (!webhookUrl) {
-            throw new Error('Slack webhook URL이 설정되지 않았습니다.');
-        }
-
-        const color = this.getSeverityColor(payload.severity);
-
-        const slackPayload = {
-            attachments: [
-                {
-                    color,
-                    title: payload.title,
-                    text: payload.message,
-                    fields: [
-                        payload.cveId && { title: 'CVE', value: payload.cveId, short: true },
-                        payload.severity && { title: 'Severity', value: payload.severity, short: true },
-                    ].filter(Boolean),
-                    actions: payload.link
-                        ? [{ type: 'button', text: 'View Details', url: payload.link }]
-                        : undefined,
-                    footer: 'JASCA Security Scanner',
-                    ts: Math.floor(Date.now() / 1000),
-                },
-            ],
-        };
-
-        const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(slackPayload),
-        });
-
-        if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`Slack API error: ${response.status} - ${text}`);
         }
     }
 
