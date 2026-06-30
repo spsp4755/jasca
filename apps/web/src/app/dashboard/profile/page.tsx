@@ -696,6 +696,11 @@ export default function ProfilePage() {
         emailAlerts: true,
         criticalOnly: false,
         weeklyDigest: false,
+        scanComplete: true,
+        criticalVulns: true,
+        highVulns: true,
+        policyViolations: true,
+        exceptionAlerts: true,
     });
 
     // Load profile data
@@ -712,6 +717,11 @@ export default function ProfilePage() {
                 emailAlerts: notificationSettings.emailAlerts ?? true,
                 criticalOnly: notificationSettings.criticalOnly ?? false,
                 weeklyDigest: notificationSettings.weeklyDigest ?? false,
+                scanComplete: notificationSettings.scanComplete ?? true,
+                criticalVulns: notificationSettings.criticalVulns ?? true,
+                highVulns: notificationSettings.highVulns ?? true,
+                policyViolations: notificationSettings.policyViolations ?? true,
+                exceptionAlerts: notificationSettings.exceptionAlerts ?? true,
             });
         }
     }, [notificationSettings]);
@@ -919,9 +929,14 @@ export default function ProfilePage() {
 
                 <div className="space-y-4">
                     {[
-                        { key: 'emailAlerts' as const, label: '이메일 알림', desc: '중요 이벤트 발생 시 이메일로 알림 받기' },
-                        { key: 'criticalOnly' as const, label: 'Critical 전용', desc: 'Critical 수준 취약점만 알림 받기' },
-                        { key: 'weeklyDigest' as const, label: '주간 리포트', desc: '매주 월요일 요약 리포트 발송' },
+                        { key: 'emailAlerts' as const, label: '전체 알림', desc: '모든 개인 알림 생성 여부' },
+                        { key: 'scanComplete' as const, label: '스캔 완료', desc: '스캔 완료 시마다 알림 받기' },
+                        { key: 'criticalVulns' as const, label: 'Critical 취약점', desc: 'Critical 취약점 발견 알림 받기' },
+                        { key: 'highVulns' as const, label: 'High 취약점', desc: 'High 취약점 발견 알림 받기' },
+                        { key: 'policyViolations' as const, label: '정책 위반', desc: '정책 위반 알림 받기' },
+                        { key: 'exceptionAlerts' as const, label: '예외 처리', desc: '예외 관련 알림 받기' },
+                        { key: 'criticalOnly' as const, label: 'Critical 전용', desc: '취약점/정책 알림은 Critical만 받기' },
+                        { key: 'weeklyDigest' as const, label: '주간 리포트', desc: '주간 요약 리포트 받기' },
                     ].map((item) => (
                         <div key={item.key} className="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700 last:border-0">
                             <div>
@@ -930,7 +945,7 @@ export default function ProfilePage() {
                             </div>
                             <button
                                 onClick={() => handleToggleNotification(item.key)}
-                                disabled={updateNotificationMutation.isPending}
+                                disabled={updateNotificationMutation.isPending || (item.key !== 'emailAlerts' && !notifications.emailAlerts)}
                                 className={`relative w-12 h-6 rounded-full transition-colors ${notifications[item.key]
                                     ? 'bg-blue-600'
                                     : 'bg-slate-200 dark:bg-slate-700'

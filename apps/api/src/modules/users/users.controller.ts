@@ -39,7 +39,16 @@ export class UsersController {
     @ApiOperation({ summary: 'Update current user notification settings' })
     async updateNotificationSettings(
         @CurrentUser() user: { id: string },
-        @Body() dto: { emailAlerts?: boolean; criticalOnly?: boolean; weeklyDigest?: boolean },
+        @Body() dto: {
+            emailAlerts?: boolean;
+            criticalOnly?: boolean;
+            weeklyDigest?: boolean;
+            scanComplete?: boolean;
+            criticalVulns?: boolean;
+            highVulns?: boolean;
+            policyViolations?: boolean;
+            exceptionAlerts?: boolean;
+        },
     ) {
         return this.usersService.updateNotificationSettings(user.id, dto);
     }

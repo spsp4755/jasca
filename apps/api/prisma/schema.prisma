@@ -590,6 +590,11 @@ model UserNotificationSetting {
   emailAlerts  Boolean  @default(true)
   criticalOnly Boolean  @default(false)
   weeklyDigest Boolean  @default(true)
+  scanComplete Boolean  @default(true)
+  criticalVulns Boolean @default(true)
+  highVulns    Boolean  @default(true)
+  policyViolations Boolean @default(true)
+  exceptionAlerts Boolean @default(true)
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

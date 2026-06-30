@@ -2190,6 +2190,11 @@ export interface NotificationSettings {
     emailAlerts: boolean;
     criticalOnly: boolean;
     weeklyDigest: boolean;
+    scanComplete: boolean;
+    criticalVulns: boolean;
+    highVulns: boolean;
+    policyViolations: boolean;
+    exceptionAlerts: boolean;
 }
 
 export function useProfile() {
