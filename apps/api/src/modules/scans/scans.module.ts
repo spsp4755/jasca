@@ -8,9 +8,10 @@ import { LicensesModule } from '../licenses/licenses.module';
 import { PoliciesModule } from '../policies/policies.module';
 import { SettingsModule } from '../settings/settings.module';
 import { ManualAdvisoriesModule } from '../manual-advisories/manual-advisories.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-    imports: [LicensesModule, PoliciesModule, SettingsModule, ManualAdvisoriesModule],
+    imports: [LicensesModule, PoliciesModule, SettingsModule, ManualAdvisoriesModule, NotificationsModule],
     controllers: [ScansController],
     providers: [ScansService, TrivyParserService, VulnSyncService, TrivyScanService],
     exports: [ScansService],

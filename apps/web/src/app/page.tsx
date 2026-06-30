@@ -21,7 +21,7 @@ import {
 import { useAuthStore } from '@/stores/auth-store';
 import { useHasMounted } from '@/hooks/use-has-mounted';
 import { authApi } from '@/lib/auth-api';
-import { CountUp, FadeInOnScroll, ParticleBackground } from '@/components/animations';
+import { FadeInOnScroll, ParticleBackground } from '@/components/animations';
 
 // Trust badges / certifications
 const trustBadges = [
@@ -29,14 +29,6 @@ const trustBadges = [
     { name: 'SOC 2', icon: Lock },
     { name: 'GDPR', icon: Globe },
     { name: '99.9% 가동률', icon: Zap },
-];
-
-// Statistics to display
-const stats = [
-    { label: '스캔된 취약점', value: 50000, suffix: '+' },
-    { label: '보호된 프로젝트', value: 1200, suffix: '+' },
-    { label: '기업 고객', value: 150, suffix: '+' },
-    { label: '평균 응답 시간', value: 200, suffix: 'ms' },
 ];
 
 export default function HomePage() {
@@ -184,23 +176,6 @@ export default function HomePage() {
                                 문서 보기
                             </Link>
                         </div>
-                    </div>
-                </FadeInOnScroll>
-
-                {/* Stats Section */}
-                <FadeInOnScroll direction="up" delay={200}>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-20 max-w-4xl mx-auto">
-                        {stats.map((stat, index) => (
-                            <div
-                                key={stat.label}
-                                className="text-center p-6 rounded-2xl bg-slate-800/30 backdrop-blur-sm border border-slate-700/50"
-                            >
-                                <div className="text-3xl md:text-4xl font-bold text-white mb-2">
-                                    <CountUp end={stat.value} suffix={stat.suffix} />
-                                </div>
-                                <div className="text-sm text-slate-400">{stat.label}</div>
-                            </div>
-                        ))}
                     </div>
                 </FadeInOnScroll>
 

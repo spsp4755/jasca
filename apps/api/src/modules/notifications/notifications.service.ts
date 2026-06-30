@@ -97,8 +97,13 @@ export class NotificationsService {
         message: string,
         link?: string,
     ): Promise<void> {
+        const uniqueUserIds = [...new Set(userIds)].filter(Boolean);
+        if (uniqueUserIds.length === 0) {
+            return;
+        }
+
         await this.prisma.userNotification.createMany({
-            data: userIds.map(userId => ({
+            data: uniqueUserIds.map(userId => ({
                 userId,
                 type,
                 title,
@@ -108,7 +113,7 @@ export class NotificationsService {
             })),
         });
 
-        this.logger.log(`Created notifications for ${userIds.length} users: ${title}`);
+        this.logger.log(`Created notifications for ${uniqueUserIds.length} users: ${title}`);
     }
 
     // Get unread count for a user
@@ -190,7 +195,7 @@ export class NotificationsService {
             eventType: 'POLICY_VIOLATION',
             title,
             message,
-            severity: severity || action === 'BLOCK' ? 'CRITICAL' : 'HIGH',
+            severity: severity || (action === 'BLOCK' ? 'CRITICAL' : 'HIGH'),
             cveId,
         });
 
