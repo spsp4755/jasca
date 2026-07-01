@@ -609,11 +609,16 @@ export default function SettingsPage() {
                                             type="button"
                                             onClick={() => setNotifications(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
                                             disabled={item.key !== 'emailAlerts' && !notifications.emailAlerts}
-                                            className={`w-12 h-6 rounded-full transition-colors disabled:opacity-50 ${notifications[item.key] ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
-                                                }`}
+                                            className={`inline-flex min-w-[96px] items-center justify-between gap-2 rounded-full border px-2 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                                notifications[item.key]
+                                                    ? 'border-blue-200 bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+                                                    : 'border-slate-300 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                            }`}
                                         >
-                                            <span className={`block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${notifications[item.key] ? 'translate-x-6' : 'translate-x-0.5'
-                                                }`} />
+                                            <span className={`h-5 w-5 rounded-full bg-white shadow ${notifications[item.key] ? 'order-2' : 'order-1 bg-slate-300 dark:bg-slate-500'}`} />
+                                            <span className={notifications[item.key] ? 'order-1 pl-2' : 'order-2 pr-2'}>
+                                                {notifications[item.key] ? '활성' : '비활성'}
+                                            </span>
                                         </button>
                                     </label>
                                 ))}

@@ -103,18 +103,23 @@ function Toggle({
             type="button"
             role="switch"
             aria-checked={checked}
-            aria-label={label}
+            aria-label={`${label} ${checked ? '활성' : '비활성'}`}
             disabled={disabled}
             onClick={onClick}
-            className={`relative h-7 w-14 rounded-full transition-colors disabled:opacity-50 ${
-                checked ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'
+            className={`inline-flex min-w-[112px] items-center justify-between gap-2 rounded-full border px-2 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                checked
+                    ? 'border-blue-200 bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+                    : 'border-slate-300 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
             }`}
         >
             <span
-                className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                    checked ? 'translate-x-6' : 'translate-x-0'
+                className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                    checked ? 'order-2' : 'order-1 bg-slate-300 dark:bg-slate-500'
                 }`}
             />
+            <span className={checked ? 'order-1 pl-2' : 'order-2 pr-2'}>
+                {checked ? '활성' : '비활성'}
+            </span>
         </button>
     );
 }
@@ -142,7 +147,7 @@ export default function NotificationSettingsPage() {
         window.setTimeout(() => setSaved(false), 2500);
     };
 
-    const isDisabled = isLoading || updateMutation.isPending || !settings.emailAlerts;
+    const eventDisabled = isLoading || updateMutation.isPending || !settings.emailAlerts;
 
     return (
         <div className="min-h-screen bg-slate-50 p-6 dark:bg-slate-950">
@@ -221,7 +226,7 @@ export default function NotificationSettingsPage() {
                             <div
                                 key={item.key}
                                 className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition dark:border-slate-800 dark:bg-slate-900 ${
-                                    isDisabled ? 'opacity-60' : ''
+                                    eventDisabled ? 'opacity-60' : ''
                                 }`}
                             >
                                 <div className="flex items-start justify-between gap-4">
@@ -236,7 +241,7 @@ export default function NotificationSettingsPage() {
                                     </div>
                                     <Toggle
                                         checked={checked}
-                                        disabled={isDisabled}
+                                        disabled={eventDisabled}
                                         label={item.title}
                                         onClick={() => updateLocal(item.key, !checked)}
                                     />
@@ -256,7 +261,7 @@ export default function NotificationSettingsPage() {
                         </div>
                         <Toggle
                             checked={settings.criticalOnly}
-                            disabled={isDisabled}
+                            disabled={eventDisabled}
                             label="Critical 전용 모드"
                             onClick={() => updateLocal('criticalOnly', !settings.criticalOnly)}
                         />

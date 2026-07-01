@@ -174,7 +174,7 @@ export default function NewScanPage() {
         setScanOperationId(nextOperationId);
 
         try {
-            await uploadMutation.mutateAsync({
+            const scanResult = await uploadMutation.mutateAsync({
                 projectId: selectedProjectId || undefined,
                 file,
                 scanTarget: isScanningTarget,
@@ -192,8 +192,9 @@ export default function NewScanPage() {
             setUploadStatus('success');
             setScanOperationId('');
             uploadAbortControllerRef.current = null;
+            const destination = scanResult?.id ? `/dashboard/scans/${scanResult.id}` : '/dashboard/scans';
             setTimeout(() => {
-                router.push('/dashboard/scans');
+                router.push(destination);
             }, 1500);
         } catch (error: any) {
             setScanOperationId('');
