@@ -1751,7 +1751,7 @@ export function useStatsTrend(organizationId?: string, days = 7) {
 
 export interface Notification {
     id: string;
-    type: 'critical_vuln' | 'policy_violation' | 'exception' | 'scan_complete' | 'system';
+    type: 'critical_vuln' | 'high_vuln' | 'policy_violation' | 'exception' | 'scan_complete' | 'system';
     title: string;
     message: string;
     isRead: boolean;
