@@ -37,6 +37,7 @@ export interface AiResult {
         inputTokens?: number;
         outputTokens?: number;
         durationMs?: number;
+        contextFingerprint?: string;
     };
     usedPrompt?: string;
     createdAt: Date;

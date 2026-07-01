@@ -232,6 +232,7 @@ export default function ScansPage() {
         estimateTokens,
         cancel: cancelAi,
         progress: aiProgress,
+        openPanel: openAiPanel,
     } = useAiExecution('scan.changeAnalysis');
 
     const { activePanel, closePanel } = useAiStore();
@@ -339,6 +340,22 @@ export default function ScansPage() {
     }, [filteredScans, currentPage, pageSize]);
 
     const totalPages = Math.ceil(filteredScans.length / pageSize);
+    const aiContextFingerprint = useMemo(() => JSON.stringify({
+        total: data?.total || 0,
+        filters: { searchQuery, statusFilter, sourceFilter, severityFilter, dateFilter },
+        sort: { sortField, sortDirection },
+        scans: filteredScans.slice(0, 25).map((scan: any) => ({
+            id: scan.id,
+            status: scan.status,
+            target: scan.targetName || scan.imageRef || scan.artifactName || 'Unknown',
+            project: scan.project?.name || '-',
+            createdAt: scan.createdAt || scan.startedAt,
+            critical: scan.summary?.critical || 0,
+            high: scan.summary?.high || 0,
+            medium: scan.summary?.medium || 0,
+            low: scan.summary?.low || 0,
+        })),
+    }), [data?.total, dateFilter, filteredScans, searchQuery, severityFilter, sortDirection, sortField, sourceFilter, statusFilter]);
     const paginatedScanIds = useMemo(
         () => paginatedScans.map((scan: any) => scan.id),
         [paginatedScans],
@@ -405,11 +422,17 @@ export default function ScansPage() {
     };
 
     const handleAiScanDiff = () => {
+        if (aiResult?.metadata?.contextFingerprint === aiContextFingerprint) {
+            openAiPanel();
+            return;
+        }
+
         const context = {
             screen: 'scans',
-            scans: data?.results?.slice(0, 10) || [],
-            total: data?.total || 0,
-            timestamp: new Date().toISOString(),
+            scans: filteredScans.slice(0, 10),
+            total: filteredScans.length,
+            filters: { searchQuery, statusFilter, sourceFilter, severityFilter, dateFilter },
+            __fingerprint: aiContextFingerprint,
         };
         executeScanDiff(context);
     };
@@ -419,7 +442,8 @@ export default function ScansPage() {
     };
 
     const estimatedTokens = estimateTokens({
-        scans: data?.results?.slice(0, 5) || [],
+        scans: filteredScans.slice(0, 5),
+        filters: { searchQuery, statusFilter, sourceFilter, severityFilter, dateFilter },
     });
 
     const clearFilters = () => {

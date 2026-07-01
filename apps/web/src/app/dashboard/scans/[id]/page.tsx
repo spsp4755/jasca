@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
     ArrowLeft,
-    FileSearch,
     Calendar,
     Package,
     AlertCircle,
@@ -13,7 +12,6 @@ import {
     ChevronRight,
     Loader2,
     RefreshCw,
-    ExternalLink,
     Scale,
     Shield,
     AlertTriangle,
@@ -119,6 +117,7 @@ export default function ScanDetailPage() {
         cancel: cancelAi,
         progress: aiProgress,
         isPanelOpen: aiPanelOpen,
+        openPanel: openAiPanel,
         closePanel: closeAiPanel,
     } = useAiExecution('scan.analysis', { entityId: id });
 
@@ -174,10 +173,14 @@ export default function ScanDetailPage() {
             .filter((l: any) => ['FORBIDDEN', 'RESTRICTED', 'RECIPROCAL'].includes(l.classification))
             .slice(0, 40)
             .map((l: any) => ({ name: l.name, spdxId: l.spdxId, classification: l.classification, packages: l.packageCount })),
-        timestamp: new Date().toISOString(),
     });
 
     const handleAiAnalyze = () => {
+        if (aiResult) {
+            openAiPanel();
+            return;
+        }
+
         executeAiAnalysis(buildAiContext());
     };
 
@@ -342,7 +345,6 @@ export default function ScanDetailPage() {
                 <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
                     <div className="flex items-center justify-between">
                         <span className="text-sm text-slate-500 dark:text-slate-400">Total</span>
-                        <FileSearch className="w-5 h-5 text-slate-400" />
                     </div>
                     <p className="text-2xl font-bold text-slate-900 dark:text-white mt-2">
                         {summary.totalVulns || vulnerabilities.length || 0}
@@ -644,16 +646,6 @@ export default function ScanDetailPage() {
                                             )}
                                         </div>
                                     </div>
-                                    {vuln.vulnerability?.cveId && (
-                                        <a
-                                            href={`https://nvd.nist.gov/vuln/detail/${vuln.vulnerability.cveId}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-slate-400 hover:text-blue-600 transition-colors"
-                                        >
-                                            <ExternalLink className="h-4 w-4" />
-                                        </a>
-                                    )}
                                 </div>
                             </div>
                         ))}
@@ -752,7 +744,6 @@ export default function ScanDetailPage() {
                 previousResults={aiPreviousResults}
                 loading={aiLoading}
                 loadingProgress={aiProgress}
-                onRegenerate={handleAiAnalyze}
                 action="scan.analysis"
             />
         </div>
