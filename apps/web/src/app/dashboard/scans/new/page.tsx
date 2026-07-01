@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Archive, ArrowLeft, CheckCircle, FileJson, Loader2, ShieldCheck, Upload, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -47,8 +47,10 @@ export default function NewScanPage() {
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'cancelling' | 'success' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [scanOperationId, setScanOperationId] = useState<string>('');
+    const isPageActiveRef = useRef(true);
     const cancelRequestedRef = useRef(false);
     const uploadAbortControllerRef = useRef<AbortController | null>(null);
+    const redirectTimeoutRef = useRef<number | null>(null);
     const [trivyOptions, setTrivyOptions] = useState<Required<TrivyScanOptions>>({
         scanMode: 'fs',
         analysisStrategy: 'auto',
@@ -74,6 +76,17 @@ export default function NewScanPage() {
     const acceptedFiles = isScanningTarget
         ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.spdx,.cdx,.cyclonedx,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,.qcow2,.vmdk,.vhd,.vhdx,.img,Dockerfile'
         : '.json,.sarif';
+
+    useEffect(() => {
+        isPageActiveRef.current = true;
+
+        return () => {
+            isPageActiveRef.current = false;
+            if (redirectTimeoutRef.current) {
+                window.clearTimeout(redirectTimeoutRef.current);
+            }
+        };
+    }, []);
 
     const resetFileState = () => {
         setFile(null);
@@ -189,14 +202,20 @@ export default function NewScanPage() {
                 },
             });
 
+            if (!isPageActiveRef.current) return;
+
             setUploadStatus('success');
             setScanOperationId('');
             uploadAbortControllerRef.current = null;
             const destination = scanResult?.id ? `/dashboard/scans/${scanResult.id}` : '/dashboard/scans';
-            setTimeout(() => {
-                router.push(destination);
+            redirectTimeoutRef.current = window.setTimeout(() => {
+                if (isPageActiveRef.current) {
+                    router.push(destination);
+                }
             }, 1500);
         } catch (error: any) {
+            if (!isPageActiveRef.current) return;
+
             setScanOperationId('');
             if (cancelRequestedRef.current) {
                 setUploadStatus('idle');
