@@ -153,7 +153,7 @@ export function NotificationCenter() {
         message: n.message,
         timestamp: new Date(n.createdAt).getTime(),
         read: n.isRead,
-        link: undefined as string | undefined,
+        link: n.link,
     }));
 
     const unreadCount = notifications.filter(n => !n.read).length;
