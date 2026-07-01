@@ -483,6 +483,8 @@ export function useUploadScan() {
             queryClient.invalidateQueries({ queryKey: ['scans'], exact: false });
             queryClient.invalidateQueries({ queryKey: ['project-scans'], exact: false });
             queryClient.invalidateQueries({ queryKey: ['projects'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+            queryClient.refetchQueries({ queryKey: ['notifications'] });
         },
     });
 }
@@ -1763,8 +1765,10 @@ export function useNotifications() {
     return useQuery<Notification[]>({
         queryKey: ['notifications'],
         queryFn: () => authFetch(`${API_BASE}/notifications`),
-        refetchInterval: 10000,
+        refetchInterval: 3000,
+        refetchOnMount: 'always',
         refetchOnWindowFocus: true,
+        staleTime: 0,
     });
 }
 

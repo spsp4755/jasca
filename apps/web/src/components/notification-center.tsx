@@ -9,7 +9,7 @@ import {
     AlertTriangle,
     Info,
     Check,
-    RefreshCw,
+    Trash2,
     Settings,
     ExternalLink,
     ChevronRight,
@@ -23,7 +23,7 @@ import {
     useNotifications,
     useMarkNotificationRead,
     useMarkAllNotificationsRead,
-    type Notification as ApiNotification
+    useDeleteNotifications,
 } from '@/lib/api-hooks';
 
 // Legacy interface for localStorage-based notifications (fallback)
@@ -127,9 +127,10 @@ export function NotificationCenter() {
     const panelRef = useRef<HTMLDivElement>(null);
 
     // API-based notifications only
-    const { data: apiNotifications = [], isLoading, refetch } = useNotifications();
+    const { data: apiNotifications = [], isLoading } = useNotifications();
     const markReadMutation = useMarkNotificationRead();
     const markAllReadMutation = useMarkAllNotificationsRead();
+    const deleteNotificationsMutation = useDeleteNotifications();
 
     // Close on click outside
     useEffect(() => {
@@ -174,6 +175,17 @@ export function NotificationCenter() {
             console.error('Failed to mark all as read:', e);
         }
     }, [markAllReadMutation]);
+
+    const clearNotifications = useCallback(async () => {
+        const ids = notifications.map((notification) => notification.id);
+        if (ids.length === 0) return;
+
+        try {
+            await deleteNotificationsMutation.mutateAsync(ids);
+        } catch (e) {
+            console.error('Failed to clear notifications:', e);
+        }
+    }, [deleteNotificationsMutation, notifications]);
 
     const handleNotificationClick = useCallback(async (notification: typeof notifications[0]) => {
         await markAsRead(notification.id);
@@ -235,14 +247,20 @@ export function NotificationCenter() {
                                     )}
                                 </button>
                             )}
-                            <button
-                                onClick={() => refetch()}
-                                disabled={isLoading}
-                                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                                title="새로고침"
-                            >
-                                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                            </button>
+                            {notifications.length > 0 && (
+                                <button
+                                    onClick={clearNotifications}
+                                    disabled={deleteNotificationsMutation.isPending}
+                                    className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+                                    title="알림 목록 비우기"
+                                >
+                                    {deleteNotificationsMutation.isPending ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Trash2 className="h-4 w-4" />
+                                    )}
+                                </button>
+                            )}
                             <button
                                 onClick={() => router.push('/dashboard/settings/notifications')}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"

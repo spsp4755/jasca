@@ -48,7 +48,6 @@ import { useAiExecution, useDashboardAiContext } from '@/hooks/use-ai-execution'
 import { useAiStore } from '@/stores/ai-store';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { QuickActions, QuickActionsFAB } from '@/components/quick-actions';
-import { NotificationCenter } from '@/components/notification-center';
 import { DashboardSettingsButton } from '@/components/dashboard-settings';
 import { useChartView, useTrendPeriod, useWidgetVisibility } from '@/stores/preferences-store';
 
@@ -269,7 +268,6 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex items-center gap-3">
                     <QuickActions className="hidden md:flex" />
-                    <NotificationCenter />
                     <DashboardSettingsButton />
                     <ThemeToggle />
                     <AiButton

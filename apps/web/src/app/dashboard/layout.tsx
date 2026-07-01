@@ -31,6 +31,8 @@ import { useHasMounted } from '@/hooks/use-has-mounted';
 import { Breadcrumb } from '@/components/breadcrumb';
 import { RecentProjects } from '@/components/recent-projects';
 import { ToastProvider } from '@/components/ui/toast';
+import { NotificationCenter } from '@/components/notification-center';
+import { useMarkNotificationRead, useNotifications } from '@/lib/api-hooks';
 
 // Role types for navigation
 type NavRole = 'SYSTEM_ADMIN' | 'ORG_ADMIN' | 'SECURITY_ADMIN' | 'PROJECT_ADMIN' | 'DEVELOPER' | 'VIEWER';
@@ -78,6 +80,8 @@ export default function DashboardLayout({
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const { user, isAuthenticated, refreshToken, logout, setTokens, setUser } = useAuthStore();
     const hasMounted = useHasMounted();
+    const { data: notifications = [] } = useNotifications();
+    const { mutate: markNotificationRead } = useMarkNotificationRead();
 
     // Get user roles from user object
     const userRoles = useMemo(() => {
@@ -126,6 +130,18 @@ export default function DashboardLayout({
             router.push('/login');
         }
     }, [isAuthenticated, router, hasMounted]);
+
+    useEffect(() => {
+        if (!pathname || notifications.length === 0) return;
+
+        const matchingUnread = notifications.filter((notification) => (
+            !notification.isRead && notification.link === pathname
+        ));
+
+        matchingUnread.forEach((notification) => {
+            markNotificationRead(notification.id);
+        });
+    }, [pathname, notifications, markNotificationRead]);
 
     const handleLogout = async () => {
         try {
@@ -273,6 +289,7 @@ export default function DashboardLayout({
                             </div>
                         </div>
                         <div className="flex flex-shrink-0 items-center gap-2 sm:gap-4">
+                            <NotificationCenter />
                             {/* User info */}
                             {user && (
                                 <Link
