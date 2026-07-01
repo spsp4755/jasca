@@ -184,6 +184,7 @@ export function useAiExecution(
                     inputTokens: data.inputTokens,
                     outputTokens: data.outputTokens,
                     durationMs: data.durationMs,
+                    contextFingerprint: typeof context.__fingerprint === 'string' ? context.__fingerprint : undefined,
                 },
                 usedPrompt: data.usedPrompt,
                 createdAt: new Date(),
