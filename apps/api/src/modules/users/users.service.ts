@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PasswordPolicyService } from '../auth/services/password-policy.service';
 import {
     RequestUser,
     canAccessOrganization,
@@ -20,7 +21,10 @@ type ManagedUser = Prisma.UserGetPayload<{
 
 @Injectable()
 export class UsersService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly passwordPolicyService: PasswordPolicyService,
+    ) { }
 
     private readonly validRoles = ['SYSTEM_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN', 'PROJECT_ADMIN', 'DEVELOPER', 'VIEWER'];
     private readonly rolePriority: Role[] = [
@@ -227,6 +231,10 @@ export class UsersService {
             throw new BadRequestException('A user with this email already exists');
         }
 
+        const validation = await this.passwordPolicyService.validatePassword(data.password, organizationId ?? undefined);
+        if (!validation.isValid) {
+            throw new BadRequestException(validation.errors.join(', '));
+        }
         const passwordHash = await bcrypt.hash(data.password, this.bcryptRounds);
 
         const user = await this.prisma.user.create({
@@ -347,6 +355,69 @@ export class UsersService {
         if (!user) throw new NotFoundException('User not found');
 
         return this.formatManagedUser(user);
+    }
+
+    async updateUserPassword(id: string, data: { newPassword?: string }, currentUser?: RequestUser) {
+        if (!data.newPassword) {
+            throw new BadRequestException('newPassword is required');
+        }
+
+        const target = await this.prisma.user.findUnique({
+            where: { id },
+            include: { roles: true },
+        });
+
+        if (!target) {
+            throw new NotFoundException('User not found');
+        }
+
+        const currentIsSystemAdmin = currentUser ? isSystemAdmin(currentUser) : false;
+        if (currentUser && !currentIsSystemAdmin) {
+            if (!canManageOrganization(currentUser, target.organizationId, ['ORG_ADMIN'])) {
+                throw new ForbiddenException('You do not have permission to update this user password');
+            }
+            if (target.roles.some((role) => role.role === 'SYSTEM_ADMIN')) {
+                throw new ForbiddenException('Only system administrators can update system administrator passwords');
+            }
+        }
+
+        const validation = await this.passwordPolicyService.validatePassword(
+            data.newPassword,
+            target.organizationId ?? undefined,
+        );
+        if (!validation.isValid) {
+            throw new BadRequestException(validation.errors.join(', '));
+        }
+
+        const isSamePassword = await this.passwordPolicyService.verifyPassword(data.newPassword, target.passwordHash);
+        if (isSamePassword) {
+            throw new BadRequestException('New password must be different from the current password');
+        }
+
+        const inHistory = await this.passwordPolicyService.isPasswordInHistory(
+            id,
+            data.newPassword,
+            target.organizationId ?? undefined,
+        );
+        if (inHistory) {
+            throw new BadRequestException('Password was recently used. Please choose a different password.');
+        }
+
+        const newHash = await this.passwordPolicyService.hashPassword(data.newPassword);
+
+        await this.prisma.user.update({
+            where: { id },
+            data: {
+                passwordHash: newHash,
+                passwordChangedAt: new Date(),
+            },
+        });
+        await this.passwordPolicyService.addToHistory(id, target.passwordHash);
+
+        return {
+            message: 'Local JASCA password updated successfully',
+            passwordChangedAt: new Date().toISOString(),
+        };
     }
 
     async deleteUser(id: string, currentUser?: RequestUser) {

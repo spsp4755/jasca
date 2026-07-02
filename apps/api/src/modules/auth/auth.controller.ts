@@ -14,12 +14,12 @@ import {
     Headers,
     Logger,
     BadRequestException,
+    ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { MfaService } from './services/mfa.service';
@@ -51,11 +51,10 @@ export class AuthController {
     // ==================== Basic Auth ====================
 
     @Post('register')
-    @ApiOperation({ summary: 'Register a new user' })
-    @ApiResponse({ status: 201, description: 'User registered successfully' })
-    @ApiResponse({ status: 409, description: 'Email already registered' })
-    async register(@Body() dto: RegisterDto) {
-        return this.authService.register(dto);
+    @ApiOperation({ summary: 'Register a new user (disabled in offline deployment)' })
+    @ApiResponse({ status: 403, description: 'Self registration is disabled' })
+    async register() {
+        throw new ForbiddenException('Self registration is disabled. Please contact a JASCA administrator.');
     }
 
     @Post('login')

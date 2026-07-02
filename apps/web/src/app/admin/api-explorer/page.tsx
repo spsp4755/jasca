@@ -65,7 +65,6 @@ interface RequestHistory {
 // Pre-defined API endpoints from controller analysis
 const API_ENDPOINTS: ApiEndpoint[] = [
     // Auth endpoints
-    { path: '/api/auth/register', method: 'POST', summary: '사용자 등록', tags: ['Auth'], parameters: [], security: [] },
     { path: '/api/auth/login', method: 'POST', summary: '로그인', tags: ['Auth'], parameters: [], security: [] },
     { path: '/api/auth/refresh', method: 'POST', summary: '토큰 갱신', tags: ['Auth'], parameters: [], security: [] },
     { path: '/api/auth/logout', method: 'POST', summary: '로그아웃', tags: ['Auth'], parameters: [], security: [{ BearerAuth: [] }] },

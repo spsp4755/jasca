@@ -927,8 +927,8 @@ export default function VulnerabilitiesPage() {
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             {paginated.map((v: Vulnerability, idx: number) => (
-                                <>
-                                    <tr key={v.id} onClick={() => router.push(`/dashboard/vulnerabilities/${v.id}`)} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer ${selectedIds.has(v.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''} ${focusedIndex === idx ? 'ring-2 ring-inset ring-blue-500' : ''}`}>
+                                <React.Fragment key={`${v.id}-${v.cveId || 'cve'}-${v.pkgName || 'pkg'}-${idx}`}>
+                                    <tr onClick={() => router.push(`/dashboard/vulnerabilities/${v.id}`)} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer ${selectedIds.has(v.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''} ${focusedIndex === idx ? 'ring-2 ring-inset ring-blue-500' : ''}`}>
                                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}><button onClick={() => toggleSelect(v.id)} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600">{selectedIds.has(v.id) ? <CheckSquare className="h-5 w-5 text-blue-600" /> : <Square className="h-5 w-5 text-slate-400" />}</button></td>
                                         <td className="px-2 py-3" onClick={e => e.stopPropagation()}><button onClick={() => toggleExpand(v.id)} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600"><ChevronRight className={`h-4 w-4 transition-transform ${expandedRows.has(v.id) ? 'rotate-90' : ''}`} /></button></td>
                                         <td className="px-4 py-3">
@@ -952,7 +952,7 @@ export default function VulnerabilitiesPage() {
                                         <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{v.scanResult?.project?.name || '-'}</td>
                                     </tr>
                                     {expandedRows.has(v.id) && <ExpandedRowDetail vuln={v} />}
-                                </>
+                                </React.Fragment>
                             ))}
                         </tbody>
                     </table>

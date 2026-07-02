@@ -20,9 +20,6 @@ import { LdapService, LdapConfig, LdapSyncResult } from '../auth/services/ldap.s
 interface SsoSettings {
     enabled: boolean;
     providers: {
-        google: { enabled: boolean; clientId?: string; clientSecret?: string };
-        github: { enabled: boolean; clientId?: string; clientSecret?: string };
-        microsoft: { enabled: boolean; clientId?: string; clientSecret?: string; tenantId?: string };
         keycloak: { enabled: boolean };
         ldap: { enabled: boolean };
     };
@@ -72,9 +69,6 @@ interface LdapSettings {
 interface PublicSsoSettings {
     enabled: boolean;
     providers: {
-        google: boolean;
-        github: boolean;
-        microsoft: boolean;
         keycloak: boolean;
         ldap: boolean;
     };
@@ -124,9 +118,6 @@ export class SsoSettingsController {
         const result: PublicSsoSettings = {
             enabled: ssoSettings?.enabled || false,
             providers: {
-                google: ssoSettings?.providers?.google?.enabled || false,
-                github: ssoSettings?.providers?.github?.enabled || false,
-                microsoft: ssoSettings?.providers?.microsoft?.enabled || false,
                 keycloak: ssoSettings?.providers?.keycloak?.enabled && isKeycloakConfigured,
                 // LDAP은 리다이렉트 SSO가 아닌 로그인 폼 방식이므로 providers에서 제외
                 // 대신 백엔드 login 엔드포인트에서 LDAP 인증을 시도함
@@ -156,14 +147,11 @@ export class SsoSettingsController {
     @ApiOperation({ summary: 'Get SSO settings (admin)' })
     async getSsoSettings(): Promise<SsoSettings> {
         const settings = await this.settingsService.get('sso') as SsoSettings;
-        return settings || {
-            enabled: false,
+        return {
+            enabled: !!settings?.enabled,
             providers: {
-                google: { enabled: false, clientId: '', clientSecret: '' },
-                github: { enabled: false, clientId: '', clientSecret: '' },
-                microsoft: { enabled: false, clientId: '', clientSecret: '', tenantId: '' },
-                keycloak: { enabled: false },
-                ldap: { enabled: false },
+                keycloak: { enabled: !!settings?.providers?.keycloak?.enabled },
+                ldap: { enabled: !!settings?.providers?.ldap?.enabled },
             },
         };
     }
@@ -177,7 +165,13 @@ export class SsoSettingsController {
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Update SSO settings' })
     async updateSsoSettings(@Body() body: { value: SsoSettings }) {
-        return this.settingsService.set('sso', body.value);
+        return this.settingsService.set('sso', {
+            enabled: !!body.value?.enabled,
+            providers: {
+                keycloak: { enabled: !!body.value?.providers?.keycloak?.enabled },
+                ldap: { enabled: !!body.value?.providers?.ldap?.enabled },
+            },
+        });
     }
 
     /**

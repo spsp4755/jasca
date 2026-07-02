@@ -133,6 +133,8 @@ try {
     Copy-Item -LiteralPath "docker/monolith/deploy-existing-layout.sh" -Destination (Join-Path $BundlePath "deploy-existing-layout.sh") -Force
     Copy-Item -LiteralPath "docker/monolith/deploy-existing-layout.env.example" -Destination (Join-Path $BundlePath "deploy-existing-layout.env.example") -Force
     Copy-Item -LiteralPath "docker/monolith/README-OFFLINE.md" -Destination (Join-Path $BundlePath "README-OFFLINE.md") -Force
+    Copy-Item -LiteralPath "docs/Kubernetes_Deployment_Guide_kr.md" -Destination (Join-Path $BundlePath "Kubernetes_Deployment_Guide_kr.md") -Force
+    Copy-Item -LiteralPath "k8s/monolith" -Destination (Join-Path $BundlePath "k8s-monolith") -Recurse -Force
 
     $manifest = [ordered]@{
         name = "JASCA offline deployment bundle"
@@ -146,11 +148,13 @@ try {
         targetPlatform = $Platform
         trivyDbPathInImage = "/app/trivy-db"
         supportsHostTrivyCacheMount = $true
+        includesKubernetesManifests = $true
         notes = @(
             "Transfer this whole directory to the closed network.",
             "Run ./start.sh on Linux or .\start.ps1 on Windows.",
             "If Trivy is already installed on the server, mount its cache with TRIVY_CACHE_MOUNT or -TrivyCacheMount.",
             "For a host-path deployment layout, copy deploy-existing-layout.env.example to deploy-existing-layout.env, edit it, then run ./deploy-existing-layout.sh.",
+            "For Kubernetes deployment, read Kubernetes_Deployment_Guide_kr.md and k8s-monolith/README_KO.md.",
             "Docker must be installed on the target host.",
             "The container preserves Docker volumes jasca_postgres_data and jasca_redis_data."
         )

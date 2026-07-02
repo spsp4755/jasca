@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jasca
+  namespace: jasca
+  labels:
+    app: jasca
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: jasca
+  template:
+    metadata:
+      labels:
+        app: jasca
+    spec:
+      containers:
+        - name: jasca
+          image: jasca-offline:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: web
+              containerPort: 3000
+            - name: api
+              containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: jasca-config
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jasca-secret
+                  key: JWT_SECRET
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: jasca-secret
+                  key: DB_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://jasca:$(DB_PASSWORD)@localhost:5432/jasca"
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+            - name: redis
+              mountPath: /var/lib/redis
+            - name: scan-results
+              mountPath: /app/jasca/scan-results
+            - name: trivy-db
+              mountPath: /app/trivy-db
+              readOnly: true
+          startupProbe:
+            tcpSocket:
+              port: web
+            failureThreshold: 60
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: web
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            tcpSocket:
+              port: web
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "4"
+              memory: "6Gi"
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: jasca-pgdata
+        - name: redis
+          persistentVolumeClaim:
+            claimName: jasca-redis
+        - name: scan-results
+          persistentVolumeClaim:
+            claimName: jasca-scan-results
+        - name: trivy-db
+          persistentVolumeClaim:
+            claimName: jasca-trivy-db

@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { useHasMounted } from '@/hooks/use-has-mounted';
 
-const PUBLIC_PATHS = ['/login', '/register', '/'];
+const PUBLIC_PATHS = ['/login', '/'];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
     const router = useRouter();

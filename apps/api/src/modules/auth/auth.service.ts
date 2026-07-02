@@ -1,8 +1,6 @@
 import {
     Injectable,
     UnauthorizedException,
-    ConflictException,
-    BadRequestException,
     ForbiddenException,
     Logger,
     Inject,
@@ -11,13 +9,11 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
 import { MfaService } from './services/mfa.service';
 import { SessionService } from './services/session.service';
 import { LoginHistoryService } from './services/login-history.service';
 import { PasswordPolicyService } from './services/password-policy.service';
 import { IpControlService } from './services/ip-control.service';
-import { EmailVerificationService } from './services/email-verification.service';
 import { SettingsService } from '@/modules/settings/settings.service';
 import { LdapService, LdapConfig } from './services/ldap.service';
 
@@ -54,55 +50,9 @@ export class AuthService {
         private readonly loginHistoryService: LoginHistoryService,
         private readonly passwordPolicyService: PasswordPolicyService,
         private readonly ipControlService: IpControlService,
-        private readonly emailVerificationService: EmailVerificationService,
         private readonly ldapService: LdapService,
         @Inject(forwardRef(() => SettingsService)) private readonly settingsService: SettingsService,
     ) { }
-
-    async register(dto: RegisterDto): Promise<TokenResponse> {
-        const existingUser = await this.prisma.user.findUnique({
-            where: { email: dto.email },
-        });
-
-        if (existingUser) {
-            throw new ConflictException('Email already registered');
-        }
-
-        // Validate password against default policy
-        const validation = await this.passwordPolicyService.validatePassword(dto.password);
-        if (!validation.isValid) {
-            throw new BadRequestException(validation.errors.join(', '));
-        }
-
-        const passwordHash = await this.passwordPolicyService.hashPassword(dto.password);
-
-        const user = await this.prisma.user.create({
-            data: {
-                email: dto.email,
-                name: dto.name,
-                passwordHash,
-                passwordChangedAt: new Date(),
-                isActive: dto.status !== 'INACTIVE',
-                organizationId: dto.organizationId || undefined,
-                roles: {
-                    create: {
-                        role: dto.role || 'VIEWER',
-                        scope: dto.role === 'SYSTEM_ADMIN' ? 'SYSTEM' : 'ORGANIZATION',
-                        scopeId: dto.role === 'SYSTEM_ADMIN' ? undefined : dto.organizationId,
-                    },
-                },
-            },
-            include: {
-                roles: true,
-            },
-        });
-
-        // Create email verification token
-        const verificationToken = await this.emailVerificationService.createVerificationToken(user.id);
-        this.logger.log(`Email verification token created for user ${user.email}`);
-
-        return this.generateTokens(user);
-    }
 
     async login(dto: LoginDto, context?: LoginContext): Promise<TokenResponse> {
         const user = await this.prisma.user.findUnique({

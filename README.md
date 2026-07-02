@@ -33,6 +33,8 @@ chmod +x deploy-existing-layout.sh
 docker logs -f jasca
 ```
 
+Kubernetes에 배포해야 하는 경우 `docs/Kubernetes_Deployment_Guide_kr.md`와 `k8s/monolith/README_KO.md`를 참고하세요. Release 번들에는 Docker 배포 스크립트와 Kubernetes monolith 매니페스트가 함께 포함됩니다.
+
 `deploy-existing-layout.env`에서 최소한 아래 값은 운영 환경에 맞게 수정해야 합니다.
 
 ```bash

@@ -111,6 +111,18 @@ export class UsersController {
         return this.usersService.updateUser(id, dto, user);
     }
 
+    @Put(':id/password')
+    @UseGuards(RolesGuard)
+    @Roles('SYSTEM_ADMIN', 'ORG_ADMIN')
+    @ApiOperation({ summary: 'Update local JASCA password for a user' })
+    async updatePassword(
+        @Param('id') id: string,
+        @Body() dto: { newPassword: string },
+        @CurrentUser() user?: any,
+    ) {
+        return this.usersService.updateUserPassword(id, dto, user);
+    }
+
     @Delete(':id')
     @UseGuards(RolesGuard)
     @Roles('SYSTEM_ADMIN', 'ORG_ADMIN')
