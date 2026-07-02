@@ -1,0 +1,5917 @@
+{
+  "SchemaVersion": 2,
+  "ReportID": "019b8de3-50a7-7c68-a8b0-abbfe50abea3",
+  "CreatedAt": "2026-01-05T20:20:43.4318132+09:00",
+  "ArtifactID": "sha256:bf58f0cdbf5502f0dd8637abada98a4c671c3c7703c098abe3cf1ce137a8de05",
+  "ArtifactName": ".",
+  "ArtifactType": "repository",
+  "Metadata": {
+    "RepoURL": "https://github.com/hkjang/jasca.git",
+    "Branch": "main",
+    "Commit": "617916fa9063ef3745f39d2d2bbdc86d2f31ee02",
+    "CommitMsg": "feat: Implement Trivy security scanning scripts and a dashboard UI for scan results.",
+    "Author": "hkjang \u003cgagagiga@naver.com\u003e",
+    "Committer": "hkjang \u003cgagagiga@naver.com\u003e"
+  },
+  "Results": [
+    {
+      "Target": "pnpm-lock.yaml",
+      "Class": "lang-pkgs",
+      "Type": "pnpm",
+      "Packages": [
+        {
+          "ID": "@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)",
+          "Name": "@nestjs/common",
+          "Identifier": {
+            "PURL": "pkg:npm/%40nestjs/common@10.4.20",
+            "UID": "d1e931be8c1d13e4"
+          },
+          "Version": "10.4.20",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "class-transformer@0.5.1",
+            "class-validator@0.14.3",
+            "iterare@1.2.1",
+            "reflect-metadata@0.2.2",
+            "rxjs@7.8.2",
+            "tslib@2.8.1",
+            "uid@2.0.2",
+            "file-type@20.4.1"
+          ]
+        },
+        {
+          "ID": "@nestjs/config@4.0.2(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)",
+          "Name": "@nestjs/config",
+          "Identifier": {
+            "PURL": "pkg:npm/%40nestjs/config@4.0.2",
+            "UID": "ee882d830c27087b"
+          },
+          "Version": "4.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "dotenv-expand@12.0.1",
+            "lodash@4.17.21",
+            "rxjs@7.8.2",
+            "@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)",
+            "dotenv@16.4.7"
+          ]
+        },
+        {
+          "ID": "@nestjs/core@10.4.20(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.20)(reflect-metadata@0.2.2)(rxjs@7.8.2)",
+          "Name": "@nestjs/core",
+          "Identifier": {
+            "PURL": "pkg:npm/%40nestjs/core@10.4.20",
+            "UID": "88ce08a6fafcf547"
+          },
+          "Version": "10.4.20",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "reflect-metadata@0.2.2",
+            "@nuxtjs/opencollective@0.3.2",
+            "uid@2.0.2",
+            "@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)",
+            "fast-safe-stringify@2.1.1",
+            "@nestjs/platform-express@10.4.20(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.20)",
+            "rxjs@7.8.2",
+            "tslib@2.8.1",
+            "iterare@1.2.1",
+            "path-to-regexp@3.3.0"
+          ]
+        },
+        {
+          "ID": "@nestjs/jwt@10.2.0(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))",
+          "Name": "@nestjs/jwt",
+          "Identifier": {
+            "PURL": "pkg:npm/%40nestjs/jwt@10.2.0",
+            "UID": "626b011e8c7ab573"
+          },
+          "Version": "10.2.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/jsonwebtoken@9.0.5",
+            "jsonwebtoken@9.0.2",
+            "@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)"
+          ]
+        },
+        {
+          "ID": "@nestjs/passport@10.0.3(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(passport@0.7.0)",
+          "Name": "@nestjs/passport",
+          "Identifier": {
+            "PURL": "pkg:npm/%40nestjs/passport@10.0.3",
+            "UID": "93f1f164de8bb58e"
+          },
+          "Version": "10.0.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)",
+            "passport@0.7.0"
+          ]
+        },
+        {
+          "ID": "@nestjs/platform-express@10.4.20(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.20)",
+          "Name": "@nestjs/platform-express",
+          "Identifier": {
+            "PURL": "pkg:npm/%40nestjs/platform-express@10.4.20",
+            "UID": "afae4df6cb6c1d80"
+          },
+          "Version": "10.4.20",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "tslib@2.8.1",
+            "@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)",
+            "@nestjs/core@10.4.20(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.20)(reflect-metadata@0.2.2)(rxjs@7.8.2)",
+            "body-parser@1.20.3",
+            "cors@2.8.5",
+            "express@4.21.2",
+            "multer@2.0.2"
+          ]
+        },
+        {
+          "ID": "@nestjs/swagger@7.4.2(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.20)(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)",
+          "Name": "@nestjs/swagger",
+          "Identifier": {
+            "PURL": "pkg:npm/%40nestjs/swagger@7.4.2",
+            "UID": "be52a73b02b92f03"
+          },
+          "Version": "7.4.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@nestjs/mapped-types@2.0.5(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)",
+            "js-yaml@4.1.0",
+            "class-transformer@0.5.1",
+            "path-to-regexp@3.3.0",
+            "@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)",
+            "swagger-ui-dist@5.17.14",
+            "class-validator@0.14.3",
+            "lodash@4.17.21",
+            "@microsoft/tsdoc@0.15.1",
+            "reflect-metadata@0.2.2",
+            "@nestjs/core@10.4.20(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.20)(reflect-metadata@0.2.2)(rxjs@7.8.2)"
+          ]
+        },
+        {
+          "ID": "@prisma/client@5.22.0(prisma@5.22.0)",
+          "Name": "@prisma/client",
+          "Identifier": {
+            "PURL": "pkg:npm/%40prisma/client@5.22.0",
+            "UID": "9f1fde17c025d099"
+          },
+          "Version": "5.22.0",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "prisma@5.22.0"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-dialog@1.1.15(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-dialog",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-dialog@1.1.15",
+            "UID": "415483f89a8b71ff"
+          },
+          "Version": "1.1.15",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-presence@1.1.5(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-use-controllable-state@1.2.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-dismissable-layer@1.1.11(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "aria-hidden@1.2.6",
+            "@radix-ui/primitive@1.1.3",
+            "react@18.3.1",
+            "@types/react@18.3.27",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-id@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-focus-guards@1.1.3(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-portal@1.1.9(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-focus-scope@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "react-remove-scroll@2.7.2(@types/react@18.3.27)(react@18.3.1)",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-slot@1.2.3(@types/react@18.3.27)(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-dropdown-menu@2.1.16(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-dropdown-menu",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-dropdown-menu@2.1.16",
+            "UID": "b87439f928a9f018"
+          },
+          "Version": "2.1.16",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/primitive@1.1.3",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-id@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-menu@2.1.16(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@types/react@18.3.27",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-use-controllable-state@1.2.2(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-select@2.2.6(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-select",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-select@2.2.6",
+            "UID": "b5e38d5899d43902"
+          },
+          "Version": "2.2.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-popper@1.2.8(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-use-previous@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-id@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1",
+            "@radix-ui/primitive@1.1.3",
+            "@radix-ui/react-focus-scope@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-focus-guards@1.1.3(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-controllable-state@1.2.2(@types/react@18.3.27)(react@18.3.1)",
+            "react-remove-scroll@2.7.2(@types/react@18.3.27)(react@18.3.1)",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@radix-ui/react-collection@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-portal@1.1.9(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-visually-hidden@1.2.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-dismissable-layer@1.1.11(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "aria-hidden@1.2.6",
+            "@types/react@18.3.27",
+            "@radix-ui/number@1.1.1",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-slot@1.2.3(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-direction@1.1.1(@types/react@18.3.27)(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-slot@1.2.4(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-slot",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-slot@1.2.4",
+            "UID": "5b806c26ecab7686"
+          },
+          "Version": "1.2.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-tabs@1.1.13(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-tabs",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-tabs@1.1.13",
+            "UID": "7cf9bc7dc39378dc"
+          },
+          "Version": "1.1.13",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@radix-ui/primitive@1.1.3",
+            "@radix-ui/react-use-controllable-state@1.2.2(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1",
+            "@radix-ui/react-direction@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-id@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-presence@1.1.5(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-roving-focus@1.1.11(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@types/react@18.3.27",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-toast@1.2.15(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-toast",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-toast@1.2.15",
+            "UID": "f1c4f229f88ab7d9"
+          },
+          "Version": "1.2.15",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/primitive@1.1.3",
+            "@radix-ui/react-dismissable-layer@1.1.11(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-portal@1.1.9(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-presence@1.1.5(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-collection@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@types/react@18.3.27",
+            "@radix-ui/react-use-controllable-state@1.2.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-visually-hidden@1.2.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@tanstack/react-query@5.90.12(react@18.3.1)",
+          "Name": "@tanstack/react-query",
+          "Identifier": {
+            "PURL": "pkg:npm/%40tanstack/react-query@5.90.12",
+            "UID": "eeb1991a421d1cb6"
+          },
+          "Version": "5.90.12",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "react@18.3.1",
+            "@tanstack/query-core@5.90.12"
+          ]
+        },
+        {
+          "ID": "@types/express@4.17.25",
+          "Name": "@types/express",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/express@4.17.25",
+            "UID": "3f6efbd935b3241d"
+          },
+          "Version": "4.17.25",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/body-parser@1.19.6",
+            "@types/express-serve-static-core@4.19.7",
+            "@types/qs@6.14.0",
+            "@types/serve-static@1.15.10"
+          ]
+        },
+        {
+          "ID": "@types/multer@2.0.0",
+          "Name": "@types/multer",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/multer@2.0.0",
+            "UID": "8b1def74f4b6967e"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/express@4.17.25"
+          ]
+        },
+        {
+          "ID": "@types/node@20.19.27",
+          "Name": "@types/node",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/node@20.19.27",
+            "UID": "859fbe97e590e3ca"
+          },
+          "Version": "20.19.27",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "undici-types@6.21.0"
+          ]
+        },
+        {
+          "ID": "@types/qrcode@1.5.6",
+          "Name": "@types/qrcode",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/qrcode@1.5.6",
+            "UID": "97cce11048e556be"
+          },
+          "Version": "1.5.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/node@20.19.27"
+          ]
+        },
+        {
+          "ID": "@types/react@18.3.27",
+          "Name": "@types/react",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/react@18.3.27",
+            "UID": "e864cd992bdcf7f0"
+          },
+          "Version": "18.3.27",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/prop-types@15.7.15",
+            "csstype@3.2.3"
+          ]
+        },
+        {
+          "ID": "@types/react-dom@18.3.7(@types/react@18.3.27)",
+          "Name": "@types/react-dom",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/react-dom@18.3.7",
+            "UID": "9a5cd1ad8411aa15"
+          },
+          "Version": "18.3.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "bcryptjs@2.4.3",
+          "Name": "bcryptjs",
+          "Identifier": {
+            "PURL": "pkg:npm/bcryptjs@2.4.3",
+            "UID": "6efd6643c9e07580"
+          },
+          "Version": "2.4.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct"
+        },
+        {
+          "ID": "class-transformer@0.5.1",
+          "Name": "class-transformer",
+          "Identifier": {
+            "PURL": "pkg:npm/class-transformer@0.5.1",
+            "UID": "4ba77fe16ada9c50"
+          },
+          "Version": "0.5.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct"
+        },
+        {
+          "ID": "class-validator@0.14.3",
+          "Name": "class-validator",
+          "Identifier": {
+            "PURL": "pkg:npm/class-validator@0.14.3",
+            "UID": "a4f4d80727d55961"
+          },
+          "Version": "0.14.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/validator@13.15.10",
+            "libphonenumber-js@1.12.31",
+            "validator@13.15.23"
+          ]
+        },
+        {
+          "ID": "class-variance-authority@0.7.1",
+          "Name": "class-variance-authority",
+          "Identifier": {
+            "PURL": "pkg:npm/class-variance-authority@0.7.1",
+            "UID": "49dd5d14010e1f50"
+          },
+          "Version": "0.7.1",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "clsx@2.1.1"
+          ]
+        },
+        {
+          "ID": "clsx@2.1.1",
+          "Name": "clsx",
+          "Identifier": {
+            "PURL": "pkg:npm/clsx@2.1.1",
+            "UID": "6a06bbaa6316e211"
+          },
+          "Version": "2.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct"
+        },
+        {
+          "ID": "lucide-react@0.303.0(react@18.3.1)",
+          "Name": "lucide-react",
+          "Identifier": {
+            "PURL": "pkg:npm/lucide-react@0.303.0",
+            "UID": "330b4e6fa4be2db6"
+          },
+          "Version": "0.303.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "multer@2.0.2",
+          "Name": "multer",
+          "Identifier": {
+            "PURL": "pkg:npm/multer@2.0.2",
+            "UID": "1bdd30d699bb6f3b"
+          },
+          "Version": "2.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "mkdirp@0.5.6",
+            "object-assign@4.1.1",
+            "type-is@1.6.18",
+            "xtend@4.0.2",
+            "append-field@1.0.0",
+            "busboy@1.6.0",
+            "concat-stream@2.0.0"
+          ]
+        },
+        {
+          "ID": "next@14.2.25(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "next",
+          "Identifier": {
+            "PURL": "pkg:npm/next@14.2.25",
+            "UID": "11a345cdea7ca856"
+          },
+          "Version": "14.2.25",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "react-dom@18.3.1(react@18.3.1)",
+            "postcss@8.4.31",
+            "styled-jsx@5.1.1(react@18.3.1)",
+            "@next/env@14.2.25",
+            "@swc/helpers@0.5.5",
+            "busboy@1.6.0",
+            "caniuse-lite@1.0.30001760",
+            "@next/swc-darwin-x64@14.2.25",
+            "@next/swc-linux-arm64-gnu@14.2.25",
+            "@next/swc-linux-x64-gnu@14.2.25",
+            "@next/swc-linux-x64-musl@14.2.25",
+            "react@18.3.1",
+            "@next/swc-linux-arm64-musl@14.2.25",
+            "@next/swc-win32-ia32-msvc@14.2.25",
+            "@next/swc-win32-x64-msvc@14.2.25",
+            "graceful-fs@4.2.11",
+            "@next/swc-darwin-arm64@14.2.25",
+            "@next/swc-win32-arm64-msvc@14.2.25"
+          ]
+        },
+        {
+          "ID": "otplib@12.0.1",
+          "Name": "otplib",
+          "Identifier": {
+            "PURL": "pkg:npm/otplib@12.0.1",
+            "UID": "983d13d2a169152e"
+          },
+          "Version": "12.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@otplib/preset-v11@12.0.1",
+            "@otplib/core@12.0.1",
+            "@otplib/preset-default@12.0.1"
+          ]
+        },
+        {
+          "ID": "passport@0.7.0",
+          "Name": "passport",
+          "Identifier": {
+            "PURL": "pkg:npm/passport@0.7.0",
+            "UID": "8518606592e1c719"
+          },
+          "Version": "0.7.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "utils-merge@1.0.1",
+            "passport-strategy@1.0.0",
+            "pause@0.0.1"
+          ]
+        },
+        {
+          "ID": "passport-custom@1.1.1",
+          "Name": "passport-custom",
+          "Identifier": {
+            "PURL": "pkg:npm/passport-custom@1.1.1",
+            "UID": "df4ec06c63fba693"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "passport-strategy@1.0.0"
+          ]
+        },
+        {
+          "ID": "passport-jwt@4.0.1",
+          "Name": "passport-jwt",
+          "Identifier": {
+            "PURL": "pkg:npm/passport-jwt@4.0.1",
+            "UID": "5ccd6c83f5cda0a4"
+          },
+          "Version": "4.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "jsonwebtoken@9.0.3",
+            "passport-strategy@1.0.0"
+          ]
+        },
+        {
+          "ID": "prisma@5.22.0",
+          "Name": "prisma",
+          "Identifier": {
+            "PURL": "pkg:npm/prisma@5.22.0",
+            "UID": "5ba82a08840577d7"
+          },
+          "Version": "5.22.0",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@prisma/engines@5.22.0",
+            "fsevents@2.3.3"
+          ]
+        },
+        {
+          "ID": "qrcode@1.5.4",
+          "Name": "qrcode",
+          "Identifier": {
+            "PURL": "pkg:npm/qrcode@1.5.4",
+            "UID": "15d9cf177af049fe"
+          },
+          "Version": "1.5.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "dijkstrajs@1.0.3",
+            "pngjs@5.0.0",
+            "yargs@15.4.1"
+          ]
+        },
+        {
+          "ID": "react@18.3.1",
+          "Name": "react",
+          "Identifier": {
+            "PURL": "pkg:npm/react@18.3.1",
+            "UID": "13e3ddb41d7b252a"
+          },
+          "Version": "18.3.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "loose-envify@1.4.0"
+          ]
+        },
+        {
+          "ID": "react-dom@18.3.1(react@18.3.1)",
+          "Name": "react-dom",
+          "Identifier": {
+            "PURL": "pkg:npm/react-dom@18.3.1",
+            "UID": "7939e8f36e79cd21"
+          },
+          "Version": "18.3.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "loose-envify@1.4.0",
+            "react@18.3.1",
+            "scheduler@0.23.2"
+          ]
+        },
+        {
+          "ID": "recharts@2.15.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "recharts",
+          "Identifier": {
+            "PURL": "pkg:npm/recharts@2.15.4",
+            "UID": "5ff3f18c05792b5e"
+          },
+          "Version": "2.15.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "react@18.3.1",
+            "react-smooth@4.0.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "recharts-scale@0.4.5",
+            "react-dom@18.3.1(react@18.3.1)",
+            "react-is@18.3.1",
+            "tiny-invariant@1.3.3",
+            "victory-vendor@36.9.2",
+            "clsx@2.1.1",
+            "eventemitter3@4.0.7",
+            "lodash@4.17.21"
+          ]
+        },
+        {
+          "ID": "reflect-metadata@0.2.2",
+          "Name": "reflect-metadata",
+          "Identifier": {
+            "PURL": "pkg:npm/reflect-metadata@0.2.2",
+            "UID": "373562f6b581dec4"
+          },
+          "Version": "0.2.2",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Relationship": "direct"
+        },
+        {
+          "ID": "rxjs@7.8.2",
+          "Name": "rxjs",
+          "Identifier": {
+            "PURL": "pkg:npm/rxjs@7.8.2",
+            "UID": "dbcef221e88e3207"
+          },
+          "Version": "7.8.2",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "tslib@2.8.1"
+          ]
+        },
+        {
+          "ID": "tailwind-merge@2.6.0",
+          "Name": "tailwind-merge",
+          "Identifier": {
+            "PURL": "pkg:npm/tailwind-merge@2.6.0",
+            "UID": "e3f977f42076344f"
+          },
+          "Version": "2.6.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct"
+        },
+        {
+          "ID": "uuid@9.0.1",
+          "Name": "uuid",
+          "Identifier": {
+            "PURL": "pkg:npm/uuid@9.0.1",
+            "UID": "9a7da45368367ec5"
+          },
+          "Version": "9.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct"
+        },
+        {
+          "ID": "zustand@4.5.7(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "zustand",
+          "Identifier": {
+            "PURL": "pkg:npm/zustand@4.5.7",
+            "UID": "2463fb0260d58675"
+          },
+          "Version": "4.5.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Relationship": "direct",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1",
+            "use-sync-external-store@1.6.0(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@babel/runtime@7.28.4",
+          "Name": "@babel/runtime",
+          "Identifier": {
+            "PURL": "pkg:npm/%40babel/runtime@7.28.4",
+            "UID": "34b89b55f7d80180"
+          },
+          "Version": "7.28.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@borewit/text-codec@0.1.1",
+          "Name": "@borewit/text-codec",
+          "Identifier": {
+            "PURL": "pkg:npm/%40borewit/text-codec@0.1.1",
+            "UID": "14b9afb61529b537"
+          },
+          "Version": "0.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@floating-ui/core@1.7.3",
+          "Name": "@floating-ui/core",
+          "Identifier": {
+            "PURL": "pkg:npm/%40floating-ui/core@1.7.3",
+            "UID": "845a98e606c0f198"
+          },
+          "Version": "1.7.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@floating-ui/utils@0.2.10"
+          ]
+        },
+        {
+          "ID": "@floating-ui/dom@1.7.4",
+          "Name": "@floating-ui/dom",
+          "Identifier": {
+            "PURL": "pkg:npm/%40floating-ui/dom@1.7.4",
+            "UID": "fb2567185c198af4"
+          },
+          "Version": "1.7.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@floating-ui/core@1.7.3",
+            "@floating-ui/utils@0.2.10"
+          ]
+        },
+        {
+          "ID": "@floating-ui/react-dom@2.1.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@floating-ui/react-dom",
+          "Identifier": {
+            "PURL": "pkg:npm/%40floating-ui/react-dom@2.1.6",
+            "UID": "550b0911ed90d2f4"
+          },
+          "Version": "2.1.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@floating-ui/dom@1.7.4",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@floating-ui/utils@0.2.10",
+          "Name": "@floating-ui/utils",
+          "Identifier": {
+            "PURL": "pkg:npm/%40floating-ui/utils@0.2.10",
+            "UID": "850f5e95846048ac"
+          },
+          "Version": "0.2.10",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@lukeed/csprng@1.1.0",
+          "Name": "@lukeed/csprng",
+          "Identifier": {
+            "PURL": "pkg:npm/%40lukeed/csprng@1.1.0",
+            "UID": "3f254efbb95986ce"
+          },
+          "Version": "1.1.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@microsoft/tsdoc@0.15.1",
+          "Name": "@microsoft/tsdoc",
+          "Identifier": {
+            "PURL": "pkg:npm/%40microsoft/tsdoc@0.15.1",
+            "UID": "e3f44812b4b1a635"
+          },
+          "Version": "0.15.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@nestjs/mapped-types@2.0.5(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)",
+          "Name": "@nestjs/mapped-types",
+          "Identifier": {
+            "PURL": "pkg:npm/%40nestjs/mapped-types@2.0.5",
+            "UID": "dbdd8c6e694d43bf"
+          },
+          "Version": "2.0.5",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "class-transformer@0.5.1",
+            "class-validator@0.14.3",
+            "reflect-metadata@0.2.2",
+            "@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)"
+          ]
+        },
+        {
+          "ID": "@next/env@14.2.25",
+          "Name": "@next/env",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/env@14.2.25",
+            "UID": "7805c413c9e760d9"
+          },
+          "Version": "14.2.25",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@next/swc-darwin-arm64@14.2.25",
+          "Name": "@next/swc-darwin-arm64",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/swc-darwin-arm64@14.2.25",
+            "UID": "e87fed89f55a23e0"
+          },
+          "Version": "14.2.25",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@next/swc-darwin-x64@14.2.25",
+          "Name": "@next/swc-darwin-x64",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/swc-darwin-x64@14.2.25",
+            "UID": "7dc3d6ba17215c52"
+          },
+          "Version": "14.2.25",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@next/swc-linux-arm64-gnu@14.2.25",
+          "Name": "@next/swc-linux-arm64-gnu",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/swc-linux-arm64-gnu@14.2.25",
+            "UID": "a401147b62180060"
+          },
+          "Version": "14.2.25",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@next/swc-linux-arm64-musl@14.2.25",
+          "Name": "@next/swc-linux-arm64-musl",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/swc-linux-arm64-musl@14.2.25",
+            "UID": "d5f6dea829bfc8f1"
+          },
+          "Version": "14.2.25",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@next/swc-linux-x64-gnu@14.2.25",
+          "Name": "@next/swc-linux-x64-gnu",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/swc-linux-x64-gnu@14.2.25",
+            "UID": "9a25eebca4d3ee7e"
+          },
+          "Version": "14.2.25",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@next/swc-linux-x64-musl@14.2.25",
+          "Name": "@next/swc-linux-x64-musl",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/swc-linux-x64-musl@14.2.25",
+            "UID": "26b9e6945e9b8730"
+          },
+          "Version": "14.2.25",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@next/swc-win32-arm64-msvc@14.2.25",
+          "Name": "@next/swc-win32-arm64-msvc",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/swc-win32-arm64-msvc@14.2.25",
+            "UID": "e0d1a661ac87ddbc"
+          },
+          "Version": "14.2.25",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@next/swc-win32-ia32-msvc@14.2.25",
+          "Name": "@next/swc-win32-ia32-msvc",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/swc-win32-ia32-msvc@14.2.25",
+            "UID": "cb16473dd47b73f"
+          },
+          "Version": "14.2.25",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@next/swc-win32-x64-msvc@14.2.25",
+          "Name": "@next/swc-win32-x64-msvc",
+          "Identifier": {
+            "PURL": "pkg:npm/%40next/swc-win32-x64-msvc@14.2.25",
+            "UID": "76618caed52a7979"
+          },
+          "Version": "14.2.25",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@nuxtjs/opencollective@0.3.2",
+          "Name": "@nuxtjs/opencollective",
+          "Identifier": {
+            "PURL": "pkg:npm/%40nuxtjs/opencollective@0.3.2",
+            "UID": "20bcdf0c619d908b"
+          },
+          "Version": "0.3.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "chalk@4.1.2",
+            "consola@2.15.3",
+            "node-fetch@2.7.0"
+          ]
+        },
+        {
+          "ID": "@otplib/core@12.0.1",
+          "Name": "@otplib/core",
+          "Identifier": {
+            "PURL": "pkg:npm/%40otplib/core@12.0.1",
+            "UID": "6ab664d2ed1cddce"
+          },
+          "Version": "12.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@otplib/plugin-crypto@12.0.1",
+          "Name": "@otplib/plugin-crypto",
+          "Identifier": {
+            "PURL": "pkg:npm/%40otplib/plugin-crypto@12.0.1",
+            "UID": "1ebe4173e862d37d"
+          },
+          "Version": "12.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@otplib/core@12.0.1"
+          ]
+        },
+        {
+          "ID": "@otplib/plugin-thirty-two@12.0.1",
+          "Name": "@otplib/plugin-thirty-two",
+          "Identifier": {
+            "PURL": "pkg:npm/%40otplib/plugin-thirty-two@12.0.1",
+            "UID": "c044f9a98c513b04"
+          },
+          "Version": "12.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "thirty-two@1.0.2",
+            "@otplib/core@12.0.1"
+          ]
+        },
+        {
+          "ID": "@otplib/preset-default@12.0.1",
+          "Name": "@otplib/preset-default",
+          "Identifier": {
+            "PURL": "pkg:npm/%40otplib/preset-default@12.0.1",
+            "UID": "11851b0b0b7c693"
+          },
+          "Version": "12.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@otplib/core@12.0.1",
+            "@otplib/plugin-crypto@12.0.1",
+            "@otplib/plugin-thirty-two@12.0.1"
+          ]
+        },
+        {
+          "ID": "@otplib/preset-v11@12.0.1",
+          "Name": "@otplib/preset-v11",
+          "Identifier": {
+            "PURL": "pkg:npm/%40otplib/preset-v11@12.0.1",
+            "UID": "20af94a148862c11"
+          },
+          "Version": "12.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@otplib/core@12.0.1",
+            "@otplib/plugin-crypto@12.0.1",
+            "@otplib/plugin-thirty-two@12.0.1"
+          ]
+        },
+        {
+          "ID": "@prisma/debug@5.22.0",
+          "Name": "@prisma/debug",
+          "Identifier": {
+            "PURL": "pkg:npm/%40prisma/debug@5.22.0",
+            "UID": "ac138462533938a8"
+          },
+          "Version": "5.22.0",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@prisma/engines@5.22.0",
+          "Name": "@prisma/engines",
+          "Identifier": {
+            "PURL": "pkg:npm/%40prisma/engines@5.22.0",
+            "UID": "85f936b0aab25045"
+          },
+          "Version": "5.22.0",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@prisma/get-platform@5.22.0",
+            "@prisma/debug@5.22.0",
+            "@prisma/engines-version@5.22.0-44.605197351a3c8bdd595af2d2a9bc3025bca48ea2",
+            "@prisma/fetch-engine@5.22.0"
+          ]
+        },
+        {
+          "ID": "@prisma/engines-version@5.22.0-44.605197351a3c8bdd595af2d2a9bc3025bca48ea2",
+          "Name": "@prisma/engines-version",
+          "Identifier": {
+            "PURL": "pkg:npm/%40prisma/engines-version@5.22.0-44.605197351a3c8bdd595af2d2a9bc3025bca48ea2",
+            "UID": "8a894ac3631f3593"
+          },
+          "Version": "5.22.0-44.605197351a3c8bdd595af2d2a9bc3025bca48ea2",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@prisma/fetch-engine@5.22.0",
+          "Name": "@prisma/fetch-engine",
+          "Identifier": {
+            "PURL": "pkg:npm/%40prisma/fetch-engine@5.22.0",
+            "UID": "eb451a2f952be859"
+          },
+          "Version": "5.22.0",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@prisma/debug@5.22.0",
+            "@prisma/engines-version@5.22.0-44.605197351a3c8bdd595af2d2a9bc3025bca48ea2",
+            "@prisma/get-platform@5.22.0"
+          ]
+        },
+        {
+          "ID": "@prisma/get-platform@5.22.0",
+          "Name": "@prisma/get-platform",
+          "Identifier": {
+            "PURL": "pkg:npm/%40prisma/get-platform@5.22.0",
+            "UID": "da8ca7ee8ce5226f"
+          },
+          "Version": "5.22.0",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@prisma/debug@5.22.0"
+          ]
+        },
+        {
+          "ID": "@radix-ui/number@1.1.1",
+          "Name": "@radix-ui/number",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/number@1.1.1",
+            "UID": "4f1e2191bb91fe80"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@radix-ui/primitive@1.1.3",
+          "Name": "@radix-ui/primitive",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/primitive@1.1.3",
+            "UID": "bc4fe36b9dd0811a"
+          },
+          "Version": "1.1.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@radix-ui/react-arrow@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-arrow",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-arrow@1.1.7",
+            "UID": "e28ab5e0c9e20548"
+          },
+          "Version": "1.1.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-collection@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-collection",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-collection@1.1.7",
+            "UID": "c89a3eb98d634071"
+          },
+          "Version": "1.1.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-slot@1.2.3(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@types/react@18.3.27",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-compose-refs",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-compose-refs@1.1.2",
+            "UID": "15464722d6d5bc08"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-context",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-context@1.1.2",
+            "UID": "8ae2c95980b2eade"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-direction@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-direction",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-direction@1.1.1",
+            "UID": "79ba0b5ad24189a6"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-dismissable-layer@1.1.11(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-dismissable-layer",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-dismissable-layer@1.1.11",
+            "UID": "1bf66e4f889306ea"
+          },
+          "Version": "1.1.11",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@radix-ui/primitive@1.1.3",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-escape-keydown@1.1.1(@types/react@18.3.27)(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-focus-guards@1.1.3(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-focus-guards",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-focus-guards@1.1.3",
+            "UID": "fdca6be2e1d56785"
+          },
+          "Version": "1.1.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-focus-scope@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-focus-scope",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-focus-scope@1.1.7",
+            "UID": "5e6df176b7ffc7eb"
+          },
+          "Version": "1.1.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-id@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-id",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-id@1.1.1",
+            "UID": "fb54e3ae0265ad10"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-menu@2.1.16(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-menu",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-menu@2.1.16",
+            "UID": "5d03b65141b35f16"
+          },
+          "Version": "2.1.16",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "react@18.3.1",
+            "@radix-ui/react-presence@1.1.5(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@types/react@18.3.27",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-roving-focus@1.1.11(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-dismissable-layer@1.1.11(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-collection@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-portal@1.1.9(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-id@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "aria-hidden@1.2.6",
+            "@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/primitive@1.1.3",
+            "@radix-ui/react-focus-guards@1.1.3(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-popper@1.2.8(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-slot@1.2.3(@types/react@18.3.27)(react@18.3.1)",
+            "react-remove-scroll@2.7.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-focus-scope@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-direction@1.1.1(@types/react@18.3.27)(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-popper@1.2.8(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-popper",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-popper@1.2.8",
+            "UID": "124f1f69d6072169"
+          },
+          "Version": "1.2.8",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "react-dom@18.3.1(react@18.3.1)",
+            "@radix-ui/react-arrow@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-rect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/rect@1.1.1",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "react@18.3.1",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@floating-ui/react-dom@2.1.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-use-size@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-portal@1.1.9(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-portal",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-portal@1.1.9",
+            "UID": "ed78567ba7d2298d"
+          },
+          "Version": "1.1.9",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-presence@1.1.5(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-presence",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-presence@1.1.5",
+            "UID": "743519915e1a33cc"
+          },
+          "Version": "1.1.5",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@types/react@18.3.27",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-primitive",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-primitive@2.1.3",
+            "UID": "35a51ed125f53199"
+          },
+          "Version": "2.1.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "react-dom@18.3.1(react@18.3.1)",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@types/react@18.3.27",
+            "@radix-ui/react-slot@1.2.3(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-roving-focus@1.1.11(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-roving-focus",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-roving-focus@1.1.11",
+            "UID": "5d6d30aedb2f91c9"
+          },
+          "Version": "1.1.11",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-collection@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "@radix-ui/react-direction@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/primitive@1.1.3",
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "react@18.3.1",
+            "@radix-ui/react-context@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-id@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-controllable-state@1.2.2(@types/react@18.3.27)(react@18.3.1)",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-slot@1.2.3(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-slot",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-slot@1.2.3",
+            "UID": "a5801101111ad08"
+          },
+          "Version": "1.2.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1",
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-use-callback-ref",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-use-callback-ref@1.1.1",
+            "UID": "1ff071f5e28e9999"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-use-controllable-state@1.2.2(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-use-controllable-state",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.2",
+            "UID": "cdb4a1a8a52a9669"
+          },
+          "Version": "1.2.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "@radix-ui/react-use-effect-event@0.0.2(@types/react@18.3.27)(react@18.3.1)",
+            "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-use-effect-event@0.0.2(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-use-effect-event",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.2",
+            "UID": "314d06a6a264686a"
+          },
+          "Version": "0.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-use-escape-keydown@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-use-escape-keydown",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-use-escape-keydown@1.1.1",
+            "UID": "6d18580ab932cf0d"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+            "react@18.3.1",
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-use-layout-effect",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-use-layout-effect@1.1.1",
+            "UID": "dbdbfad367bc5a4f"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-use-previous@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-use-previous",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-use-previous@1.1.1",
+            "UID": "9fd6d7c9bf247e5d"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-use-rect@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-use-rect",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-use-rect@1.1.1",
+            "UID": "acbed6f1cdc878f1"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "@radix-ui/rect@1.1.1",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-use-size@1.1.1(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "@radix-ui/react-use-size",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-use-size@1.1.1",
+            "UID": "c995b293f1701477"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "react@18.3.1",
+            "@types/react@18.3.27",
+            "@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.27)(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "@radix-ui/react-visually-hidden@1.2.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "@radix-ui/react-visually-hidden",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/react-visually-hidden@1.2.3",
+            "UID": "d775d28b351fad23"
+          },
+          "Version": "1.2.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "react-dom@18.3.1(react@18.3.1)",
+            "@types/react@18.3.27",
+            "@types/react-dom@18.3.7(@types/react@18.3.27)",
+            "@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "@radix-ui/rect@1.1.1",
+          "Name": "@radix-ui/rect",
+          "Identifier": {
+            "PURL": "pkg:npm/%40radix-ui/rect@1.1.1",
+            "UID": "7e9bddeb74a1f0e1"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@swc/counter@0.1.3",
+          "Name": "@swc/counter",
+          "Identifier": {
+            "PURL": "pkg:npm/%40swc/counter@0.1.3",
+            "UID": "68b053fa5696bd1d"
+          },
+          "Version": "0.1.3",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@swc/helpers@0.5.5",
+          "Name": "@swc/helpers",
+          "Identifier": {
+            "PURL": "pkg:npm/%40swc/helpers@0.5.5",
+            "UID": "fe6148fa97394b8b"
+          },
+          "Version": "0.5.5",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@swc/counter@0.1.3",
+            "tslib@2.8.1"
+          ]
+        },
+        {
+          "ID": "@tanstack/query-core@5.90.12",
+          "Name": "@tanstack/query-core",
+          "Identifier": {
+            "PURL": "pkg:npm/%40tanstack/query-core@5.90.12",
+            "UID": "bc4e1054497fdab8"
+          },
+          "Version": "5.90.12",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@tokenizer/inflate@0.2.7",
+          "Name": "@tokenizer/inflate",
+          "Identifier": {
+            "PURL": "pkg:npm/%40tokenizer/inflate@0.2.7",
+            "UID": "7f810e7669d23aeb"
+          },
+          "Version": "0.2.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "debug@4.4.3",
+            "fflate@0.8.2",
+            "token-types@6.1.1"
+          ]
+        },
+        {
+          "ID": "@tokenizer/token@0.3.0",
+          "Name": "@tokenizer/token",
+          "Identifier": {
+            "PURL": "pkg:npm/%40tokenizer/token@0.3.0",
+            "UID": "6dc3f07c35d6637"
+          },
+          "Version": "0.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/body-parser@1.19.6",
+          "Name": "@types/body-parser",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/body-parser@1.19.6",
+            "UID": "5281226c61319f61"
+          },
+          "Version": "1.19.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/connect@3.4.38",
+            "@types/node@20.19.27"
+          ]
+        },
+        {
+          "ID": "@types/connect@3.4.38",
+          "Name": "@types/connect",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/connect@3.4.38",
+            "UID": "3b8074911587919"
+          },
+          "Version": "3.4.38",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/node@20.19.27"
+          ]
+        },
+        {
+          "ID": "@types/d3-array@3.2.2",
+          "Name": "@types/d3-array",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/d3-array@3.2.2",
+            "UID": "643a9dd0a609453"
+          },
+          "Version": "3.2.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/d3-color@3.1.3",
+          "Name": "@types/d3-color",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/d3-color@3.1.3",
+            "UID": "7d4ce37427b0ca97"
+          },
+          "Version": "3.1.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/d3-ease@3.0.2",
+          "Name": "@types/d3-ease",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/d3-ease@3.0.2",
+            "UID": "3a5b7499335e92e"
+          },
+          "Version": "3.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/d3-interpolate@3.0.4",
+          "Name": "@types/d3-interpolate",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/d3-interpolate@3.0.4",
+            "UID": "b8a0947bb53efecf"
+          },
+          "Version": "3.0.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/d3-color@3.1.3"
+          ]
+        },
+        {
+          "ID": "@types/d3-path@3.1.1",
+          "Name": "@types/d3-path",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/d3-path@3.1.1",
+            "UID": "edd2a2c09ccf7570"
+          },
+          "Version": "3.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/d3-scale@4.0.9",
+          "Name": "@types/d3-scale",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/d3-scale@4.0.9",
+            "UID": "741e80cdaf17771a"
+          },
+          "Version": "4.0.9",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/d3-time@3.0.4"
+          ]
+        },
+        {
+          "ID": "@types/d3-shape@3.1.7",
+          "Name": "@types/d3-shape",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/d3-shape@3.1.7",
+            "UID": "cb51f8ea3cb175cf"
+          },
+          "Version": "3.1.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/d3-path@3.1.1"
+          ]
+        },
+        {
+          "ID": "@types/d3-time@3.0.4",
+          "Name": "@types/d3-time",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/d3-time@3.0.4",
+            "UID": "da6b95d027fbbc8f"
+          },
+          "Version": "3.0.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/d3-timer@3.0.2",
+          "Name": "@types/d3-timer",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/d3-timer@3.0.2",
+            "UID": "d810a72aa9460d05"
+          },
+          "Version": "3.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/express-serve-static-core@4.19.7",
+          "Name": "@types/express-serve-static-core",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/express-serve-static-core@4.19.7",
+            "UID": "1c8819340a3792e2"
+          },
+          "Version": "4.19.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/node@20.19.27",
+            "@types/qs@6.14.0",
+            "@types/range-parser@1.2.7",
+            "@types/send@1.2.1"
+          ]
+        },
+        {
+          "ID": "@types/http-errors@2.0.5",
+          "Name": "@types/http-errors",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/http-errors@2.0.5",
+            "UID": "71810106c5c33392"
+          },
+          "Version": "2.0.5",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/jsonwebtoken@9.0.5",
+          "Name": "@types/jsonwebtoken",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/jsonwebtoken@9.0.5",
+            "UID": "2cbf490eb16708e0"
+          },
+          "Version": "9.0.5",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/node@20.19.27"
+          ]
+        },
+        {
+          "ID": "@types/mime@1.3.5",
+          "Name": "@types/mime",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/mime@1.3.5",
+            "UID": "a34278d38fb46dc4"
+          },
+          "Version": "1.3.5",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/prop-types@15.7.15",
+          "Name": "@types/prop-types",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/prop-types@15.7.15",
+            "UID": "312f64ff44077130"
+          },
+          "Version": "15.7.15",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/qs@6.14.0",
+          "Name": "@types/qs",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/qs@6.14.0",
+            "UID": "8854897d0e88fe20"
+          },
+          "Version": "6.14.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/range-parser@1.2.7",
+          "Name": "@types/range-parser",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/range-parser@1.2.7",
+            "UID": "b376557a500652e1"
+          },
+          "Version": "1.2.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "@types/send@0.17.6",
+          "Name": "@types/send",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/send@0.17.6",
+            "UID": "58d6c30cbb8bc42a"
+          },
+          "Version": "0.17.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/mime@1.3.5",
+            "@types/node@20.19.27"
+          ]
+        },
+        {
+          "ID": "@types/send@1.2.1",
+          "Name": "@types/send",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/send@1.2.1",
+            "UID": "7c0edea19b723b84"
+          },
+          "Version": "1.2.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/node@20.19.27"
+          ]
+        },
+        {
+          "ID": "@types/serve-static@1.15.10",
+          "Name": "@types/serve-static",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/serve-static@1.15.10",
+            "UID": "d994ed2ebae36973"
+          },
+          "Version": "1.15.10",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/http-errors@2.0.5",
+            "@types/node@20.19.27",
+            "@types/send@0.17.6"
+          ]
+        },
+        {
+          "ID": "@types/validator@13.15.10",
+          "Name": "@types/validator",
+          "Identifier": {
+            "PURL": "pkg:npm/%40types/validator@13.15.10",
+            "UID": "ec45fb5b015926df"
+          },
+          "Version": "13.15.10",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "accepts@1.3.8",
+          "Name": "accepts",
+          "Identifier": {
+            "PURL": "pkg:npm/accepts@1.3.8",
+            "UID": "21748a1ecf45cccd"
+          },
+          "Version": "1.3.8",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "mime-types@2.1.35",
+            "negotiator@0.6.3"
+          ]
+        },
+        {
+          "ID": "ansi-regex@5.0.1",
+          "Name": "ansi-regex",
+          "Identifier": {
+            "PURL": "pkg:npm/ansi-regex@5.0.1",
+            "UID": "84fd4430785cf9fb"
+          },
+          "Version": "5.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "ansi-styles@4.3.0",
+          "Name": "ansi-styles",
+          "Identifier": {
+            "PURL": "pkg:npm/ansi-styles@4.3.0",
+            "UID": "d0f62aad4b80f45"
+          },
+          "Version": "4.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "color-convert@2.0.1"
+          ]
+        },
+        {
+          "ID": "append-field@1.0.0",
+          "Name": "append-field",
+          "Identifier": {
+            "PURL": "pkg:npm/append-field@1.0.0",
+            "UID": "856667585eca5cb5"
+          },
+          "Version": "1.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "argparse@2.0.1",
+          "Name": "argparse",
+          "Identifier": {
+            "PURL": "pkg:npm/argparse@2.0.1",
+            "UID": "161bcaaa9321a68c"
+          },
+          "Version": "2.0.1",
+          "Licenses": [
+            "Python-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "aria-hidden@1.2.6",
+          "Name": "aria-hidden",
+          "Identifier": {
+            "PURL": "pkg:npm/aria-hidden@1.2.6",
+            "UID": "6c4dc7a8f585303a"
+          },
+          "Version": "1.2.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "tslib@2.8.1"
+          ]
+        },
+        {
+          "ID": "array-flatten@1.1.1",
+          "Name": "array-flatten",
+          "Identifier": {
+            "PURL": "pkg:npm/array-flatten@1.1.1",
+            "UID": "48baffe98a2cbd0d"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "body-parser@1.20.3",
+          "Name": "body-parser",
+          "Identifier": {
+            "PURL": "pkg:npm/body-parser@1.20.3",
+            "UID": "585a9c3568677815"
+          },
+          "Version": "1.20.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "unpipe@1.0.0",
+            "debug@2.6.9",
+            "qs@6.14.1",
+            "iconv-lite@0.4.24",
+            "on-finished@2.4.1",
+            "raw-body@2.5.2",
+            "depd@2.0.0",
+            "destroy@1.2.0",
+            "bytes@3.1.2",
+            "content-type@1.0.5",
+            "http-errors@2.0.0",
+            "type-is@1.6.18"
+          ]
+        },
+        {
+          "ID": "buffer-equal-constant-time@1.0.1",
+          "Name": "buffer-equal-constant-time",
+          "Identifier": {
+            "PURL": "pkg:npm/buffer-equal-constant-time@1.0.1",
+            "UID": "d00d06c8671a2598"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "BSD-3-Clause"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "buffer-from@1.1.2",
+          "Name": "buffer-from",
+          "Identifier": {
+            "PURL": "pkg:npm/buffer-from@1.1.2",
+            "UID": "e75a8853df60492f"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "busboy@1.6.0",
+          "Name": "busboy",
+          "Identifier": {
+            "PURL": "pkg:npm/busboy@1.6.0",
+            "UID": "a31ca711bfe73e0e"
+          },
+          "Version": "1.6.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "streamsearch@1.1.0"
+          ]
+        },
+        {
+          "ID": "bytes@3.1.2",
+          "Name": "bytes",
+          "Identifier": {
+            "PURL": "pkg:npm/bytes@3.1.2",
+            "UID": "7a12b69f3fddc7f3"
+          },
+          "Version": "3.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "call-bind-apply-helpers@1.0.2",
+          "Name": "call-bind-apply-helpers",
+          "Identifier": {
+            "PURL": "pkg:npm/call-bind-apply-helpers@1.0.2",
+            "UID": "2b2d83c808295765"
+          },
+          "Version": "1.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "es-errors@1.3.0",
+            "function-bind@1.1.2"
+          ]
+        },
+        {
+          "ID": "call-bound@1.0.4",
+          "Name": "call-bound",
+          "Identifier": {
+            "PURL": "pkg:npm/call-bound@1.0.4",
+            "UID": "7563faccfe27ff6e"
+          },
+          "Version": "1.0.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "call-bind-apply-helpers@1.0.2",
+            "get-intrinsic@1.3.0"
+          ]
+        },
+        {
+          "ID": "camelcase@5.3.1",
+          "Name": "camelcase",
+          "Identifier": {
+            "PURL": "pkg:npm/camelcase@5.3.1",
+            "UID": "fab4e47164b43aa5"
+          },
+          "Version": "5.3.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "caniuse-lite@1.0.30001760",
+          "Name": "caniuse-lite",
+          "Identifier": {
+            "PURL": "pkg:npm/caniuse-lite@1.0.30001760",
+            "UID": "72bc86cb7a85384a"
+          },
+          "Version": "1.0.30001760",
+          "Licenses": [
+            "CC-BY-4.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "chalk@4.1.2",
+          "Name": "chalk",
+          "Identifier": {
+            "PURL": "pkg:npm/chalk@4.1.2",
+            "UID": "523317462467ae9d"
+          },
+          "Version": "4.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "supports-color@7.2.0",
+            "ansi-styles@4.3.0"
+          ]
+        },
+        {
+          "ID": "client-only@0.0.1",
+          "Name": "client-only",
+          "Identifier": {
+            "PURL": "pkg:npm/client-only@0.0.1",
+            "UID": "102189cb0b300554"
+          },
+          "Version": "0.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "cliui@6.0.0",
+          "Name": "cliui",
+          "Identifier": {
+            "PURL": "pkg:npm/cliui@6.0.0",
+            "UID": "ced977dde0d62911"
+          },
+          "Version": "6.0.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "wrap-ansi@6.2.0",
+            "string-width@4.2.3",
+            "strip-ansi@6.0.1"
+          ]
+        },
+        {
+          "ID": "color-convert@2.0.1",
+          "Name": "color-convert",
+          "Identifier": {
+            "PURL": "pkg:npm/color-convert@2.0.1",
+            "UID": "9386d8971e9538cc"
+          },
+          "Version": "2.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "color-name@1.1.4"
+          ]
+        },
+        {
+          "ID": "color-name@1.1.4",
+          "Name": "color-name",
+          "Identifier": {
+            "PURL": "pkg:npm/color-name@1.1.4",
+            "UID": "892ec3accc4bef32"
+          },
+          "Version": "1.1.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "concat-stream@2.0.0",
+          "Name": "concat-stream",
+          "Identifier": {
+            "PURL": "pkg:npm/concat-stream@2.0.0",
+            "UID": "e6fa2842e73b7a30"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "inherits@2.0.4",
+            "readable-stream@3.6.2",
+            "typedarray@0.0.6",
+            "buffer-from@1.1.2"
+          ]
+        },
+        {
+          "ID": "consola@2.15.3",
+          "Name": "consola",
+          "Identifier": {
+            "PURL": "pkg:npm/consola@2.15.3",
+            "UID": "f6aed3216e29c7a0"
+          },
+          "Version": "2.15.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "content-disposition@0.5.4",
+          "Name": "content-disposition",
+          "Identifier": {
+            "PURL": "pkg:npm/content-disposition@0.5.4",
+            "UID": "746afae874356474"
+          },
+          "Version": "0.5.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "safe-buffer@5.2.1"
+          ]
+        },
+        {
+          "ID": "content-type@1.0.5",
+          "Name": "content-type",
+          "Identifier": {
+            "PURL": "pkg:npm/content-type@1.0.5",
+            "UID": "6eb60eb58dc51ff"
+          },
+          "Version": "1.0.5",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "cookie@0.7.1",
+          "Name": "cookie",
+          "Identifier": {
+            "PURL": "pkg:npm/cookie@0.7.1",
+            "UID": "7f5e3043b7e410ba"
+          },
+          "Version": "0.7.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "cookie-signature@1.0.6",
+          "Name": "cookie-signature",
+          "Identifier": {
+            "PURL": "pkg:npm/cookie-signature@1.0.6",
+            "UID": "ad75e7fc01760dd7"
+          },
+          "Version": "1.0.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "cors@2.8.5",
+          "Name": "cors",
+          "Identifier": {
+            "PURL": "pkg:npm/cors@2.8.5",
+            "UID": "d34b4f97ab3b13df"
+          },
+          "Version": "2.8.5",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "object-assign@4.1.1",
+            "vary@1.1.2"
+          ]
+        },
+        {
+          "ID": "csstype@3.2.3",
+          "Name": "csstype",
+          "Identifier": {
+            "PURL": "pkg:npm/csstype@3.2.3",
+            "UID": "a8b681fa072d9da8"
+          },
+          "Version": "3.2.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "d3-array@3.2.4",
+          "Name": "d3-array",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-array@3.2.4",
+            "UID": "9dedfab5027e2b10"
+          },
+          "Version": "3.2.4",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "internmap@2.0.3"
+          ]
+        },
+        {
+          "ID": "d3-color@3.1.0",
+          "Name": "d3-color",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-color@3.1.0",
+            "UID": "813bd82303f86d25"
+          },
+          "Version": "3.1.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "d3-ease@3.0.1",
+          "Name": "d3-ease",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-ease@3.0.1",
+            "UID": "cbefbbef208edc84"
+          },
+          "Version": "3.0.1",
+          "Licenses": [
+            "BSD-3-Clause"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "d3-format@3.1.0",
+          "Name": "d3-format",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-format@3.1.0",
+            "UID": "5ee50b542200b60b"
+          },
+          "Version": "3.1.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "d3-interpolate@3.0.1",
+          "Name": "d3-interpolate",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-interpolate@3.0.1",
+            "UID": "8d74185b93562e56"
+          },
+          "Version": "3.0.1",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "d3-color@3.1.0"
+          ]
+        },
+        {
+          "ID": "d3-path@3.1.0",
+          "Name": "d3-path",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-path@3.1.0",
+            "UID": "a5469371450c64d2"
+          },
+          "Version": "3.1.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "d3-scale@4.0.2",
+          "Name": "d3-scale",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-scale@4.0.2",
+            "UID": "fc8085ef7b5f24c0"
+          },
+          "Version": "4.0.2",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "d3-time-format@4.1.0",
+            "d3-array@3.2.4",
+            "d3-format@3.1.0",
+            "d3-interpolate@3.0.1",
+            "d3-time@3.1.0"
+          ]
+        },
+        {
+          "ID": "d3-shape@3.2.0",
+          "Name": "d3-shape",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-shape@3.2.0",
+            "UID": "f82d906b67d9786b"
+          },
+          "Version": "3.2.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "d3-path@3.1.0"
+          ]
+        },
+        {
+          "ID": "d3-time@3.1.0",
+          "Name": "d3-time",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-time@3.1.0",
+            "UID": "197dc709a42c4e6c"
+          },
+          "Version": "3.1.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "d3-array@3.2.4"
+          ]
+        },
+        {
+          "ID": "d3-time-format@4.1.0",
+          "Name": "d3-time-format",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-time-format@4.1.0",
+            "UID": "684cdcb0569c0fca"
+          },
+          "Version": "4.1.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "d3-time@3.1.0"
+          ]
+        },
+        {
+          "ID": "d3-timer@3.0.1",
+          "Name": "d3-timer",
+          "Identifier": {
+            "PURL": "pkg:npm/d3-timer@3.0.1",
+            "UID": "a4797efe67ff882e"
+          },
+          "Version": "3.0.1",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "debug@2.6.9",
+          "Name": "debug",
+          "Identifier": {
+            "PURL": "pkg:npm/debug@2.6.9",
+            "UID": "5e1ae76062767a67"
+          },
+          "Version": "2.6.9",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "ms@2.0.0"
+          ]
+        },
+        {
+          "ID": "debug@4.4.3",
+          "Name": "debug",
+          "Identifier": {
+            "PURL": "pkg:npm/debug@4.4.3",
+            "UID": "4f0d5c86ad744d48"
+          },
+          "Version": "4.4.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "ms@2.1.3"
+          ]
+        },
+        {
+          "ID": "decamelize@1.2.0",
+          "Name": "decamelize",
+          "Identifier": {
+            "PURL": "pkg:npm/decamelize@1.2.0",
+            "UID": "fdaab78acb0893a0"
+          },
+          "Version": "1.2.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "decimal.js-light@2.5.1",
+          "Name": "decimal.js-light",
+          "Identifier": {
+            "PURL": "pkg:npm/decimal.js-light@2.5.1",
+            "UID": "6cb3c5a0559dd231"
+          },
+          "Version": "2.5.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "depd@2.0.0",
+          "Name": "depd",
+          "Identifier": {
+            "PURL": "pkg:npm/depd@2.0.0",
+            "UID": "cc77616efa011649"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "destroy@1.2.0",
+          "Name": "destroy",
+          "Identifier": {
+            "PURL": "pkg:npm/destroy@1.2.0",
+            "UID": "b349de28ed901d71"
+          },
+          "Version": "1.2.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "detect-node-es@1.1.0",
+          "Name": "detect-node-es",
+          "Identifier": {
+            "PURL": "pkg:npm/detect-node-es@1.1.0",
+            "UID": "23ce661cb524b06"
+          },
+          "Version": "1.1.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "dijkstrajs@1.0.3",
+          "Name": "dijkstrajs",
+          "Identifier": {
+            "PURL": "pkg:npm/dijkstrajs@1.0.3",
+            "UID": "b3bfa9c0f03b6ab4"
+          },
+          "Version": "1.0.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "dom-helpers@5.2.1",
+          "Name": "dom-helpers",
+          "Identifier": {
+            "PURL": "pkg:npm/dom-helpers@5.2.1",
+            "UID": "730caa65a4a8465e"
+          },
+          "Version": "5.2.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "csstype@3.2.3",
+            "@babel/runtime@7.28.4"
+          ]
+        },
+        {
+          "ID": "dotenv@16.4.7",
+          "Name": "dotenv",
+          "Identifier": {
+            "PURL": "pkg:npm/dotenv@16.4.7",
+            "UID": "bc09e366e07ef5f8"
+          },
+          "Version": "16.4.7",
+          "Licenses": [
+            "BSD-2-Clause"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "dotenv-expand@12.0.1",
+          "Name": "dotenv-expand",
+          "Identifier": {
+            "PURL": "pkg:npm/dotenv-expand@12.0.1",
+            "UID": "5d9118edf1ed23bf"
+          },
+          "Version": "12.0.1",
+          "Licenses": [
+            "BSD-2-Clause"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "dotenv@16.4.7"
+          ]
+        },
+        {
+          "ID": "dunder-proto@1.0.1",
+          "Name": "dunder-proto",
+          "Identifier": {
+            "PURL": "pkg:npm/dunder-proto@1.0.1",
+            "UID": "b1f98e996251b34"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "es-errors@1.3.0",
+            "gopd@1.2.0",
+            "call-bind-apply-helpers@1.0.2"
+          ]
+        },
+        {
+          "ID": "ecdsa-sig-formatter@1.0.11",
+          "Name": "ecdsa-sig-formatter",
+          "Identifier": {
+            "PURL": "pkg:npm/ecdsa-sig-formatter@1.0.11",
+            "UID": "beeb5e9fa24c9445"
+          },
+          "Version": "1.0.11",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "safe-buffer@5.2.1"
+          ]
+        },
+        {
+          "ID": "ee-first@1.1.1",
+          "Name": "ee-first",
+          "Identifier": {
+            "PURL": "pkg:npm/ee-first@1.1.1",
+            "UID": "aec849de6ea86ffc"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "emoji-regex@8.0.0",
+          "Name": "emoji-regex",
+          "Identifier": {
+            "PURL": "pkg:npm/emoji-regex@8.0.0",
+            "UID": "9ab33eb6e671cb2a"
+          },
+          "Version": "8.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "encodeurl@1.0.2",
+          "Name": "encodeurl",
+          "Identifier": {
+            "PURL": "pkg:npm/encodeurl@1.0.2",
+            "UID": "6df1aed7e088c31"
+          },
+          "Version": "1.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "encodeurl@2.0.0",
+          "Name": "encodeurl",
+          "Identifier": {
+            "PURL": "pkg:npm/encodeurl@2.0.0",
+            "UID": "ac718ad1ca9069"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "es-define-property@1.0.1",
+          "Name": "es-define-property",
+          "Identifier": {
+            "PURL": "pkg:npm/es-define-property@1.0.1",
+            "UID": "bc6abd5f1835ed3d"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "es-errors@1.3.0",
+          "Name": "es-errors",
+          "Identifier": {
+            "PURL": "pkg:npm/es-errors@1.3.0",
+            "UID": "4ab3baff0968669c"
+          },
+          "Version": "1.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "es-object-atoms@1.1.1",
+          "Name": "es-object-atoms",
+          "Identifier": {
+            "PURL": "pkg:npm/es-object-atoms@1.1.1",
+            "UID": "26b7605249b3ef4"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "es-errors@1.3.0"
+          ]
+        },
+        {
+          "ID": "escape-html@1.0.3",
+          "Name": "escape-html",
+          "Identifier": {
+            "PURL": "pkg:npm/escape-html@1.0.3",
+            "UID": "b3353c4cb85b030c"
+          },
+          "Version": "1.0.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "etag@1.8.1",
+          "Name": "etag",
+          "Identifier": {
+            "PURL": "pkg:npm/etag@1.8.1",
+            "UID": "bd3a8a21287b18e2"
+          },
+          "Version": "1.8.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "eventemitter3@4.0.7",
+          "Name": "eventemitter3",
+          "Identifier": {
+            "PURL": "pkg:npm/eventemitter3@4.0.7",
+            "UID": "ba6dd26650ad6a38"
+          },
+          "Version": "4.0.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "express@4.21.2",
+          "Name": "express",
+          "Identifier": {
+            "PURL": "pkg:npm/express@4.21.2",
+            "UID": "bf3e3414f19f3d14"
+          },
+          "Version": "4.21.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "array-flatten@1.1.1",
+            "setprototypeof@1.2.0",
+            "type-is@1.6.18",
+            "safe-buffer@5.2.1",
+            "fresh@0.5.2",
+            "on-finished@2.4.1",
+            "methods@1.1.2",
+            "qs@6.14.1",
+            "range-parser@1.2.1",
+            "finalhandler@1.3.1",
+            "send@0.19.0",
+            "encodeurl@2.0.0",
+            "body-parser@1.20.3",
+            "path-to-regexp@0.1.12",
+            "depd@2.0.0",
+            "cookie@0.7.1",
+            "vary@1.1.2",
+            "http-errors@2.0.0",
+            "statuses@2.0.1",
+            "serve-static@1.16.2",
+            "debug@2.6.9",
+            "merge-descriptors@1.0.3",
+            "cookie-signature@1.0.6",
+            "content-disposition@0.5.4",
+            "proxy-addr@2.0.7",
+            "escape-html@1.0.3",
+            "accepts@1.3.8",
+            "parseurl@1.3.3",
+            "content-type@1.0.5",
+            "etag@1.8.1",
+            "utils-merge@1.0.1"
+          ]
+        },
+        {
+          "ID": "fast-equals@5.4.0",
+          "Name": "fast-equals",
+          "Identifier": {
+            "PURL": "pkg:npm/fast-equals@5.4.0",
+            "UID": "e1002bd7a57b5ddb"
+          },
+          "Version": "5.4.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "fast-safe-stringify@2.1.1",
+          "Name": "fast-safe-stringify",
+          "Identifier": {
+            "PURL": "pkg:npm/fast-safe-stringify@2.1.1",
+            "UID": "89740b6f4139307"
+          },
+          "Version": "2.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "fflate@0.8.2",
+          "Name": "fflate",
+          "Identifier": {
+            "PURL": "pkg:npm/fflate@0.8.2",
+            "UID": "8585b914668b009e"
+          },
+          "Version": "0.8.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "file-type@20.4.1",
+          "Name": "file-type",
+          "Identifier": {
+            "PURL": "pkg:npm/file-type@20.4.1",
+            "UID": "902f2ae7bd712a88"
+          },
+          "Version": "20.4.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "strtok3@10.3.4",
+            "token-types@6.1.1",
+            "uint8array-extras@1.5.0",
+            "@tokenizer/inflate@0.2.7"
+          ]
+        },
+        {
+          "ID": "finalhandler@1.3.1",
+          "Name": "finalhandler",
+          "Identifier": {
+            "PURL": "pkg:npm/finalhandler@1.3.1",
+            "UID": "e831863d19e64419"
+          },
+          "Version": "1.3.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "debug@2.6.9",
+            "encodeurl@2.0.0",
+            "escape-html@1.0.3",
+            "on-finished@2.4.1",
+            "parseurl@1.3.3",
+            "statuses@2.0.1",
+            "unpipe@1.0.0"
+          ]
+        },
+        {
+          "ID": "find-up@4.1.0",
+          "Name": "find-up",
+          "Identifier": {
+            "PURL": "pkg:npm/find-up@4.1.0",
+            "UID": "8ac145bc92ae6d1a"
+          },
+          "Version": "4.1.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "locate-path@5.0.0",
+            "path-exists@4.0.0"
+          ]
+        },
+        {
+          "ID": "forwarded@0.2.0",
+          "Name": "forwarded",
+          "Identifier": {
+            "PURL": "pkg:npm/forwarded@0.2.0",
+            "UID": "cc690ccc1f17a539"
+          },
+          "Version": "0.2.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "fresh@0.5.2",
+          "Name": "fresh",
+          "Identifier": {
+            "PURL": "pkg:npm/fresh@0.5.2",
+            "UID": "2d86d2e6a2997add"
+          },
+          "Version": "0.5.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "fsevents@2.3.3",
+          "Name": "fsevents",
+          "Identifier": {
+            "PURL": "pkg:npm/fsevents@2.3.3",
+            "UID": "b4f8c8e2421d3034"
+          },
+          "Version": "2.3.3",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "function-bind@1.1.2",
+          "Name": "function-bind",
+          "Identifier": {
+            "PURL": "pkg:npm/function-bind@1.1.2",
+            "UID": "3964a15a874743c9"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "get-caller-file@2.0.5",
+          "Name": "get-caller-file",
+          "Identifier": {
+            "PURL": "pkg:npm/get-caller-file@2.0.5",
+            "UID": "fd11400c943658f8"
+          },
+          "Version": "2.0.5",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "get-intrinsic@1.3.0",
+          "Name": "get-intrinsic",
+          "Identifier": {
+            "PURL": "pkg:npm/get-intrinsic@1.3.0",
+            "UID": "b238cc07158e5635"
+          },
+          "Version": "1.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "es-errors@1.3.0",
+            "function-bind@1.1.2",
+            "gopd@1.2.0",
+            "math-intrinsics@1.1.0",
+            "call-bind-apply-helpers@1.0.2",
+            "hasown@2.0.2",
+            "es-define-property@1.0.1",
+            "es-object-atoms@1.1.1",
+            "get-proto@1.0.1",
+            "has-symbols@1.1.0"
+          ]
+        },
+        {
+          "ID": "get-nonce@1.0.1",
+          "Name": "get-nonce",
+          "Identifier": {
+            "PURL": "pkg:npm/get-nonce@1.0.1",
+            "UID": "664b9f1fc12aa58e"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "get-proto@1.0.1",
+          "Name": "get-proto",
+          "Identifier": {
+            "PURL": "pkg:npm/get-proto@1.0.1",
+            "UID": "c64630b97f511abf"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "dunder-proto@1.0.1",
+            "es-object-atoms@1.1.1"
+          ]
+        },
+        {
+          "ID": "gopd@1.2.0",
+          "Name": "gopd",
+          "Identifier": {
+            "PURL": "pkg:npm/gopd@1.2.0",
+            "UID": "350d8b1af32cddea"
+          },
+          "Version": "1.2.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "graceful-fs@4.2.11",
+          "Name": "graceful-fs",
+          "Identifier": {
+            "PURL": "pkg:npm/graceful-fs@4.2.11",
+            "UID": "1bacc45905b49ecf"
+          },
+          "Version": "4.2.11",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "has-flag@4.0.0",
+          "Name": "has-flag",
+          "Identifier": {
+            "PURL": "pkg:npm/has-flag@4.0.0",
+            "UID": "20fd544cfccadefb"
+          },
+          "Version": "4.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "has-symbols@1.1.0",
+          "Name": "has-symbols",
+          "Identifier": {
+            "PURL": "pkg:npm/has-symbols@1.1.0",
+            "UID": "5418057f63d6e83d"
+          },
+          "Version": "1.1.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "hasown@2.0.2",
+          "Name": "hasown",
+          "Identifier": {
+            "PURL": "pkg:npm/hasown@2.0.2",
+            "UID": "c62e5a6f23468951"
+          },
+          "Version": "2.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "function-bind@1.1.2"
+          ]
+        },
+        {
+          "ID": "http-errors@2.0.0",
+          "Name": "http-errors",
+          "Identifier": {
+            "PURL": "pkg:npm/http-errors@2.0.0",
+            "UID": "37f3ce7f3fbce6ae"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "statuses@2.0.1",
+            "toidentifier@1.0.1",
+            "depd@2.0.0",
+            "inherits@2.0.4",
+            "setprototypeof@1.2.0"
+          ]
+        },
+        {
+          "ID": "iconv-lite@0.4.24",
+          "Name": "iconv-lite",
+          "Identifier": {
+            "PURL": "pkg:npm/iconv-lite@0.4.24",
+            "UID": "652262501ad90ea8"
+          },
+          "Version": "0.4.24",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "safer-buffer@2.1.2"
+          ]
+        },
+        {
+          "ID": "ieee754@1.2.1",
+          "Name": "ieee754",
+          "Identifier": {
+            "PURL": "pkg:npm/ieee754@1.2.1",
+            "UID": "d8940c4512b818f1"
+          },
+          "Version": "1.2.1",
+          "Licenses": [
+            "BSD-3-Clause"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "inherits@2.0.4",
+          "Name": "inherits",
+          "Identifier": {
+            "PURL": "pkg:npm/inherits@2.0.4",
+            "UID": "b31536f38cc0667"
+          },
+          "Version": "2.0.4",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "internmap@2.0.3",
+          "Name": "internmap",
+          "Identifier": {
+            "PURL": "pkg:npm/internmap@2.0.3",
+            "UID": "70a1671bc7422881"
+          },
+          "Version": "2.0.3",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "ipaddr.js@1.9.1",
+          "Name": "ipaddr.js",
+          "Identifier": {
+            "PURL": "pkg:npm/ipaddr.js@1.9.1",
+            "UID": "4937ebba1e86a452"
+          },
+          "Version": "1.9.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "is-fullwidth-code-point@3.0.0",
+          "Name": "is-fullwidth-code-point",
+          "Identifier": {
+            "PURL": "pkg:npm/is-fullwidth-code-point@3.0.0",
+            "UID": "d66e2eb04fd58d6b"
+          },
+          "Version": "3.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "iterare@1.2.1",
+          "Name": "iterare",
+          "Identifier": {
+            "PURL": "pkg:npm/iterare@1.2.1",
+            "UID": "a3609c385ab86799"
+          },
+          "Version": "1.2.1",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "js-tokens@4.0.0",
+          "Name": "js-tokens",
+          "Identifier": {
+            "PURL": "pkg:npm/js-tokens@4.0.0",
+            "UID": "e82076d74e8c2219"
+          },
+          "Version": "4.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "js-yaml@4.1.0",
+          "Name": "js-yaml",
+          "Identifier": {
+            "PURL": "pkg:npm/js-yaml@4.1.0",
+            "UID": "89e4699bd6f47a28"
+          },
+          "Version": "4.1.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "argparse@2.0.1"
+          ]
+        },
+        {
+          "ID": "jsonwebtoken@9.0.2",
+          "Name": "jsonwebtoken",
+          "Identifier": {
+            "PURL": "pkg:npm/jsonwebtoken@9.0.2",
+            "UID": "e35f5a48098a32af"
+          },
+          "Version": "9.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "jws@3.2.3",
+            "lodash.isboolean@3.0.3",
+            "semver@7.7.3",
+            "lodash.includes@4.3.0",
+            "lodash.once@4.1.1",
+            "lodash.isinteger@4.0.4",
+            "lodash.isstring@4.0.1",
+            "ms@2.1.3",
+            "lodash.isnumber@3.0.3",
+            "lodash.isplainobject@4.0.6"
+          ]
+        },
+        {
+          "ID": "jsonwebtoken@9.0.3",
+          "Name": "jsonwebtoken",
+          "Identifier": {
+            "PURL": "pkg:npm/jsonwebtoken@9.0.3",
+            "UID": "d99b78e42886e7b"
+          },
+          "Version": "9.0.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "ms@2.1.3",
+            "lodash.isinteger@4.0.4",
+            "lodash.isstring@4.0.1",
+            "semver@7.7.3",
+            "jws@4.0.1",
+            "lodash.includes@4.3.0",
+            "lodash.isnumber@3.0.3",
+            "lodash.isboolean@3.0.3",
+            "lodash.isplainobject@4.0.6",
+            "lodash.once@4.1.1"
+          ]
+        },
+        {
+          "ID": "jwa@1.4.2",
+          "Name": "jwa",
+          "Identifier": {
+            "PURL": "pkg:npm/jwa@1.4.2",
+            "UID": "ebe59ca0701b8b03"
+          },
+          "Version": "1.4.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "buffer-equal-constant-time@1.0.1",
+            "ecdsa-sig-formatter@1.0.11",
+            "safe-buffer@5.2.1"
+          ]
+        },
+        {
+          "ID": "jwa@2.0.1",
+          "Name": "jwa",
+          "Identifier": {
+            "PURL": "pkg:npm/jwa@2.0.1",
+            "UID": "197d1d28a167485a"
+          },
+          "Version": "2.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "buffer-equal-constant-time@1.0.1",
+            "ecdsa-sig-formatter@1.0.11",
+            "safe-buffer@5.2.1"
+          ]
+        },
+        {
+          "ID": "jws@3.2.3",
+          "Name": "jws",
+          "Identifier": {
+            "PURL": "pkg:npm/jws@3.2.3",
+            "UID": "514b25199be741a0"
+          },
+          "Version": "3.2.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "jwa@1.4.2",
+            "safe-buffer@5.2.1"
+          ]
+        },
+        {
+          "ID": "jws@4.0.1",
+          "Name": "jws",
+          "Identifier": {
+            "PURL": "pkg:npm/jws@4.0.1",
+            "UID": "357fb8696928cef3"
+          },
+          "Version": "4.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "safe-buffer@5.2.1",
+            "jwa@2.0.1"
+          ]
+        },
+        {
+          "ID": "libphonenumber-js@1.12.31",
+          "Name": "libphonenumber-js",
+          "Identifier": {
+            "PURL": "pkg:npm/libphonenumber-js@1.12.31",
+            "UID": "577e69bce6a55a11"
+          },
+          "Version": "1.12.31",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "locate-path@5.0.0",
+          "Name": "locate-path",
+          "Identifier": {
+            "PURL": "pkg:npm/locate-path@5.0.0",
+            "UID": "27b163716de7cc2a"
+          },
+          "Version": "5.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "p-locate@4.1.0"
+          ]
+        },
+        {
+          "ID": "lodash@4.17.21",
+          "Name": "lodash",
+          "Identifier": {
+            "PURL": "pkg:npm/lodash@4.17.21",
+            "UID": "e307883691bb6fc7"
+          },
+          "Version": "4.17.21",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "lodash.includes@4.3.0",
+          "Name": "lodash.includes",
+          "Identifier": {
+            "PURL": "pkg:npm/lodash.includes@4.3.0",
+            "UID": "3ab0ed0b51581277"
+          },
+          "Version": "4.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "lodash.isboolean@3.0.3",
+          "Name": "lodash.isboolean",
+          "Identifier": {
+            "PURL": "pkg:npm/lodash.isboolean@3.0.3",
+            "UID": "c7cd5f33407953cd"
+          },
+          "Version": "3.0.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "lodash.isinteger@4.0.4",
+          "Name": "lodash.isinteger",
+          "Identifier": {
+            "PURL": "pkg:npm/lodash.isinteger@4.0.4",
+            "UID": "6bdc946e6da162a"
+          },
+          "Version": "4.0.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "lodash.isnumber@3.0.3",
+          "Name": "lodash.isnumber",
+          "Identifier": {
+            "PURL": "pkg:npm/lodash.isnumber@3.0.3",
+            "UID": "3e9de0530cfa4d65"
+          },
+          "Version": "3.0.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "lodash.isplainobject@4.0.6",
+          "Name": "lodash.isplainobject",
+          "Identifier": {
+            "PURL": "pkg:npm/lodash.isplainobject@4.0.6",
+            "UID": "aa0717e8f0d644b8"
+          },
+          "Version": "4.0.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "lodash.isstring@4.0.1",
+          "Name": "lodash.isstring",
+          "Identifier": {
+            "PURL": "pkg:npm/lodash.isstring@4.0.1",
+            "UID": "4fb13676a7ae6745"
+          },
+          "Version": "4.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "lodash.once@4.1.1",
+          "Name": "lodash.once",
+          "Identifier": {
+            "PURL": "pkg:npm/lodash.once@4.1.1",
+            "UID": "8e374cb7c41a7b89"
+          },
+          "Version": "4.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "loose-envify@1.4.0",
+          "Name": "loose-envify",
+          "Identifier": {
+            "PURL": "pkg:npm/loose-envify@1.4.0",
+            "UID": "95292f4746dd8911"
+          },
+          "Version": "1.4.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "js-tokens@4.0.0"
+          ]
+        },
+        {
+          "ID": "math-intrinsics@1.1.0",
+          "Name": "math-intrinsics",
+          "Identifier": {
+            "PURL": "pkg:npm/math-intrinsics@1.1.0",
+            "UID": "9c782ea7d37b3705"
+          },
+          "Version": "1.1.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "media-typer@0.3.0",
+          "Name": "media-typer",
+          "Identifier": {
+            "PURL": "pkg:npm/media-typer@0.3.0",
+            "UID": "bd6431a331f21249"
+          },
+          "Version": "0.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "merge-descriptors@1.0.3",
+          "Name": "merge-descriptors",
+          "Identifier": {
+            "PURL": "pkg:npm/merge-descriptors@1.0.3",
+            "UID": "8ac4888c09f124e1"
+          },
+          "Version": "1.0.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "methods@1.1.2",
+          "Name": "methods",
+          "Identifier": {
+            "PURL": "pkg:npm/methods@1.1.2",
+            "UID": "66e8844128d459bb"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "mime@1.6.0",
+          "Name": "mime",
+          "Identifier": {
+            "PURL": "pkg:npm/mime@1.6.0",
+            "UID": "982a243c3d8e185d"
+          },
+          "Version": "1.6.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "mime-db@1.52.0",
+          "Name": "mime-db",
+          "Identifier": {
+            "PURL": "pkg:npm/mime-db@1.52.0",
+            "UID": "c9a68e39351673aa"
+          },
+          "Version": "1.52.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "mime-types@2.1.35",
+          "Name": "mime-types",
+          "Identifier": {
+            "PURL": "pkg:npm/mime-types@2.1.35",
+            "UID": "453b1c3a2cbd8d86"
+          },
+          "Version": "2.1.35",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "mime-db@1.52.0"
+          ]
+        },
+        {
+          "ID": "minimist@1.2.8",
+          "Name": "minimist",
+          "Identifier": {
+            "PURL": "pkg:npm/minimist@1.2.8",
+            "UID": "6fd3010d840cdddf"
+          },
+          "Version": "1.2.8",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "mkdirp@0.5.6",
+          "Name": "mkdirp",
+          "Identifier": {
+            "PURL": "pkg:npm/mkdirp@0.5.6",
+            "UID": "80c413194f8f8073"
+          },
+          "Version": "0.5.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "minimist@1.2.8"
+          ]
+        },
+        {
+          "ID": "ms@2.0.0",
+          "Name": "ms",
+          "Identifier": {
+            "PURL": "pkg:npm/ms@2.0.0",
+            "UID": "d25f50795d82b80f"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "ms@2.1.3",
+          "Name": "ms",
+          "Identifier": {
+            "PURL": "pkg:npm/ms@2.1.3",
+            "UID": "bd1d345730a487e1"
+          },
+          "Version": "2.1.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "nanoid@3.3.11",
+          "Name": "nanoid",
+          "Identifier": {
+            "PURL": "pkg:npm/nanoid@3.3.11",
+            "UID": "f2e10782338aaaba"
+          },
+          "Version": "3.3.11",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "negotiator@0.6.3",
+          "Name": "negotiator",
+          "Identifier": {
+            "PURL": "pkg:npm/negotiator@0.6.3",
+            "UID": "10a2fd35b82827e6"
+          },
+          "Version": "0.6.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "node-fetch@2.7.0",
+          "Name": "node-fetch",
+          "Identifier": {
+            "PURL": "pkg:npm/node-fetch@2.7.0",
+            "UID": "650dc1f758c60ce3"
+          },
+          "Version": "2.7.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "whatwg-url@5.0.0"
+          ]
+        },
+        {
+          "ID": "object-assign@4.1.1",
+          "Name": "object-assign",
+          "Identifier": {
+            "PURL": "pkg:npm/object-assign@4.1.1",
+            "UID": "7c4939ce68db58fb"
+          },
+          "Version": "4.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "object-inspect@1.13.4",
+          "Name": "object-inspect",
+          "Identifier": {
+            "PURL": "pkg:npm/object-inspect@1.13.4",
+            "UID": "8789628d22656f13"
+          },
+          "Version": "1.13.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "on-finished@2.4.1",
+          "Name": "on-finished",
+          "Identifier": {
+            "PURL": "pkg:npm/on-finished@2.4.1",
+            "UID": "1931ca3e9271745d"
+          },
+          "Version": "2.4.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "ee-first@1.1.1"
+          ]
+        },
+        {
+          "ID": "p-limit@2.3.0",
+          "Name": "p-limit",
+          "Identifier": {
+            "PURL": "pkg:npm/p-limit@2.3.0",
+            "UID": "343ace3bed197f21"
+          },
+          "Version": "2.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "p-try@2.2.0"
+          ]
+        },
+        {
+          "ID": "p-locate@4.1.0",
+          "Name": "p-locate",
+          "Identifier": {
+            "PURL": "pkg:npm/p-locate@4.1.0",
+            "UID": "74890e39b417d41c"
+          },
+          "Version": "4.1.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "p-limit@2.3.0"
+          ]
+        },
+        {
+          "ID": "p-try@2.2.0",
+          "Name": "p-try",
+          "Identifier": {
+            "PURL": "pkg:npm/p-try@2.2.0",
+            "UID": "5f9b1a99f65c1670"
+          },
+          "Version": "2.2.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "parseurl@1.3.3",
+          "Name": "parseurl",
+          "Identifier": {
+            "PURL": "pkg:npm/parseurl@1.3.3",
+            "UID": "cd092464546eee61"
+          },
+          "Version": "1.3.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "passport-strategy@1.0.0",
+          "Name": "passport-strategy",
+          "Identifier": {
+            "PURL": "pkg:npm/passport-strategy@1.0.0",
+            "UID": "b29dd3bee9f64f86"
+          },
+          "Version": "1.0.0",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "path-exists@4.0.0",
+          "Name": "path-exists",
+          "Identifier": {
+            "PURL": "pkg:npm/path-exists@4.0.0",
+            "UID": "2b1e13c099951f67"
+          },
+          "Version": "4.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "path-to-regexp@0.1.12",
+          "Name": "path-to-regexp",
+          "Identifier": {
+            "PURL": "pkg:npm/path-to-regexp@0.1.12",
+            "UID": "74a970ebef533563"
+          },
+          "Version": "0.1.12",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "path-to-regexp@3.3.0",
+          "Name": "path-to-regexp",
+          "Identifier": {
+            "PURL": "pkg:npm/path-to-regexp@3.3.0",
+            "UID": "e4706e82d2ec8b7d"
+          },
+          "Version": "3.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "pause@0.0.1",
+          "Name": "pause",
+          "Identifier": {
+            "PURL": "pkg:npm/pause@0.0.1",
+            "UID": "217e7c2f6e6d9eae"
+          },
+          "Version": "0.0.1",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "picocolors@1.1.1",
+          "Name": "picocolors",
+          "Identifier": {
+            "PURL": "pkg:npm/picocolors@1.1.1",
+            "UID": "5a4e74d6490d3678"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "pngjs@5.0.0",
+          "Name": "pngjs",
+          "Identifier": {
+            "PURL": "pkg:npm/pngjs@5.0.0",
+            "UID": "bc7622dc01eaf023"
+          },
+          "Version": "5.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "postcss@8.4.31",
+          "Name": "postcss",
+          "Identifier": {
+            "PURL": "pkg:npm/postcss@8.4.31",
+            "UID": "69a15438f75d6ecb"
+          },
+          "Version": "8.4.31",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "nanoid@3.3.11",
+            "picocolors@1.1.1",
+            "source-map-js@1.2.1"
+          ]
+        },
+        {
+          "ID": "prop-types@15.8.1",
+          "Name": "prop-types",
+          "Identifier": {
+            "PURL": "pkg:npm/prop-types@15.8.1",
+            "UID": "4238df908395958d"
+          },
+          "Version": "15.8.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "object-assign@4.1.1",
+            "react-is@16.13.1",
+            "loose-envify@1.4.0"
+          ]
+        },
+        {
+          "ID": "proxy-addr@2.0.7",
+          "Name": "proxy-addr",
+          "Identifier": {
+            "PURL": "pkg:npm/proxy-addr@2.0.7",
+            "UID": "1ecedf00c3b3734f"
+          },
+          "Version": "2.0.7",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "forwarded@0.2.0",
+            "ipaddr.js@1.9.1"
+          ]
+        },
+        {
+          "ID": "qs@6.14.1",
+          "Name": "qs",
+          "Identifier": {
+            "PURL": "pkg:npm/qs@6.14.1",
+            "UID": "e6d1505d7d827f66"
+          },
+          "Version": "6.14.1",
+          "Licenses": [
+            "BSD-3-Clause"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "side-channel@1.1.0"
+          ]
+        },
+        {
+          "ID": "range-parser@1.2.1",
+          "Name": "range-parser",
+          "Identifier": {
+            "PURL": "pkg:npm/range-parser@1.2.1",
+            "UID": "c685dd872665915b"
+          },
+          "Version": "1.2.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "raw-body@2.5.2",
+          "Name": "raw-body",
+          "Identifier": {
+            "PURL": "pkg:npm/raw-body@2.5.2",
+            "UID": "bf4353b44cdcdc07"
+          },
+          "Version": "2.5.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "bytes@3.1.2",
+            "http-errors@2.0.0",
+            "iconv-lite@0.4.24",
+            "unpipe@1.0.0"
+          ]
+        },
+        {
+          "ID": "react-is@16.13.1",
+          "Name": "react-is",
+          "Identifier": {
+            "PURL": "pkg:npm/react-is@16.13.1",
+            "UID": "124093ac38f56af1"
+          },
+          "Version": "16.13.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "react-is@18.3.1",
+          "Name": "react-is",
+          "Identifier": {
+            "PURL": "pkg:npm/react-is@18.3.1",
+            "UID": "78dc389a03cde33d"
+          },
+          "Version": "18.3.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "react-remove-scroll@2.7.2(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "react-remove-scroll",
+          "Identifier": {
+            "PURL": "pkg:npm/react-remove-scroll@2.7.2",
+            "UID": "a01baab3be886630"
+          },
+          "Version": "2.7.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1",
+            "react-remove-scroll-bar@2.3.8(@types/react@18.3.27)(react@18.3.1)",
+            "react-style-singleton@2.2.3(@types/react@18.3.27)(react@18.3.1)",
+            "tslib@2.8.1",
+            "use-callback-ref@1.3.3(@types/react@18.3.27)(react@18.3.1)",
+            "use-sidecar@1.1.3(@types/react@18.3.27)(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "react-remove-scroll-bar@2.3.8(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "react-remove-scroll-bar",
+          "Identifier": {
+            "PURL": "pkg:npm/react-remove-scroll-bar@2.3.8",
+            "UID": "2410db2d8fbbbc74"
+          },
+          "Version": "2.3.8",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "tslib@2.8.1",
+            "react@18.3.1",
+            "react-style-singleton@2.2.3(@types/react@18.3.27)(react@18.3.1)",
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "react-smooth@4.0.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "react-smooth",
+          "Identifier": {
+            "PURL": "pkg:npm/react-smooth@4.0.4",
+            "UID": "54f6f2421d9a17d7"
+          },
+          "Version": "4.0.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "fast-equals@5.4.0",
+            "prop-types@15.8.1",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)",
+            "react-transition-group@4.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)"
+          ]
+        },
+        {
+          "ID": "react-style-singleton@2.2.3(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "react-style-singleton",
+          "Identifier": {
+            "PURL": "pkg:npm/react-style-singleton@2.2.3",
+            "UID": "8b9d5e33d1d096e5"
+          },
+          "Version": "2.2.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "get-nonce@1.0.1",
+            "react@18.3.1",
+            "tslib@2.8.1",
+            "@types/react@18.3.27"
+          ]
+        },
+        {
+          "ID": "react-transition-group@4.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "Name": "react-transition-group",
+          "Identifier": {
+            "PURL": "pkg:npm/react-transition-group@4.4.5",
+            "UID": "462790f42dd174f0"
+          },
+          "Version": "4.4.5",
+          "Licenses": [
+            "BSD-3-Clause"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "prop-types@15.8.1",
+            "react@18.3.1",
+            "react-dom@18.3.1(react@18.3.1)",
+            "@babel/runtime@7.28.4",
+            "dom-helpers@5.2.1",
+            "loose-envify@1.4.0"
+          ]
+        },
+        {
+          "ID": "readable-stream@3.6.2",
+          "Name": "readable-stream",
+          "Identifier": {
+            "PURL": "pkg:npm/readable-stream@3.6.2",
+            "UID": "7a55329524b5481a"
+          },
+          "Version": "3.6.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "util-deprecate@1.0.2",
+            "inherits@2.0.4",
+            "string_decoder@1.3.0"
+          ]
+        },
+        {
+          "ID": "recharts-scale@0.4.5",
+          "Name": "recharts-scale",
+          "Identifier": {
+            "PURL": "pkg:npm/recharts-scale@0.4.5",
+            "UID": "d3f9e32131121758"
+          },
+          "Version": "0.4.5",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "decimal.js-light@2.5.1"
+          ]
+        },
+        {
+          "ID": "require-directory@2.1.1",
+          "Name": "require-directory",
+          "Identifier": {
+            "PURL": "pkg:npm/require-directory@2.1.1",
+            "UID": "7b673f3420aae6dc"
+          },
+          "Version": "2.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "require-main-filename@2.0.0",
+          "Name": "require-main-filename",
+          "Identifier": {
+            "PURL": "pkg:npm/require-main-filename@2.0.0",
+            "UID": "4ea6aa5ce4305e64"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "safe-buffer@5.2.1",
+          "Name": "safe-buffer",
+          "Identifier": {
+            "PURL": "pkg:npm/safe-buffer@5.2.1",
+            "UID": "d56f1cc99f8abe9a"
+          },
+          "Version": "5.2.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "safer-buffer@2.1.2",
+          "Name": "safer-buffer",
+          "Identifier": {
+            "PURL": "pkg:npm/safer-buffer@2.1.2",
+            "UID": "a399c9638a00ab8"
+          },
+          "Version": "2.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "scheduler@0.23.2",
+          "Name": "scheduler",
+          "Identifier": {
+            "PURL": "pkg:npm/scheduler@0.23.2",
+            "UID": "6be18659e9a571dd"
+          },
+          "Version": "0.23.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "loose-envify@1.4.0"
+          ]
+        },
+        {
+          "ID": "semver@7.7.3",
+          "Name": "semver",
+          "Identifier": {
+            "PURL": "pkg:npm/semver@7.7.3",
+            "UID": "5d65c3879f2067d9"
+          },
+          "Version": "7.7.3",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "send@0.19.0",
+          "Name": "send",
+          "Identifier": {
+            "PURL": "pkg:npm/send@0.19.0",
+            "UID": "87cde5311e06d3ef"
+          },
+          "Version": "0.19.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "http-errors@2.0.0",
+            "debug@2.6.9",
+            "encodeurl@1.0.2",
+            "fresh@0.5.2",
+            "ms@2.1.3",
+            "statuses@2.0.1",
+            "depd@2.0.0",
+            "escape-html@1.0.3",
+            "etag@1.8.1",
+            "range-parser@1.2.1",
+            "mime@1.6.0",
+            "on-finished@2.4.1",
+            "destroy@1.2.0"
+          ]
+        },
+        {
+          "ID": "serve-static@1.16.2",
+          "Name": "serve-static",
+          "Identifier": {
+            "PURL": "pkg:npm/serve-static@1.16.2",
+            "UID": "c2fa522de0485949"
+          },
+          "Version": "1.16.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "send@0.19.0",
+            "encodeurl@2.0.0",
+            "escape-html@1.0.3",
+            "parseurl@1.3.3"
+          ]
+        },
+        {
+          "ID": "set-blocking@2.0.0",
+          "Name": "set-blocking",
+          "Identifier": {
+            "PURL": "pkg:npm/set-blocking@2.0.0",
+            "UID": "aa91c82f11f20863"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "setprototypeof@1.2.0",
+          "Name": "setprototypeof",
+          "Identifier": {
+            "PURL": "pkg:npm/setprototypeof@1.2.0",
+            "UID": "bad68fb4f4dfbf7c"
+          },
+          "Version": "1.2.0",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "side-channel@1.1.0",
+          "Name": "side-channel",
+          "Identifier": {
+            "PURL": "pkg:npm/side-channel@1.1.0",
+            "UID": "22c9a04464591ae"
+          },
+          "Version": "1.1.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "side-channel-list@1.0.0",
+            "side-channel-map@1.0.1",
+            "side-channel-weakmap@1.0.2",
+            "es-errors@1.3.0",
+            "object-inspect@1.13.4"
+          ]
+        },
+        {
+          "ID": "side-channel-list@1.0.0",
+          "Name": "side-channel-list",
+          "Identifier": {
+            "PURL": "pkg:npm/side-channel-list@1.0.0",
+            "UID": "693c6c3ba2e5da00"
+          },
+          "Version": "1.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "es-errors@1.3.0",
+            "object-inspect@1.13.4"
+          ]
+        },
+        {
+          "ID": "side-channel-map@1.0.1",
+          "Name": "side-channel-map",
+          "Identifier": {
+            "PURL": "pkg:npm/side-channel-map@1.0.1",
+            "UID": "786d87c2c330cd91"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "object-inspect@1.13.4",
+            "call-bound@1.0.4",
+            "es-errors@1.3.0",
+            "get-intrinsic@1.3.0"
+          ]
+        },
+        {
+          "ID": "side-channel-weakmap@1.0.2",
+          "Name": "side-channel-weakmap",
+          "Identifier": {
+            "PURL": "pkg:npm/side-channel-weakmap@1.0.2",
+            "UID": "d2fa5771f3abff78"
+          },
+          "Version": "1.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "get-intrinsic@1.3.0",
+            "object-inspect@1.13.4",
+            "side-channel-map@1.0.1",
+            "call-bound@1.0.4",
+            "es-errors@1.3.0"
+          ]
+        },
+        {
+          "ID": "source-map-js@1.2.1",
+          "Name": "source-map-js",
+          "Identifier": {
+            "PURL": "pkg:npm/source-map-js@1.2.1",
+            "UID": "698b4f992b3f7ae8"
+          },
+          "Version": "1.2.1",
+          "Licenses": [
+            "BSD-3-Clause"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "statuses@2.0.1",
+          "Name": "statuses",
+          "Identifier": {
+            "PURL": "pkg:npm/statuses@2.0.1",
+            "UID": "4357d142e6286e19"
+          },
+          "Version": "2.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "streamsearch@1.1.0",
+          "Name": "streamsearch",
+          "Identifier": {
+            "PURL": "pkg:npm/streamsearch@1.1.0",
+            "UID": "43666eb79917798e"
+          },
+          "Version": "1.1.0",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "string-width@4.2.3",
+          "Name": "string-width",
+          "Identifier": {
+            "PURL": "pkg:npm/string-width@4.2.3",
+            "UID": "76845df6bf81b1b0"
+          },
+          "Version": "4.2.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "is-fullwidth-code-point@3.0.0",
+            "strip-ansi@6.0.1",
+            "emoji-regex@8.0.0"
+          ]
+        },
+        {
+          "ID": "string_decoder@1.3.0",
+          "Name": "string_decoder",
+          "Identifier": {
+            "PURL": "pkg:npm/string_decoder@1.3.0",
+            "UID": "bec06813cd2b6f81"
+          },
+          "Version": "1.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "safe-buffer@5.2.1"
+          ]
+        },
+        {
+          "ID": "strip-ansi@6.0.1",
+          "Name": "strip-ansi",
+          "Identifier": {
+            "PURL": "pkg:npm/strip-ansi@6.0.1",
+            "UID": "8dabe871ec44f04a"
+          },
+          "Version": "6.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "ansi-regex@5.0.1"
+          ]
+        },
+        {
+          "ID": "strtok3@10.3.4",
+          "Name": "strtok3",
+          "Identifier": {
+            "PURL": "pkg:npm/strtok3@10.3.4",
+            "UID": "81045fefdbf8e3e"
+          },
+          "Version": "10.3.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@tokenizer/token@0.3.0"
+          ]
+        },
+        {
+          "ID": "styled-jsx@5.1.1(react@18.3.1)",
+          "Name": "styled-jsx",
+          "Identifier": {
+            "PURL": "pkg:npm/styled-jsx@5.1.1",
+            "UID": "45d6594fd3522614"
+          },
+          "Version": "5.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "client-only@0.0.1",
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "supports-color@7.2.0",
+          "Name": "supports-color",
+          "Identifier": {
+            "PURL": "pkg:npm/supports-color@7.2.0",
+            "UID": "2e4355bd32f6b511"
+          },
+          "Version": "7.2.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "has-flag@4.0.0"
+          ]
+        },
+        {
+          "ID": "swagger-ui-dist@5.17.14",
+          "Name": "swagger-ui-dist",
+          "Identifier": {
+            "PURL": "pkg:npm/swagger-ui-dist@5.17.14",
+            "UID": "558b9de7f1b413a3"
+          },
+          "Version": "5.17.14",
+          "Licenses": [
+            "Apache-2.0"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "thirty-two@1.0.2",
+          "Name": "thirty-two",
+          "Identifier": {
+            "PURL": "pkg:npm/thirty-two@1.0.2",
+            "UID": "5cc36af49cec82a5"
+          },
+          "Version": "1.0.2",
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "tiny-invariant@1.3.3",
+          "Name": "tiny-invariant",
+          "Identifier": {
+            "PURL": "pkg:npm/tiny-invariant@1.3.3",
+            "UID": "7c12def9c3923259"
+          },
+          "Version": "1.3.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "toidentifier@1.0.1",
+          "Name": "toidentifier",
+          "Identifier": {
+            "PURL": "pkg:npm/toidentifier@1.0.1",
+            "UID": "dff48908e944d5ee"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "token-types@6.1.1",
+          "Name": "token-types",
+          "Identifier": {
+            "PURL": "pkg:npm/token-types@6.1.1",
+            "UID": "c38d00bd42ce0f3d"
+          },
+          "Version": "6.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@borewit/text-codec@0.1.1",
+            "@tokenizer/token@0.3.0",
+            "ieee754@1.2.1"
+          ]
+        },
+        {
+          "ID": "tr46@0.0.3",
+          "Name": "tr46",
+          "Identifier": {
+            "PURL": "pkg:npm/tr46@0.0.3",
+            "UID": "e7126a45803d23c2"
+          },
+          "Version": "0.0.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "tslib@2.8.1",
+          "Name": "tslib",
+          "Identifier": {
+            "PURL": "pkg:npm/tslib@2.8.1",
+            "UID": "8dd3d79d0cf02a8f"
+          },
+          "Version": "2.8.1",
+          "Licenses": [
+            "0BSD"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "type-is@1.6.18",
+          "Name": "type-is",
+          "Identifier": {
+            "PURL": "pkg:npm/type-is@1.6.18",
+            "UID": "6a426a6efc75daf7"
+          },
+          "Version": "1.6.18",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "media-typer@0.3.0",
+            "mime-types@2.1.35"
+          ]
+        },
+        {
+          "ID": "typedarray@0.0.6",
+          "Name": "typedarray",
+          "Identifier": {
+            "PURL": "pkg:npm/typedarray@0.0.6",
+            "UID": "32b395ad517d9361"
+          },
+          "Version": "0.0.6",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "uid@2.0.2",
+          "Name": "uid",
+          "Identifier": {
+            "PURL": "pkg:npm/uid@2.0.2",
+            "UID": "b790a7f51ffa62f8"
+          },
+          "Version": "2.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@lukeed/csprng@1.1.0"
+          ]
+        },
+        {
+          "ID": "uint8array-extras@1.5.0",
+          "Name": "uint8array-extras",
+          "Identifier": {
+            "PURL": "pkg:npm/uint8array-extras@1.5.0",
+            "UID": "19bd801444c12926"
+          },
+          "Version": "1.5.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "undici-types@6.21.0",
+          "Name": "undici-types",
+          "Identifier": {
+            "PURL": "pkg:npm/undici-types@6.21.0",
+            "UID": "dcb8eae9886ca0ce"
+          },
+          "Version": "6.21.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "unpipe@1.0.0",
+          "Name": "unpipe",
+          "Identifier": {
+            "PURL": "pkg:npm/unpipe@1.0.0",
+            "UID": "9a3a5ad04f3fffbc"
+          },
+          "Version": "1.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "use-callback-ref@1.3.3(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "use-callback-ref",
+          "Identifier": {
+            "PURL": "pkg:npm/use-callback-ref@1.3.3",
+            "UID": "8cb6fc953b56a2a7"
+          },
+          "Version": "1.3.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "react@18.3.1",
+            "tslib@2.8.1"
+          ]
+        },
+        {
+          "ID": "use-sidecar@1.1.3(@types/react@18.3.27)(react@18.3.1)",
+          "Name": "use-sidecar",
+          "Identifier": {
+            "PURL": "pkg:npm/use-sidecar@1.1.3",
+            "UID": "d951db0aeb1f8a50"
+          },
+          "Version": "1.1.3",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/react@18.3.27",
+            "detect-node-es@1.1.0",
+            "react@18.3.1",
+            "tslib@2.8.1"
+          ]
+        },
+        {
+          "ID": "use-sync-external-store@1.6.0(react@18.3.1)",
+          "Name": "use-sync-external-store",
+          "Identifier": {
+            "PURL": "pkg:npm/use-sync-external-store@1.6.0",
+            "UID": "3f1f74a4b340e4a6"
+          },
+          "Version": "1.6.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "react@18.3.1"
+          ]
+        },
+        {
+          "ID": "util-deprecate@1.0.2",
+          "Name": "util-deprecate",
+          "Identifier": {
+            "PURL": "pkg:npm/util-deprecate@1.0.2",
+            "UID": "18703ec0ae01ded0"
+          },
+          "Version": "1.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "utils-merge@1.0.1",
+          "Name": "utils-merge",
+          "Identifier": {
+            "PURL": "pkg:npm/utils-merge@1.0.1",
+            "UID": "e6b20d70333e7594"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "validator@13.15.23",
+          "Name": "validator",
+          "Identifier": {
+            "PURL": "pkg:npm/validator@13.15.23",
+            "UID": "599269b1a3009d5f"
+          },
+          "Version": "13.15.23",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "vary@1.1.2",
+          "Name": "vary",
+          "Identifier": {
+            "PURL": "pkg:npm/vary@1.1.2",
+            "UID": "ee1ee9eaf1d2e2ea"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "victory-vendor@36.9.2",
+          "Name": "victory-vendor",
+          "Identifier": {
+            "PURL": "pkg:npm/victory-vendor@36.9.2",
+            "UID": "d7d17044da79946c"
+          },
+          "Version": "36.9.2",
+          "Licenses": [
+            "MIT AND ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "@types/d3-time@3.0.4",
+            "d3-array@3.2.4",
+            "@types/d3-shape@3.1.7",
+            "d3-ease@3.0.1",
+            "d3-time@3.1.0",
+            "@types/d3-timer@3.0.2",
+            "d3-interpolate@3.0.1",
+            "@types/d3-interpolate@3.0.4",
+            "d3-scale@4.0.2",
+            "d3-shape@3.2.0",
+            "d3-timer@3.0.1",
+            "@types/d3-array@3.2.2",
+            "@types/d3-ease@3.0.2",
+            "@types/d3-scale@4.0.9"
+          ]
+        },
+        {
+          "ID": "webidl-conversions@3.0.1",
+          "Name": "webidl-conversions",
+          "Identifier": {
+            "PURL": "pkg:npm/webidl-conversions@3.0.1",
+            "UID": "d3a92ef40b2e8ce6"
+          },
+          "Version": "3.0.1",
+          "Licenses": [
+            "BSD-2-Clause"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "whatwg-url@5.0.0",
+          "Name": "whatwg-url",
+          "Identifier": {
+            "PURL": "pkg:npm/whatwg-url@5.0.0",
+            "UID": "1b7ec99407d6fbd8"
+          },
+          "Version": "5.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "tr46@0.0.3",
+            "webidl-conversions@3.0.1"
+          ]
+        },
+        {
+          "ID": "which-module@2.0.1",
+          "Name": "which-module",
+          "Identifier": {
+            "PURL": "pkg:npm/which-module@2.0.1",
+            "UID": "db154e3509385d52"
+          },
+          "Version": "2.0.1",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "wrap-ansi@6.2.0",
+          "Name": "wrap-ansi",
+          "Identifier": {
+            "PURL": "pkg:npm/wrap-ansi@6.2.0",
+            "UID": "31f1456894fc0f3a"
+          },
+          "Version": "6.2.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "ansi-styles@4.3.0",
+            "string-width@4.2.3",
+            "strip-ansi@6.0.1"
+          ]
+        },
+        {
+          "ID": "xtend@4.0.2",
+          "Name": "xtend",
+          "Identifier": {
+            "PURL": "pkg:npm/xtend@4.0.2",
+            "UID": "fe4809b757bd3b97"
+          },
+          "Version": "4.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "y18n@4.0.3",
+          "Name": "y18n",
+          "Identifier": {
+            "PURL": "pkg:npm/y18n@4.0.3",
+            "UID": "4c9dd6e1f2d8742e"
+          },
+          "Version": "4.0.3",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect"
+        },
+        {
+          "ID": "yargs@15.4.1",
+          "Name": "yargs",
+          "Identifier": {
+            "PURL": "pkg:npm/yargs@15.4.1",
+            "UID": "3d890b7b510417d5"
+          },
+          "Version": "15.4.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "require-directory@2.1.1",
+            "which-module@2.0.1",
+            "y18n@4.0.3",
+            "decamelize@1.2.0",
+            "find-up@4.1.0",
+            "require-main-filename@2.0.0",
+            "set-blocking@2.0.0",
+            "string-width@4.2.3",
+            "get-caller-file@2.0.5",
+            "yargs-parser@18.1.3",
+            "cliui@6.0.0"
+          ]
+        },
+        {
+          "ID": "yargs-parser@18.1.3",
+          "Name": "yargs-parser",
+          "Identifier": {
+            "PURL": "pkg:npm/yargs-parser@18.1.3",
+            "UID": "ad254e5fe1942b2f"
+          },
+          "Version": "18.1.3",
+          "Licenses": [
+            "ISC"
+          ],
+          "Indirect": true,
+          "Relationship": "indirect",
+          "DependsOn": [
+            "camelcase@5.3.1",
+            "decamelize@1.2.0"
+          ]
+        }
+      ],
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2025-64718",
+          "PkgID": "js-yaml@4.1.0",
+          "PkgName": "js-yaml",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/js-yaml@4.1.0",
+            "UID": "89e4699bd6f47a28"
+          },
+          "InstalledVersion": "4.1.0",
+          "FixedVersion": "4.1.1, 3.14.2",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-64718",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:a57c1e96de3567fd8e14990447c1f12605e844bd67c159ca54ac0cc5d45436d9",
+          "Title": "js-yaml: js-yaml prototype pollution in merge",
+          "Description": "js-yaml is a JavaScript YAML parser and dumper. In js-yaml 4.1.0 and below, it's possible for an attacker to modify the prototype of the result of a parsed yaml document via prototype pollution (`__proto__`). All users who parse untrusted yaml documents may be impacted. The problem is patched in js-yaml 4.1.1. Users can protect against this kind of attack on the server by using `node --disable-proto=delete` or `deno` (in Deno, pollution protection is on by default).",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-1321"
+          ],
+          "VendorSeverity": {
+            "ghsa": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
+              "V3Score": 5.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
+              "V3Score": 5.3
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2025-64718",
+            "https://github.com/nodeca/js-yaml",
+            "https://github.com/nodeca/js-yaml/commit/383665ff4248ec2192d1274e934462bb30426879",
+            "https://github.com/nodeca/js-yaml/commit/5278870a17454fe8621dbd8c445c412529525266",
+            "https://github.com/nodeca/js-yaml/security/advisories/GHSA-mh29-5h37-fv8m",
+            "https://nvd.nist.gov/vuln/detail/CVE-2025-64718",
+            "https://www.cve.org/CVERecord?id=CVE-2025-64718"
+          ],
+          "PublishedDate": "2025-11-13T16:15:57.153Z",
+          "LastModifiedDate": "2025-12-02T19:33:03.31Z"
+        },
+        {
+          "VulnerabilityID": "GHSA-5j59-xgg2-r9c4",
+          "PkgID": "next@14.2.25(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "PkgName": "next",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/next@14.2.25",
+            "UID": "11a345cdea7ca856"
+          },
+          "InstalledVersion": "14.2.25",
+          "FixedVersion": "14.2.35, 15.0.7, 15.1.11, 15.2.8, 15.3.8, 15.4.10, 15.5.9, 15.6.0-canary.60, 16.0.10, 16.1.0-canary.19",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://github.com/advisories/GHSA-5j59-xgg2-r9c4",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:d6f4e7fa53e55886df2a7891d6117ac33fc380ab6538fb274464029cf20246e0",
+          "Title": "Next has a Denial of Service with Server Components - Incomplete Fix Follow-Up",
+          "Description": "It was found that the fix addressing [CVE-2025-55184](https://github.com/advisories/GHSA-2m3v-v2m8-q956) in React Server Components was incomplete and did not fully prevent denial-of-service attacks in all payload types. This affects React package versions 19.0.2, 19.1.3, and 19.2.2 and frameworks that use the affected packages, including Next.js 13.x, 14.x, 15.x and 16.x using the App Router. The issue is tracked upstream as [CVE-2025-67779](https://www.cve.org/CVERecord?id=CVE-2025-67779).\n\nA malicious HTTP request can be crafted and sent to any Server Function endpoint that, when deserialized, can enter an infinite loop within the React Server Components runtime. This can cause the server process to hang and consume CPU, resulting in denial of service in unpatched environments.",
+          "Severity": "HIGH",
+          "VendorSeverity": {
+            "ghsa": 3
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://github.com/vercel/next.js",
+            "https://github.com/vercel/next.js/security/advisories/GHSA-5j59-xgg2-r9c4",
+            "https://nextjs.org/blog/security-update-2025-12-11",
+            "https://nvd.nist.gov/vuln/detail/CVE-2025-67779",
+            "https://react.dev/blog/2025/12/11/denial-of-service-and-source-code-exposure-in-react-server-components",
+            "https://www.cve.org/CVERecord?id=CVE-2025-55184",
+            "https://www.facebook.com/security/advisories/cve-2025-67779"
+          ],
+          "PublishedDate": "2025-12-12T17:21:57Z",
+          "LastModifiedDate": "2025-12-12T17:21:58Z"
+        },
+        {
+          "VulnerabilityID": "GHSA-mwv6-3258-q52c",
+          "PkgID": "next@14.2.25(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "PkgName": "next",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/next@14.2.25",
+            "UID": "11a345cdea7ca856"
+          },
+          "InstalledVersion": "14.2.25",
+          "FixedVersion": "14.2.34, 15.0.6, 15.1.10, 15.2.7, 15.3.7, 15.4.9, 15.5.8, 15.6.0-canary.59, 16.0.9, 16.1.0-canary.17",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://github.com/advisories/GHSA-mwv6-3258-q52c",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:9a1b831f36bbf63d7f1ed12897f2b188c9cb3e24f677e6f1470a5678d22bb96c",
+          "Title": "Next Vulnerable to Denial of Service with Server Components",
+          "Description": "A vulnerability affects certain React packages for versions 19.0.0, 19.0.1, 19.1.0, 19.1.1, 19.1.2, 19.2.0, and 19.2.1 and frameworks that use the affected packages, including Next.js 15.x and 16.x using the App Router. The issue is tracked upstream as [CVE-2025-55184](https://www.cve.org/CVERecord?id=CVE-2025-55184).\n\nA malicious HTTP request can be crafted and sent to any App Router endpoint that, when deserialized, can cause the server process to hang and consume CPU. This can result in denial of service in unpatched environments.",
+          "Severity": "HIGH",
+          "VendorSeverity": {
+            "ghsa": 3
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://github.com/vercel/next.js",
+            "https://github.com/vercel/next.js/security/advisories/GHSA-mwv6-3258-q52c",
+            "https://nextjs.org/blog/security-update-2025-12-11",
+            "https://www.cve.org/CVERecord?id=CVE-2025-55184"
+          ],
+          "PublishedDate": "2025-12-11T22:49:27Z",
+          "LastModifiedDate": "2025-12-11T22:49:28Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2025-55173",
+          "PkgID": "next@14.2.25(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "PkgName": "next",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/next@14.2.25",
+            "UID": "11a345cdea7ca856"
+          },
+          "InstalledVersion": "14.2.25",
+          "FixedVersion": "14.2.31, 15.4.5",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-55173",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:93e21c9557270ccce5b62855f283eb382c207848b4acad1c58f38d0a4116b5dc",
+          "Title": "nextjs: Next.js Content Injection Vulnerability for Image Optimization",
+          "Description": "Next.js is a React framework for building full-stack web applications. In versions before 14.2.31 and from 15.0.0 to before 15.4.5, Next.js Image Optimization is vulnerable to content injection. The issue allowed attacker-controlled external image sources to trigger file downloads with arbitrary content and filenames under specific configurations. This behavior could be abused for phishing or malicious file delivery. This vulnerability has been fixed in Next.js versions 14.2.31 and 15.4.5.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-20"
+          ],
+          "VendorSeverity": {
+            "ghsa": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N",
+              "V3Score": 4.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N",
+              "V3Score": 4.3
+            }
+          },
+          "References": [
+            "http://vercel.com/changelog/cve-2025-55173",
+            "https://access.redhat.com/security/cve/CVE-2025-55173",
+            "https://github.com/vercel/next.js",
+            "https://github.com/vercel/next.js/commit/6b12c60c61ee80cb0443ccd20de82ca9b4422ddd",
+            "https://github.com/vercel/next.js/security/advisories/GHSA-xv57-4mr9-wg8v",
+            "https://nvd.nist.gov/vuln/detail/CVE-2025-55173",
+            "https://vercel.com/changelog/cve-2025-55173",
+            "https://www.cve.org/CVERecord?id=CVE-2025-55173"
+          ],
+          "PublishedDate": "2025-08-29T22:15:31.75Z",
+          "LastModifiedDate": "2025-09-08T16:42:57.183Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2025-57752",
+          "PkgID": "next@14.2.25(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "PkgName": "next",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/next@14.2.25",
+            "UID": "11a345cdea7ca856"
+          },
+          "InstalledVersion": "14.2.25",
+          "FixedVersion": "14.2.31, 15.4.5",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-57752",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:a3801f3db43eb86d7770c114fe7e6c57c2e0d06894c3e5b6bf62069bfd5532fb",
+          "Title": "nextjs: Next.js Affected by Cache Key Confusion for Image Optimization API Routes",
+          "Description": "Next.js is a React framework for building full-stack web applications. In versions before 14.2.31 and from 15.0.0 to before 15.4.5, Next.js Image Optimization API routes are affected by cache key confusion. When images returned from API routes vary based on request headers (such as Cookie or Authorization), these responses could be incorrectly cached and served to unauthorized users due to a cache key confusion bug. This vulnerability has been fixed in Next.js versions 14.2.31 and 15.4.5. All users are encouraged to upgrade if they use API routes to serve images that depend on request headers and have image optimization enabled.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-524"
+          ],
+          "VendorSeverity": {
+            "ghsa": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+              "V3Score": 6.2
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+              "V3Score": 6.2
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2025-57752",
+            "https://github.com/vercel/next.js",
+            "https://github.com/vercel/next.js/commit/6b12c60c61ee80cb0443ccd20de82ca9b4422ddd",
+            "https://github.com/vercel/next.js/pull/82114",
+            "https://github.com/vercel/next.js/security/advisories/GHSA-g5qg-72qw-gw5v",
+            "https://nvd.nist.gov/vuln/detail/CVE-2025-57752",
+            "https://vercel.com/changelog/cve-2025-57752",
+            "https://www.cve.org/CVERecord?id=CVE-2025-57752"
+          ],
+          "PublishedDate": "2025-08-29T22:15:31.963Z",
+          "LastModifiedDate": "2025-09-08T16:43:50.33Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2025-57822",
+          "PkgID": "next@14.2.25(react-dom@18.3.1(react@18.3.1))(react@18.3.1)",
+          "PkgName": "next",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/next@14.2.25",
+            "UID": "11a345cdea7ca856"
+          },
+          "InstalledVersion": "14.2.25",
+          "FixedVersion": "14.2.32, 15.4.7",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-57822",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:a28e60c67a4395662ff60cce94580b145243397ed397ab662e947b91e72f2517",
+          "Title": "Next.js Improper Middleware Redirect Handling Leads to SSRF",
+          "Description": "Next.js is a React framework for building full-stack web applications. Prior to versions 14.2.32 and 15.4.7, when next() was used without explicitly passing the request object, it could lead to SSRF in self-hosted applications that incorrectly forwarded user-supplied headers. This vulnerability has been fixed in Next.js versions 14.2.32 and 15.4.7. All users implementing custom middleware logic in self-hosted environments are strongly encouraged to upgrade and verify correct usage of the next() function.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-918"
+          ],
+          "VendorSeverity": {
+            "ghsa": 2,
+            "nvd": 3
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:L/A:N",
+              "V3Score": 6.5
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N",
+              "V3Score": 8.2
+            }
+          },
+          "References": [
+            "https://github.com/vercel/next.js",
+            "https://github.com/vercel/next.js/commit/9c9aaed5bb9338ef31b0517ccf0ab4414f2093d8",
+            "https://github.com/vercel/next.js/security/advisories/GHSA-4342-x723-ch2f",
+            "https://nvd.nist.gov/vuln/detail/CVE-2025-57822",
+            "https://vercel.com/changelog/cve-2025-57822"
+          ],
+          "PublishedDate": "2025-08-29T22:15:32.143Z",
+          "LastModifiedDate": "2025-09-08T16:41:41.253Z"
+        }
+      ]
+    }
+  ]
+}
