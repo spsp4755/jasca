@@ -28,11 +28,13 @@ import {
     Loader2,
     ChevronLeft,
     ChevronRight,
+    KeyRound,
 } from 'lucide-react';
 import {
     useUsers,
     useCreateUser,
     useUpdateUser,
+    useUpdateUserPassword,
     useDeleteUser,
     useOrganizations,
     User,
@@ -84,6 +86,15 @@ const statusLabels: Record<string, { label: string; color: string; icon: typeof 
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
+const PASSWORD_RULES = [
+    '8자 이상 입력',
+    '영문 대문자 1개 이상 포함',
+    '영문 소문자 1개 이상 포함',
+    '숫자 1개 이상 포함',
+    '조직 정책에 따라 특수문자가 필요할 수 있음',
+    '최근 사용한 비밀번호는 재사용 불가',
+];
+
 export default function AdminUsersPage() {
     // Search with debounce
     const [searchQuery, setSearchQuery] = useState('');
@@ -111,8 +122,10 @@ export default function AdminUsersPage() {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [viewingUser, setViewingUser] = useState<User | null>(null);
+    const [passwordUser, setPasswordUser] = useState<User | null>(null);
     const [showFilters, setShowFilters] = useState(false);
     const [formError, setFormError] = useState<string | null>(null);
+    const [passwordError, setPasswordError] = useState<string | null>(null);
 
     // Server-side data fetching with all parameters
     const { data: usersData, isLoading, error, refetch, isFetching } = useUsers({
@@ -126,6 +139,7 @@ export default function AdminUsersPage() {
     const { data: organizations } = useOrganizations();
     const createMutation = useCreateUser();
     const updateMutation = useUpdateUser();
+    const updatePasswordMutation = useUpdateUserPassword();
     const deleteMutation = useDeleteUser();
 
     const users = usersData?.data || [];
@@ -140,6 +154,10 @@ export default function AdminUsersPage() {
         role: 'DEVELOPER',
         status: 'ACTIVE',
         organizationId: '',
+    });
+    const [passwordData, setPasswordData] = useState({
+        newPassword: '',
+        confirmPassword: '',
     });
 
     // AI Execution for permission recommendation
@@ -220,7 +238,10 @@ export default function AdminUsersPage() {
         setShowCreateModal(false);
         setEditingUser(null);
         setViewingUser(null);
+        setPasswordUser(null);
         setFormError(null);
+        setPasswordError(null);
+        setPasswordData({ newPassword: '', confirmPassword: '' });
     };
 
     const handleCreate = async () => {
@@ -272,6 +293,32 @@ export default function AdminUsersPage() {
         }
     };
 
+
+    const openPasswordModal = (user: User) => {
+        setPasswordUser(user);
+        setPasswordData({ newPassword: '', confirmPassword: '' });
+        setPasswordError(null);
+    };
+
+    const handlePasswordUpdate = async () => {
+        if (!passwordUser) return;
+        setPasswordError(null);
+
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+            setPasswordError('새 비밀번호와 확인값이 일치하지 않습니다.');
+            return;
+        }
+
+        try {
+            await updatePasswordMutation.mutateAsync({
+                id: passwordUser.id,
+                newPassword: passwordData.newPassword,
+            });
+            closeModals();
+        } catch (err: any) {
+            setPasswordError(err?.message || '비밀번호 변경에 실패했습니다.');
+        }
+    };
 
     const exportUsers = () => {
         const csv = [
@@ -581,6 +628,13 @@ export default function AdminUsersPage() {
                                                 <Edit className="h-4 w-4" />
                                             </button>
                                             <button
+                                                onClick={() => openPasswordModal(user)}
+                                                className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
+                                                title="로컬 비밀번호 변경"
+                                            >
+                                                <KeyRound className="h-4 w-4" />
+                                            </button>
+                                            <button
                                                 onClick={() => handleDelete(user.id)}
                                                 disabled={deleteMutation.isPending}
                                                 className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
@@ -707,6 +761,9 @@ export default function AdminUsersPage() {
                                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                                         className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
                                     />
+                                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                        기본 규칙: 8자 이상, 대문자/소문자/숫자 포함. 조직 정책에 따라 특수문자와 이력 제한이 적용될 수 있습니다.
+                                    </p>
                                 </div>
                             )}
                             <div className="grid grid-cols-2 gap-4">
@@ -786,6 +843,86 @@ export default function AdminUsersPage() {
                                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
                             >
                                 {createMutation.isPending || updateMutation.isPending ? '처리 중...' : editingUser ? '저장' : '추가'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Local Password Modal */}
+            {passwordUser && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-lg">
+                        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                                    로컬 비밀번호 변경
+                                </h3>
+                                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                    {passwordUser.name} ({passwordUser.email})
+                                </p>
+                            </div>
+                            <button onClick={closeModals} className="text-slate-400 hover:text-slate-600">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                                이 기능은 JASCA 로컬 DB에 저장된 비밀번호만 변경합니다. Keycloak/SSO 계정의 비밀번호는 변경되지 않습니다.
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+                                <p className="mb-2 text-sm font-medium text-slate-800 dark:text-slate-200">비밀번호 규칙</p>
+                                <ul className="space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                                    {PASSWORD_RULES.map((rule) => (
+                                        <li key={rule}>- {rule}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    새 비밀번호
+                                </label>
+                                <input
+                                    type="password"
+                                    value={passwordData.newPassword}
+                                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    새 비밀번호 확인
+                                </label>
+                                <input
+                                    type="password"
+                                    value={passwordData.confirmPassword}
+                                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                />
+                            </div>
+                        </div>
+
+                        {passwordError && (
+                            <div className="mx-6 mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+                                <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                                <p className="text-sm text-red-700 dark:text-red-300">{passwordError}</p>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 p-6 border-t border-slate-200 dark:border-slate-700">
+                            <button
+                                onClick={closeModals}
+                                className="px-4 py-2 text-sm border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
+                            >
+                                취소
+                            </button>
+                            <button
+                                onClick={handlePasswordUpdate}
+                                disabled={updatePasswordMutation.isPending || !passwordData.newPassword || !passwordData.confirmPassword}
+                                className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                            >
+                                {updatePasswordMutation.isPending ? '변경 중...' : '비밀번호 변경'}
                             </button>
                         </div>
                     </div>

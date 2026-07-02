@@ -375,12 +375,14 @@ export default function SsoSettingsPage() {
                         <div className="space-y-4">
                             <h3 className="font-medium text-slate-900 dark:text-white">SSO Provider 설정</h3>
 
-                            {/* Google */}
+                            {false && (
+                            <>
+                            {/* Deprecated external provider hidden in offline deployments */}
                             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xl">🔵</span>
-                                        <span className="font-medium text-slate-900 dark:text-white">Google</span>
+                                        <span className="font-medium text-slate-900 dark:text-white">External Provider</span>
                                     </div>
                                     <Toggle enabled={ssoSettings.providers.google.enabled} onChange={() => setSsoSettings(prev => ({ ...prev, providers: { ...prev.providers, google: { ...prev.providers.google, enabled: !prev.providers.google.enabled } } }))} />
                                 </div>
@@ -392,12 +394,12 @@ export default function SsoSettingsPage() {
                                 )}
                             </div>
 
-                            {/* GitHub */}
+                            {/* Deprecated external provider hidden in offline deployments */}
                             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xl">⚫</span>
-                                        <span className="font-medium text-slate-900 dark:text-white">GitHub</span>
+                                        <span className="font-medium text-slate-900 dark:text-white">External Provider</span>
                                     </div>
                                     <Toggle enabled={ssoSettings.providers.github.enabled} onChange={() => setSsoSettings(prev => ({ ...prev, providers: { ...prev.providers, github: { ...prev.providers.github, enabled: !prev.providers.github.enabled } } }))} />
                                 </div>
@@ -409,12 +411,12 @@ export default function SsoSettingsPage() {
                                 )}
                             </div>
 
-                            {/* Microsoft */}
+                            {/* Deprecated external provider hidden in offline deployments */}
                             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xl">🟦</span>
-                                        <span className="font-medium text-slate-900 dark:text-white">Microsoft</span>
+                                        <span className="font-medium text-slate-900 dark:text-white">External Provider</span>
                                     </div>
                                     <Toggle enabled={ssoSettings.providers.microsoft.enabled} onChange={() => setSsoSettings(prev => ({ ...prev, providers: { ...prev.providers, microsoft: { ...prev.providers.microsoft, enabled: !prev.providers.microsoft.enabled } } }))} />
                                 </div>
@@ -426,6 +428,9 @@ export default function SsoSettingsPage() {
                                     </div>
                                 )}
                             </div>
+
+                            </>
+                            )}
 
                             {/* Keycloak Toggle */}
                             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">

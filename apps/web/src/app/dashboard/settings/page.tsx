@@ -23,6 +23,15 @@ import {
 import { useAuthStore } from '@/stores/auth-store';
 import { authApi } from '@/lib/auth-api';
 
+const PASSWORD_RULES = [
+    '8자 이상 입력',
+    '영문 대문자 1개 이상 포함',
+    '영문 소문자 1개 이상 포함',
+    '숫자 1개 이상 포함',
+    '조직 정책에 따라 특수문자가 필요할 수 있음',
+    '최근 사용한 비밀번호는 재사용 불가',
+];
+
 export default function SettingsPage() {
     const { user } = useAuthStore();
     const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications' | 'integrations'>('profile');
@@ -365,6 +374,17 @@ export default function SettingsPage() {
                                 <h3 className="text-lg font-medium text-slate-900 dark:text-white">
                                     비밀번호 변경
                                 </h3>
+                                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-900/20">
+                                    <p className="mb-2 text-sm font-medium text-blue-900 dark:text-blue-100">비밀번호 규칙</p>
+                                    <ul className="space-y-1 text-sm text-blue-800 dark:text-blue-200">
+                                        {PASSWORD_RULES.map((rule) => (
+                                            <li key={rule}>- {rule}</li>
+                                        ))}
+                                    </ul>
+                                    <p className="mt-2 text-xs text-blue-700 dark:text-blue-300">
+                                        SSO/Keycloak 비밀번호는 JASCA에서 변경되지 않습니다. 이 변경은 JASCA 로컬 로그인 비밀번호에만 적용됩니다.
+                                    </p>
+                                </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                                         현재 비밀번호

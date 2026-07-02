@@ -111,7 +111,7 @@ export default function HomePage() {
                             </>
                         ) : (
                             <>
-                                {/* User is not logged in - show login/register links */}
+                                {/* User is not logged in - show login links */}
                                 <Link
                                     href="/login"
                                     className="text-slate-300 hover:text-white transition-colors"
@@ -119,10 +119,10 @@ export default function HomePage() {
                                     로그인
                                 </Link>
                                 <Link
-                                    href="/register"
+                                    href="/login"
                                     className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition-all hover:shadow-lg hover:shadow-blue-500/25"
                                 >
-                                    시작하기
+                                    로그인
                                 </Link>
                             </>
                         )}
@@ -162,10 +162,10 @@ export default function HomePage() {
                                 </Link>
                             ) : (
                                 <Link
-                                    href="/register"
+                                    href="/login"
                                     className="group bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl text-lg font-medium transition-all hover:shadow-xl hover:shadow-blue-500/30 flex items-center gap-2"
                                 >
-                                    무료로 시작하기
+                                    로그인
                                     <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
                                 </Link>
                             )}

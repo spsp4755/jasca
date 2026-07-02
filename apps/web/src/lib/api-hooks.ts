@@ -1259,7 +1259,7 @@ export function useCreateUser() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (data: { email: string; name: string; password: string; role?: string; status?: string; organizationId?: string }) =>
-            authFetch(`${API_BASE}/auth/register`, {
+            authFetch(`${API_BASE}/users`, {
                 method: 'POST',
                 body: JSON.stringify(data),
             }),
@@ -1276,6 +1276,20 @@ export function useUpdateUser() {
             authFetch(`${API_BASE}/users/${id}`, {
                 method: 'PUT',
                 body: JSON.stringify(data),
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['users'] });
+        },
+    });
+}
+
+export function useUpdateUserPassword() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, newPassword }: { id: string; newPassword: string }) =>
+            authFetch(`${API_BASE}/users/${id}/password`, {
+                method: 'PUT',
+                body: JSON.stringify({ newPassword }),
             }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['users'] });

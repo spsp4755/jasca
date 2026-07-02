@@ -67,6 +67,8 @@ cp docker/monolith/start.ps1 "$BUNDLE_PATH/start.ps1"
 cp docker/monolith/deploy-existing-layout.sh "$BUNDLE_PATH/deploy-existing-layout.sh"
 cp docker/monolith/deploy-existing-layout.env.example "$BUNDLE_PATH/deploy-existing-layout.env.example"
 cp docker/monolith/README-OFFLINE.md "$BUNDLE_PATH/README-OFFLINE.md"
+cp docs/Kubernetes_Deployment_Guide_kr.md "$BUNDLE_PATH/Kubernetes_Deployment_Guide_kr.md"
+cp -R k8s/monolith "$BUNDLE_PATH/k8s-monolith"
 chmod +x "$BUNDLE_PATH/start.sh"
 chmod +x "$BUNDLE_PATH/deploy-existing-layout.sh"
 
@@ -83,11 +85,13 @@ cat > "$BUNDLE_PATH/manifest.json" <<EOF
   "targetPlatform": "$TARGET_PLATFORM",
   "trivyDbPathInImage": "/app/trivy-db",
   "supportsHostTrivyCacheMount": true,
+  "includesKubernetesManifests": true,
   "notes": [
     "Transfer this whole directory to the closed network.",
     "Run ./start.sh on Linux or .\\\\start.ps1 on Windows.",
     "If Trivy is already installed on the server, mount its cache with TRIVY_CACHE_MOUNT or -TrivyCacheMount.",
     "For a host-path deployment layout, copy deploy-existing-layout.env.example to deploy-existing-layout.env, edit it, then run ./deploy-existing-layout.sh.",
+    "For Kubernetes deployment, read Kubernetes_Deployment_Guide_kr.md and k8s-monolith/README_KO.md.",
     "Docker must be installed on the target host.",
     "The container preserves Docker volumes jasca_postgres_data and jasca_redis_data."
   ]
