@@ -8,6 +8,7 @@ export class UploadScanDto {
             'TRIVY_JSON',
             'TRIVY_SARIF',
             'CHECKOV_JSON',
+            'ZAP_JSON',
             'CI_BAMBOO',
             'CI_GITLAB',
             'CI_JENKINS',
