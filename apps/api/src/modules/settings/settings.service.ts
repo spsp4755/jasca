@@ -29,6 +29,9 @@ const defaultSettings: Record<string, unknown> = {
         cacheDir: '/tmp/trivy-cache',
         scanners: ['vuln', 'license'],
     },
+    checkov: {
+        allowInternalModuleDownload: false,
+    },
     ai: {
         provider: 'openai',
         apiUrl: 'https://api.openai.com/v1',

@@ -317,7 +317,10 @@ export interface Scan {
         scanMode?: string;
         archiveType?: string | null;
         targetKind?: string;
+        inputKind?: string;
         cacheDir?: string;
+        scanner?: string;
+        command?: string;
         options?: {
             scanners?: string[];
             severities?: string[];
@@ -329,6 +332,10 @@ export interface Scan {
             analysisStrategy?: string;
             rpmOsFamily?: string;
             rpmOsVersion?: string;
+            frameworks?: string[] | string;
+            checks?: string[] | string;
+            skipChecks?: string[] | string;
+            downloadExternalModules?: boolean;
         };
         commands?: Array<{ phase: string; command: string }>;
         resultSummary?: {
@@ -377,7 +384,7 @@ export function useScan(id: string) {
 
 // Upload scan DTO interface
 export interface UploadScanDto {
-    sourceType: 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CI_BAMBOO' | 'CI_GITLAB' | 'CI_JENKINS' | 'CI_GITHUB_ACTIONS' | 'MANUAL';
+    sourceType: 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'CI_BAMBOO' | 'CI_GITLAB' | 'CI_JENKINS' | 'CI_GITHUB_ACTIONS' | 'MANUAL';
     projectName?: string;
     organizationId?: string;
     imageRef?: string;
@@ -403,6 +410,14 @@ export interface TrivyScanOptions {
     timeout?: string;
 }
 
+export interface CheckovScanOptions {
+    frameworks?: string[];
+    checks?: string[];
+    skipChecks?: string[];
+    quiet?: boolean;
+    timeout?: string;
+}
+
 export function useUploadScan() {
     const queryClient = useQueryClient();
     return useMutation({
@@ -411,7 +426,9 @@ export function useUploadScan() {
             file,
             metadata,
             scanTarget,
+            scanner,
             trivyOptions,
+            checkovOptions,
             scanOperationId,
             signal,
         }: {
@@ -419,7 +436,9 @@ export function useUploadScan() {
             file: File;
             metadata: UploadScanDto;
             scanTarget?: boolean;
+            scanner?: 'trivy' | 'checkov';
             trivyOptions?: TrivyScanOptions;
+            checkovOptions?: CheckovScanOptions;
             scanOperationId?: string;
             signal?: AbortSignal;
         }) => {
@@ -433,8 +452,19 @@ export function useUploadScan() {
                 }
             });
 
+            if (scanTarget && scanner) {
+                formData.append('scanner', scanner);
+            }
+
             if (scanTarget && trivyOptions) {
                 Object.entries(trivyOptions).forEach(([key, value]) => {
+                    if (value === undefined || value === null) return;
+                    formData.append(key, Array.isArray(value) ? value.join(',') : String(value));
+                });
+            }
+
+            if (scanTarget && checkovOptions) {
+                Object.entries(checkovOptions).forEach(([key, value]) => {
                     if (value === undefined || value === null) return;
                     formData.append(key, Array.isArray(value) ? value.join(',') : String(value));
                 });
@@ -2164,6 +2194,10 @@ export interface TrivySettings {
     scanners: string[];
 }
 
+export interface CheckovSettings {
+    allowInternalModuleDownload: boolean;
+}
+
 export interface AiSettings {
     provider: 'openai' | 'anthropic' | 'vllm' | 'ollama' | 'custom';
     apiUrl?: string;
@@ -2185,6 +2219,10 @@ export function useWorkflowSettings() {
 
 export function useTrivySettings() {
     return useSettings<TrivySettings>('trivy');
+}
+
+export function useCheckovSettings() {
+    return useSettings<CheckovSettings>('checkov');
 }
 
 export function useAiSettings() {

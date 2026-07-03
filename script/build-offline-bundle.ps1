@@ -144,6 +144,7 @@ try {
         webPort = 3000
         apiPort = 3001
         includesTrivyCli = $true
+        includesCheckovCli = $true
         dockerContext = $DockerContext
         targetPlatform = $Platform
         trivyDbPathInImage = "/app/trivy-db"
@@ -153,6 +154,7 @@ try {
             "Transfer this whole directory to the closed network.",
             "Run ./start.sh on Linux or .\start.ps1 on Windows.",
             "If Trivy is already installed on the server, mount its cache with TRIVY_CACHE_MOUNT or -TrivyCacheMount.",
+            "Checkov CLI is bundled for offline IaC scans. External module download is disabled by default in the UI.",
             "For a host-path deployment layout, copy deploy-existing-layout.env.example to deploy-existing-layout.env, edit it, then run ./deploy-existing-layout.sh.",
             "For Kubernetes deployment, read Kubernetes_Deployment_Guide_kr.md and k8s-monolith/README_KO.md.",
             "Docker must be installed on the target host.",

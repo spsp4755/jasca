@@ -127,14 +127,32 @@ function formatRelativeTime(dateString?: string | null) {
 }
 
 // Vulnerability bar component
-function VulnerabilityBar({ summary }: { summary?: { critical: number; high: number; medium: number; low: number } }) {
+function VulnerabilityBar({
+    summary,
+    sourceType,
+}: {
+    summary?: { critical: number; high: number; medium: number; low: number; unknown?: number; total?: number };
+    sourceType?: string;
+}) {
     if (!summary) return <span className="text-sm text-slate-400">-</span>;
     
-    const total = summary.critical + summary.high + summary.medium + summary.low;
+    const knownTotal = summary.critical + summary.high + summary.medium + summary.low;
+    const unknownTotal = summary.unknown || 0;
+    const total = summary.total ?? (knownTotal + unknownTotal);
+    const isCheckov = sourceType === 'CHECKOV_JSON';
     if (total === 0) return (
         <div className="flex items-center gap-2">
             <CheckCircle className="h-4 w-4 text-green-500" />
             <span className="text-sm text-green-600 dark:text-green-400">안전</span>
+        </div>
+    );
+
+    if (knownTotal === 0 && unknownTotal > 0) return (
+        <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                {isCheckov ? `정책 위반 ${unknownTotal}` : `UNKNOWN ${unknownTotal}`}
+            </span>
         </div>
     );
 
@@ -144,28 +162,28 @@ function VulnerabilityBar({ summary }: { summary?: { critical: number; high: num
                 {summary.critical > 0 && (
                     <div 
                         className="bg-red-500" 
-                        style={{ width: `${(summary.critical / total) * 100}%` }}
+                        style={{ width: `${(summary.critical / knownTotal) * 100}%` }}
                         title={`Critical: ${summary.critical}`}
                     />
                 )}
                 {summary.high > 0 && (
                     <div 
                         className="bg-orange-500" 
-                        style={{ width: `${(summary.high / total) * 100}%` }}
+                        style={{ width: `${(summary.high / knownTotal) * 100}%` }}
                         title={`High: ${summary.high}`}
                     />
                 )}
                 {summary.medium > 0 && (
                     <div 
                         className="bg-yellow-500" 
-                        style={{ width: `${(summary.medium / total) * 100}%` }}
+                        style={{ width: `${(summary.medium / knownTotal) * 100}%` }}
                         title={`Medium: ${summary.medium}`}
                     />
                 )}
                 {summary.low > 0 && (
                     <div 
                         className="bg-blue-500" 
-                        style={{ width: `${(summary.low / total) * 100}%` }}
+                        style={{ width: `${(summary.low / knownTotal) * 100}%` }}
                         title={`Low: ${summary.low}`}
                     />
                 )}
@@ -281,7 +299,8 @@ export default function ScansPage() {
                     case 'HIGH': return summary.high > 0;
                     case 'MEDIUM': return summary.medium > 0;
                     case 'LOW': return summary.low > 0;
-                    case 'CLEAN': return summary.critical === 0 && summary.high === 0 && summary.medium === 0 && summary.low === 0;
+                    case 'UNKNOWN': return (summary.unknown || 0) > 0;
+                    case 'CLEAN': return (summary.total ?? (summary.critical + summary.high + summary.medium + summary.low + (summary.unknown || 0))) === 0;
                     default: return true;
                 }
             });
@@ -372,13 +391,14 @@ export default function ScansPage() {
         const failed = scans.filter((s: any) => s.status === 'FAILED').length;
         const running = scans.filter((s: any) => s.status === 'RUNNING').length;
         
-        let totalCritical = 0, totalHigh = 0, totalMedium = 0, totalLow = 0;
+        let totalCritical = 0, totalHigh = 0, totalMedium = 0, totalLow = 0, totalUnknown = 0;
         scans.forEach((scan: any) => {
             if (scan.summary) {
                 totalCritical += scan.summary.critical || 0;
                 totalHigh += scan.summary.high || 0;
                 totalMedium += scan.summary.medium || 0;
                 totalLow += scan.summary.low || 0;
+                totalUnknown += scan.summary.unknown || 0;
             }
         });
         
@@ -390,7 +410,7 @@ export default function ScansPage() {
             failed,
             running,
             successRate: scans.length > 0 ? Math.round((completed / scans.length) * 100) : 0,
-            vulnerabilities: { critical: totalCritical, high: totalHigh, medium: totalMedium, low: totalLow },
+            vulnerabilities: { critical: totalCritical, high: totalHigh, medium: totalMedium, low: totalLow, unknown: totalUnknown },
             lastScanAt: lastScan?.createdAt || lastScan?.startedAt,
         };
     }, [data?.results]);
@@ -699,7 +719,7 @@ export default function ScansPage() {
                     </div>
                     <div className="mt-4">
                         <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                            {statistics.vulnerabilities.critical + statistics.vulnerabilities.high + statistics.vulnerabilities.medium + statistics.vulnerabilities.low}
+                            {statistics.vulnerabilities.critical + statistics.vulnerabilities.high + statistics.vulnerabilities.medium + statistics.vulnerabilities.low + statistics.vulnerabilities.unknown}
                         </p>
                         <p className="text-sm text-slate-500 dark:text-slate-400">전체 취약점</p>
                     </div>
@@ -715,6 +735,9 @@ export default function ScansPage() {
                         )}
                         {statistics.vulnerabilities.low > 0 && (
                             <div className="bg-blue-500" style={{ flex: statistics.vulnerabilities.low }} />
+                        )}
+                        {statistics.vulnerabilities.unknown > 0 && (
+                            <div className="bg-amber-500" style={{ flex: statistics.vulnerabilities.unknown }} />
                         )}
                     </div>
                 </div>
@@ -829,6 +852,7 @@ export default function ScansPage() {
                         <option value="HIGH">🟠 High</option>
                         <option value="MEDIUM">🟡 Medium</option>
                         <option value="LOW">🔵 Low</option>
+                        <option value="UNKNOWN">UNKNOWN / 정책 위반</option>
                         <option value="CLEAN">✅ 취약점 없음</option>
                     </select>
 
@@ -867,6 +891,7 @@ export default function ScansPage() {
                             { value: 'HIGH', label: 'H', color: 'bg-orange-500', count: statistics.vulnerabilities.high },
                             { value: 'MEDIUM', label: 'M', color: 'bg-yellow-500', count: statistics.vulnerabilities.medium },
                             { value: 'LOW', label: 'L', color: 'bg-blue-500', count: statistics.vulnerabilities.low },
+                            { value: 'UNKNOWN', label: 'U', color: 'bg-amber-500', count: statistics.vulnerabilities.unknown },
                         ].map(sev => (
                             <button
                                 key={sev.value}
@@ -1082,7 +1107,7 @@ export default function ScansPage() {
                         스캔 결과가 없습니다
                     </h3>
                     <p className="text-slate-600 dark:text-slate-400">
-                        Trivy 스캔을 실행하고 결과를 업로드해주세요.
+                        Trivy 또는 Checkov 스캔을 실행하거나 결과 파일을 업로드해주세요.
                     </p>
                 </div>
             ) : viewMode === 'table' ? (
@@ -1221,7 +1246,7 @@ export default function ScansPage() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <VulnerabilityBar summary={scan.summary} />
+                                        <VulnerabilityBar summary={scan.summary} sourceType={scan.sourceType} />
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col gap-1">
@@ -1313,7 +1338,7 @@ export default function ScansPage() {
                             <div className="space-y-3">
                                 {/* Vulnerability Summary */}
                                 <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                                    <VulnerabilityBar summary={scan.summary} />
+                                    <VulnerabilityBar summary={scan.summary} sourceType={scan.sourceType} />
                                 </div>
 
                                 {/* Meta Info */}

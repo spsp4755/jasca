@@ -7,6 +7,7 @@ export class UploadScanDto {
         enum: [
             'TRIVY_JSON',
             'TRIVY_SARIF',
+            'CHECKOV_JSON',
             'CI_BAMBOO',
             'CI_GITLAB',
             'CI_JENKINS',

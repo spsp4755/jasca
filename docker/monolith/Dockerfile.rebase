@@ -10,6 +10,37 @@ RUN if ! command -v syft >/dev/null 2>&1; then \
       curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin; \
     fi
 
+RUN if ! command -v checkov >/dev/null 2>&1; then \
+      apt-get update && apt-get install -y python3-pip && \
+      pip3 install --no-cache-dir checkov && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Checkov helm/kustomize frameworks need these CLIs. Bundle them at image build time
+# so the closed-network runtime does not download anything.
+ARG HELM_VERSION=v3.15.4
+ARG KUSTOMIZE_VERSION=v5.4.2
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) tool_arch="amd64" ;; \
+      arm64) tool_arch="arm64" ;; \
+      *) echo "Unsupported architecture for helm/kustomize: $arch" >&2; exit 1 ;; \
+    esac; \
+    if ! command -v helm >/dev/null 2>&1; then \
+      curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${tool_arch}.tar.gz" -o /tmp/helm.tar.gz; \
+      tar -xzf /tmp/helm.tar.gz -C /tmp; \
+      mv "/tmp/linux-${tool_arch}/helm" /usr/local/bin/helm; \
+      chmod +x /usr/local/bin/helm; \
+      rm -rf /tmp/helm.tar.gz "/tmp/linux-${tool_arch}"; \
+    fi; \
+    if ! command -v kustomize >/dev/null 2>&1; then \
+      curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_${tool_arch}.tar.gz" -o /tmp/kustomize.tar.gz; \
+      tar -xzf /tmp/kustomize.tar.gz -C /usr/local/bin kustomize; \
+      chmod +x /usr/local/bin/kustomize; \
+      rm -f /tmp/kustomize.tar.gz; \
+    fi
+
 # Refresh the standalone web server and static assets from the host build.
 COPY apps/web/.next/standalone/ ./
 COPY apps/web/.next/static ./.next/static
@@ -37,6 +68,8 @@ RUN mkdir -p /app/node_modules/@prisma /app/node_modules/.bin && \
     if [ -d /app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs ]; then \
       ln -sfn /app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs /app/node_modules/bcryptjs; \
     fi
+
+RUN /app/node_modules/.bin/prisma generate --schema=/app/apps/api/prisma/schema.prisma
 
 # Ensure Trivy CLI cache layout exists even when only root DB files were copied.
 RUN mkdir -p /app/trivy-db/db /app/trivy-db/java-db && \

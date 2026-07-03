@@ -151,6 +151,34 @@ export default function ScanDetailPage() {
     const scanLocation = (scan as any).scanLocation || (scan as any).artifactName;
     const evidence = (scan as any).scanEvidence;
     const evidenceSummary = evidence?.resultSummary;
+    const sourceType = (scan as any).sourceType || '';
+    const isCheckovScan = sourceType === 'CHECKOV_JSON' || evidence?.scanner === 'checkov' || (scan as any).artifactType === 'checkov';
+    const scannerLabel = isCheckovScan ? 'Checkov' : 'Trivy';
+    const evidenceCommands = [
+        ...(Array.isArray(evidence?.commands) ? evidence.commands : []),
+        ...(evidence?.command ? [{ phase: `${scannerLabel.toLowerCase()}-scan`, command: evidence.command }] : []),
+    ];
+    const formatOptionValue = (value: unknown) => {
+        if (Array.isArray(value)) return value.length ? value.join(', ') : '-';
+        if (typeof value === 'boolean') return value ? 'true' : 'false';
+        if (value === undefined || value === null || value === '') return '-';
+        return String(value);
+    };
+    const evidenceStats = isCheckovScan
+        ? [
+            ['Failed Checks', vulnerabilities.length],
+            ['Frameworks', formatOptionValue(evidence?.options?.frameworks)],
+            ['Input Kind', evidence?.inputKind || '-'],
+            ['Archive', evidence?.archiveType || '-'],
+        ]
+        : [
+            ['Results', evidenceSummary?.resultCount ?? 0],
+            ['Packages', evidenceSummary?.packages ?? 0],
+            ['Vulns', evidenceSummary?.vulnerabilities ?? 0],
+            ['Licenses', evidenceSummary?.licenses ?? 0],
+            ['Misconfig', evidenceSummary?.misconfigurations ?? 0],
+            ['Secrets', evidenceSummary?.secrets ?? 0],
+        ];
 
     const hasVulnerabilities = vulnerabilities.length > 0;
     const hasLicenses = Array.isArray(licenses) && licenses.length > 0;
@@ -440,16 +468,18 @@ export default function ScanDetailPage() {
                 </div>
             </div>
 
-            {/* Trivy Execution Evidence */}
+            {/* Scanner Execution Evidence */}
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
                 <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
                         <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                             <Shield className="h-5 w-5 text-blue-500" />
-                            Trivy 검사 검증 정보
+                            {scannerLabel} 검사 검증 정보
                         </h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            취약점이 0건이어도 아래 값이 있으면 Trivy 실행과 결과 파싱이 완료된 것입니다.
+                            {isCheckovScan
+                                ? '정책 실패가 0건이어도 아래 값이 있으면 Checkov 실행과 결과 파싱이 완료된 것입니다.'
+                                : '취약점이 0건이어도 아래 값이 있으면 Trivy 실행과 결과 파싱이 완료된 것입니다.'}
                         </p>
                     </div>
                     <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
@@ -471,15 +501,17 @@ export default function ScanDetailPage() {
                                 </p>
                             </div>
                             <div>
-                                <span className="text-sm text-slate-500 dark:text-slate-400">파일 크기</span>
+                                <span className="text-sm text-slate-500 dark:text-slate-400">{isCheckovScan ? '입력 유형' : '파일 크기'}</span>
                                 <p className="font-medium text-slate-900 dark:text-white">
-                                    {formatBytes(evidence.fileSizeBytes)}
+                                    {isCheckovScan ? (evidence.inputKind || '-') : formatBytes(evidence.fileSizeBytes)}
                                 </p>
                             </div>
                             <div>
-                                <span className="text-sm text-slate-500 dark:text-slate-400">검사 모드</span>
+                                <span className="text-sm text-slate-500 dark:text-slate-400">{isCheckovScan ? 'Checkov Framework' : '검사 모드'}</span>
                                 <p className="font-medium text-slate-900 dark:text-white">
-                                    {evidence.scanMode || '-'}{evidence.archiveType ? ` / ${evidence.archiveType}` : ''}
+                                    {isCheckovScan
+                                        ? formatOptionValue(evidence.options?.frameworks)
+                                        : `${evidence.scanMode || '-'}${evidence.archiveType ? ` / ${evidence.archiveType}` : ''}`}
                                 </p>
                             </div>
                             <div>
@@ -490,15 +522,8 @@ export default function ScanDetailPage() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                            {[
-                                ['Results', evidenceSummary?.resultCount ?? 0],
-                                ['Packages', evidenceSummary?.packages ?? 0],
-                                ['Vulns', evidenceSummary?.vulnerabilities ?? 0],
-                                ['Licenses', evidenceSummary?.licenses ?? 0],
-                                ['Misconfig', evidenceSummary?.misconfigurations ?? 0],
-                                ['Secrets', evidenceSummary?.secrets ?? 0],
-                            ].map(([label, value]) => (
+                        <div className={`grid grid-cols-2 md:grid-cols-3 ${isCheckovScan ? 'lg:grid-cols-4' : 'lg:grid-cols-6'} gap-3`}>
+                            {evidenceStats.map(([label, value]) => (
                                 <div key={label} className="rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 p-3">
                                     <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
                                     <p className="text-lg font-semibold text-slate-900 dark:text-white">{value}</p>
@@ -510,45 +535,84 @@ export default function ScanDetailPage() {
                             <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
                                 <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">실행 옵션</h4>
                                 <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between gap-4">
-                                        <span className="text-slate-500">Scanners</span>
-                                        <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.options?.scanners?.join(', ') || '-'}</span>
-                                    </div>
-                                    <div className="flex justify-between gap-4">
-                                        <span className="text-slate-500">Severity</span>
-                                        <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.options?.severities?.join(', ') || '-'}</span>
-                                    </div>
-                                    <div className="flex justify-between gap-4">
-                                        <span className="text-slate-500">Offline / DB Update</span>
-                                        <span className="font-medium text-slate-900 dark:text-white text-right">
-                                            offline={String(evidence.options?.offlineScan)} / skipDb={String(evidence.options?.skipDbUpdate)}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between gap-4">
-                                        <span className="text-slate-500">Analysis Strategy</span>
-                                        <span className="font-medium text-slate-900 dark:text-white text-right">
-                                            {evidence.options?.analysisStrategy || '-'}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between gap-4">
-                                        <span className="text-slate-500">Cache Dir</span>
-                                        <span className="font-mono text-xs text-slate-900 dark:text-white text-right break-all">{evidence.cacheDir || '-'}</span>
-                                    </div>
-                                    {(evidence.options?.rpmOsFamily || evidence.options?.rpmOsVersion) && (
-                                        <div className="flex justify-between gap-4">
-                                            <span className="text-slate-500">RPM OS</span>
-                                            <span className="font-medium text-slate-900 dark:text-white text-right">
-                                                {evidence.options?.rpmOsFamily || '-'} {evidence.options?.rpmOsVersion || ''}
-                                            </span>
-                                        </div>
+                                    {isCheckovScan ? (
+                                        <>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Framework</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.frameworks)}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Run Checks</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.checks)}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Skip Checks</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.skipChecks)}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Internal Modules</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">
+                                                    downloadExternalModules={formatOptionValue(evidence.options?.downloadExternalModules)}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Timeout</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.timeout)}</span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Scanners</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.options?.scanners?.join(', ') || '-'}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Severity</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.options?.severities?.join(', ') || '-'}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Offline / DB Update</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">
+                                                    offline={String(evidence.options?.offlineScan)} / skipDb={String(evidence.options?.skipDbUpdate)}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Analysis Strategy</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">
+                                                    {evidence.options?.analysisStrategy || '-'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Cache Dir</span>
+                                                <span className="font-mono text-xs text-slate-900 dark:text-white text-right break-all">{evidence.cacheDir || '-'}</span>
+                                            </div>
+                                            {(evidence.options?.rpmOsFamily || evidence.options?.rpmOsVersion) && (
+                                                <div className="flex justify-between gap-4">
+                                                    <span className="text-slate-500">RPM OS</span>
+                                                    <span className="font-medium text-slate-900 dark:text-white text-right">
+                                                        {evidence.options?.rpmOsFamily || '-'} {evidence.options?.rpmOsVersion || ''}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>
 
                             <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
-                                <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">검사 대상</h4>
+                                <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">{isCheckovScan ? 'Checkov 분석 대상' : '검사 대상'}</h4>
                                 <div className="space-y-2 max-h-40 overflow-auto">
-                                    {(evidenceSummary?.targets || []).length > 0 ? (
+                                    {isCheckovScan ? (
+                                        <div className="text-sm">
+                                            <p className="font-medium text-slate-900 dark:text-white break-all">{scanLocation || evidence.originalFileName || targetName}</p>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                {evidence.inputKind || '-'}{evidence.archiveType ? ` / ${evidence.archiveType}` : ''} · failed checks {vulnerabilities.length}
+                                            </p>
+                                            <p className="text-xs text-slate-500 mt-2">
+                                                Checkov 결과는 패키지 수가 아니라 IaC/CI/Dockerfile 정책 실패 수를 기준으로 판단합니다.
+                                            </p>
+                                        </div>
+                                    ) : (evidenceSummary?.targets || []).length > 0 ? (
                                         evidenceSummary.targets.map((target: any, index: number) => (
                                             <div key={`${target.target}-${index}`} className="text-sm border-b border-slate-100 dark:border-slate-700 last:border-0 pb-2 last:pb-0">
                                                 <p className="font-medium text-slate-900 dark:text-white break-all">{target.target || 'unknown'}</p>
@@ -571,14 +635,18 @@ export default function ScanDetailPage() {
                                 실행 명령 확인
                             </summary>
                             <div className="mt-3 space-y-2">
-                                {(evidence.commands || []).map((command: any, index: number) => (
+                                {evidenceCommands.length > 0 ? evidenceCommands.map((command: any, index: number) => (
                                     <div key={`${command.phase}-${index}`}>
                                         <p className="text-xs text-slate-500 mb-1">{command.phase}</p>
                                         <code className="block text-xs bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 rounded p-2 overflow-x-auto">
                                             {command.command}
                                         </code>
                                     </div>
-                                ))}
+                                )) : (
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                                        저장된 실행 명령이 없습니다.
+                                    </p>
+                                )}
                             </div>
                         </details>
                     </div>

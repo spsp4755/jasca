@@ -73,6 +73,32 @@ RUN apt-get update && apt-get install -y wget lsb-release \
     && apt-get update && apt-get install -y trivy \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Checkov for offline IaC misconfiguration scans.
+RUN apt-get update && apt-get install -y python3-pip \
+    && pip3 install --no-cache-dir checkov \
+    && rm -rf /var/lib/apt/lists/*
+
+# Checkov's helm and kustomize frameworks require their CLIs at runtime.
+# They are bundled into the offline image during build, not downloaded in the closed network.
+ARG HELM_VERSION=v3.15.4
+ARG KUSTOMIZE_VERSION=v5.4.2
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) tool_arch="amd64" ;; \
+      arm64) tool_arch="arm64" ;; \
+      *) echo "Unsupported architecture for helm/kustomize: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${tool_arch}.tar.gz" -o /tmp/helm.tar.gz; \
+    tar -xzf /tmp/helm.tar.gz -C /tmp; \
+    mv "/tmp/linux-${tool_arch}/helm" /usr/local/bin/helm; \
+    chmod +x /usr/local/bin/helm; \
+    rm -rf /tmp/helm.tar.gz "/tmp/linux-${tool_arch}"; \
+    curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_${tool_arch}.tar.gz" -o /tmp/kustomize.tar.gz; \
+    tar -xzf /tmp/kustomize.tar.gz -C /usr/local/bin kustomize; \
+    chmod +x /usr/local/bin/kustomize; \
+    rm -f /tmp/kustomize.tar.gz
+
 # Install Syft at image build time so closed-network runtime scans can generate
 # SBOMs locally without reaching out to cloud services.
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
