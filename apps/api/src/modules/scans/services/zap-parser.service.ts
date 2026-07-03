@@ -42,6 +42,8 @@ type ZapInstance = {
     uri?: string;
     url?: string;
     method?: string;
+    param?: string;
+    attack?: string;
     evidence?: string;
 };
 
@@ -60,10 +62,6 @@ export class ZapParserService {
         }
 
         const vulnerabilities = sites.flatMap((site) => this.parseSite(site));
-
-        if (vulnerabilities.length === 0) {
-            throw new BadRequestException('Invalid ZAP JSON format');
-        }
 
         return {
             trivyVersion: report.zapVersion ? `zap-${report.zapVersion}` : 'zap',
@@ -100,6 +98,9 @@ export class ZapParserService {
 
         return instances.map((instance) => {
             const url = instance.uri || instance.url || siteName;
+            const method = this.stringify(instance.method) || 'unknown';
+            const parameter = this.stringify(instance.param);
+            const attack = this.stringify(instance.attack);
 
             return {
                 cveId: `ZAP-${pluginId}`,
@@ -109,13 +110,16 @@ export class ZapParserService {
                 references: this.extractReferences(alert.reference),
                 cweIds: this.extractCweIds(alert),
                 pkgName: url,
-                pkgVersion: instance.method || 'unknown',
+                pkgVersion: this.buildPkgVersion(method, parameter, attack),
                 fixedVersion: this.cleanText(alert.solution),
                 pkgPath: url,
                 layer: {
                     scanner: 'zap',
                     confidence: alert.confidence,
                     wascId: this.stringify(alert.wascid ?? alert.wascId),
+                    method,
+                    parameter,
+                    attack,
                     evidence: instance.evidence,
                 },
             };
@@ -144,16 +148,34 @@ export class ZapParserService {
     }
 
     private extractReferences(reference?: string): string[] {
-        const text = this.cleanText(reference);
-        if (!text) return [];
+        if (!reference) return [];
 
-        return (text.match(/https?:\/\/[^\s<>"']+/gi) || [])
-            .map((url) => url.replace(/[),.;]+$/g, ''));
+        const urls = reference.match(/https?:\/\/[^\s<>"']+/gi) || [];
+        const hrefUrls = Array.from(reference.matchAll(/href\s*=\s*["']([^"']+)["']/gi))
+            .map((match) => match[1])
+            .filter((href) => /^https?:\/\//i.test(href));
+
+        return Array.from(new Set([...urls, ...hrefUrls]
+            .map((url) => this.decodeHtmlEntities(url).replace(/[),.;]+$/g, '').trim())
+            .filter(Boolean)));
     }
 
     private extractCweIds(alert: ZapAlert): string[] {
         const cweId = this.stringify(alert.cweid ?? alert.cweId);
-        return cweId ? [`CWE-${cweId}`] : [];
+        if (!cweId || !/^\d+$/.test(cweId)) {
+            return [];
+        }
+
+        const numericCweId = Number(cweId);
+        return numericCweId > 0 ? [`CWE-${numericCweId}`] : [];
+    }
+
+    private buildPkgVersion(method: string, parameter?: string, attack?: string): string {
+        return `${method} ${parameter || '-'} ${attack || '-'}`.trim();
+    }
+
+    private decodeHtmlEntities(value: string): string {
+        return value.replace(/&amp;/g, '&');
     }
 
     private stringify(value?: string | number): string | undefined {
