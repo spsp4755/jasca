@@ -32,6 +32,19 @@ const defaultSettings: Record<string, unknown> = {
     checkov: {
         allowInternalModuleDownload: false,
     },
+    zap: {
+        enabled: false,
+        zapBaseUrl: 'http://zap-scanner:8080',
+        apiKey: '',
+        connectTimeoutSeconds: 10,
+        maxScanDurationMinutes: 30,
+        maxConcurrentScans: 1,
+        allowBaselineScan: true,
+        allowActiveScan: false,
+        allowedTargetPatterns: [],
+        blockedTargetPatterns: [],
+        defaultRiskThresholdForNotification: 'HIGH',
+    },
     ai: {
         provider: 'openai',
         apiUrl: 'https://api.openai.com/v1',
