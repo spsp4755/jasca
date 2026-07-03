@@ -2201,7 +2201,7 @@ export interface CheckovSettings {
 export interface ZapSettings {
     enabled: boolean;
     zapBaseUrl: string;
-    apiKey?: string;
+    apiKey: string;
     connectTimeoutSeconds: number;
     maxScanDurationMinutes: number;
     maxConcurrentScans: number;
