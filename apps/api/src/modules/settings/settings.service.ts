@@ -109,11 +109,32 @@ const defaultSettings: Record<string, unknown> = {
 
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isMaskLikeSecret(value: string) {
+    return /^\*+$/.test(value.trim());
+}
+
 @Injectable()
 export class SettingsService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async get(key: string) {
+    private sanitize(key: string, value: unknown) {
+        if (key !== 'zap' || !isRecord(value)) {
+            return value;
+        }
+
+        const { apiKey, ...safeValue } = value;
+
+        return {
+            ...safeValue,
+            apiKeyConfigured: typeof apiKey === 'string' && apiKey.trim().length > 0,
+        };
+    }
+
+    async getRaw(key: string) {
         const setting = await this.prisma.systemSettings.findUnique({
             where: { key },
         });
@@ -126,15 +147,45 @@ export class SettingsService {
         return defaultSettings[key] || null;
     }
 
+    async get(key: string) {
+        const value = await this.getRaw(key);
+        return this.sanitize(key, value);
+    }
+
     async set(key: string, value: unknown) {
-        return this.prisma.systemSettings.upsert({
+        let nextValue = value;
+
+        if (key === 'zap') {
+            const currentValue = await this.getRaw(key);
+            const currentSettings = isRecord(currentValue) ? currentValue : {};
+            const submittedSettings = isRecord(value) ? value : {};
+            const submittedApiKey = submittedSettings.apiKey;
+            const currentApiKey = typeof currentSettings.apiKey === 'string' ? currentSettings.apiKey : '';
+            const shouldReplaceApiKey = typeof submittedApiKey === 'string'
+                && submittedApiKey.trim().length > 0
+                && !isMaskLikeSecret(submittedApiKey);
+
+            nextValue = {
+                ...(defaultSettings['zap'] as Record<string, unknown>),
+                ...currentSettings,
+                ...submittedSettings,
+                apiKey: shouldReplaceApiKey ? submittedApiKey : currentApiKey,
+            };
+        }
+
+        const setting = await this.prisma.systemSettings.upsert({
             where: { key },
-            update: { value: value as any },
+            update: { value: nextValue as any },
             create: {
                 key,
-                value: value as any,
+                value: nextValue as any,
             },
         });
+
+        return {
+            ...setting,
+            value: this.sanitize(key, setting.value),
+        };
     }
 
     async getAll() {
@@ -144,6 +195,8 @@ export class SettingsService {
         for (const setting of settings) {
             result[setting.key] = setting.value;
         }
+
+        result.zap = this.sanitize('zap', result.zap);
 
         return result;
     }
