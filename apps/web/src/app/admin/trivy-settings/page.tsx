@@ -20,7 +20,7 @@ import {
     Terminal,
     Shield,
 } from 'lucide-react';
-import { useTrivySettings, useUpdateSettings, type TrivySettings } from '@/lib/api-hooks';
+import { useCheckovSettings, useTrivySettings, useUpdateSettings, type CheckovSettings, type TrivySettings } from '@/lib/api-hooks';
 
 interface ValidationResult {
     name: string;
@@ -47,6 +47,10 @@ const defaultConfig: TrivySettings = {
     scanners: ['vuln', 'license'],
 };
 
+const defaultCheckovConfig: CheckovSettings = {
+    allowInternalModuleDownload: false,
+};
+
 const normalizeScanners = (scanners?: string[]) => {
     const allowed = new Set(['vuln', 'license', 'misconfig', 'secret']);
     const normalized = (scanners || [])
@@ -57,9 +61,11 @@ const normalizeScanners = (scanners?: string[]) => {
 
 export default function TrivySettingsPage() {
     const { data: settings, isLoading, error, refetch } = useTrivySettings();
+    const { data: checkovSettings, isLoading: isCheckovLoading, error: checkovError, refetch: refetchCheckov } = useCheckovSettings();
     const updateMutation = useUpdateSettings();
 
     const [config, setConfig] = useState<TrivySettings>(defaultConfig);
+    const [checkovConfig, setCheckovConfig] = useState<CheckovSettings>(defaultCheckovConfig);
     const [saved, setSaved] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
     const [testResult, setTestResult] = useState<'success' | 'error' | 'testing' | null>(null);
@@ -73,12 +79,24 @@ export default function TrivySettingsPage() {
         }
     }, [settings]);
 
+    useEffect(() => {
+        if (checkovSettings) {
+            setCheckovConfig({ ...defaultCheckovConfig, ...checkovSettings });
+        }
+    }, [checkovSettings]);
+
     const handleSave = async () => {
         try {
-            await updateMutation.mutateAsync({
-                key: 'trivy',
-                value: config,
-            });
+            await Promise.all([
+                updateMutation.mutateAsync({
+                    key: 'trivy',
+                    value: config,
+                }),
+                updateMutation.mutateAsync({
+                    key: 'checkov',
+                    value: checkovConfig,
+                }),
+            ]);
             setSaved(true);
             setHasChanges(false);
             setTimeout(() => setSaved(false), 3000);
@@ -89,6 +107,12 @@ export default function TrivySettingsPage() {
 
     const handleReset = () => {
         setConfig(defaultConfig);
+        setCheckovConfig(defaultCheckovConfig);
+        setHasChanges(true);
+    };
+
+    const updateCheckovConfig = <K extends keyof CheckovSettings>(key: K, value: CheckovSettings[K]) => {
+        setCheckovConfig(prev => ({ ...prev, [key]: value }));
         setHasChanges(true);
     };
 
@@ -136,7 +160,7 @@ export default function TrivySettingsPage() {
         setHasChanges(true);
     };
 
-    if (isLoading) {
+    if (isLoading || isCheckovLoading) {
         return (
             <div className="flex items-center justify-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -144,7 +168,7 @@ export default function TrivySettingsPage() {
         );
     }
 
-    if (error) {
+    if (error || checkovError) {
         return (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center">
                 <AlertTriangle className="h-12 w-12 mx-auto text-red-500 mb-4" />
@@ -171,11 +195,14 @@ export default function TrivySettingsPage() {
                     </p>
                 </div>
                 <button
-                    onClick={() => refetch()}
-                    disabled={isLoading}
+                    onClick={() => {
+                        refetch();
+                        refetchCheckov();
+                    }}
+                    disabled={isLoading || isCheckovLoading}
                     className="p-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
                 >
-                    <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-5 w-5 ${isLoading || isCheckovLoading ? 'animate-spin' : ''}`} />
                 </button>
             </div>
 
@@ -471,6 +498,35 @@ export default function TrivySettingsPage() {
                             placeholder="/tmp/trivy-cache"
                         />
                     </div>
+                </div>
+            </div>
+
+            {/* Checkov Closed Network Settings */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    Checkov 폐쇄망 설정
+                </h3>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                    일반 사용자 스캔 화면에서는 외부 모듈 다운로드 옵션을 제공하지 않습니다. 기본값은 차단이며,
+                    사내 GitLab/Nexus/Terraform 모듈 미러처럼 폐쇄망 내부 저장소를 Checkov가 접근해야 하는 경우에만 시스템 관리자가 허용하세요.
+                </div>
+                <div className="mt-4 flex items-center justify-between py-3">
+                    <div>
+                        <p className="font-medium text-slate-900 dark:text-white">사내 모듈 저장소 사용 허용</p>
+                        <p className="text-sm text-slate-500">
+                            활성화한 경우에만 Checkov 명령어가 <code className="rounded bg-slate-100 px-1 dark:bg-slate-900">--download-external-modules true</code>를 사용할 수 있습니다.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => updateCheckovConfig('allowInternalModuleDownload', !checkovConfig.allowInternalModuleDownload)}
+                        className={`relative h-6 w-12 rounded-full transition-colors ${checkovConfig.allowInternalModuleDownload ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                    >
+                        <span
+                            className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${checkovConfig.allowInternalModuleDownload ? 'translate-x-6' : ''}`}
+                        />
+                    </button>
                 </div>
             </div>
 

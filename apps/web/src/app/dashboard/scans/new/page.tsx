@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { Archive, ArrowLeft, CheckCircle, FileJson, Loader2, ShieldCheck, Upload, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useCancelTrivyScan, useOrganizations, useProjects, useUploadScan } from '@/lib/api-hooks';
-import type { TrivyScanOptions } from '@/lib/api-hooks';
+import type { CheckovScanOptions, TrivyScanOptions } from '@/lib/api-hooks';
 
 type UploadMode = 'scan-target' | 'result-file';
-type SourceType = 'TRIVY_JSON' | 'TRIVY_SARIF' | 'MANUAL';
+type SourceType = 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'MANUAL';
+type ScannerProvider = 'trivy' | 'checkov';
 
 const SEVERITY_OPTIONS = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'];
 const SCANNER_OPTIONS = [
@@ -35,9 +36,27 @@ const ANALYSIS_STRATEGY_OPTIONS = [
     { value: 'syft-sbom', label: 'Syft SBOM 우선', description: '파일/압축을 Syft로 SBOM 생성한 뒤 trivy sbom으로 검사합니다. fs/rootfs/repo 모드에서 사용합니다.' },
 ] as const;
 
+const CHECKOV_FRAMEWORK_OPTIONS = [
+    { value: 'terraform', label: 'Terraform', description: '.tf, .tf.json IaC 설정' },
+    { value: 'terraform_plan', label: 'Terraform Plan', description: 'terraform plan JSON 결과' },
+    { value: 'cloudformation', label: 'CloudFormation', description: 'AWS CFN YAML/JSON 템플릿' },
+    { value: 'kubernetes', label: 'Kubernetes', description: 'Deployment, Pod, Service YAML' },
+    { value: 'helm', label: 'Helm', description: 'Helm Chart, values.yaml' },
+    { value: 'kustomize', label: 'Kustomize', description: 'kustomization.yaml 구성' },
+    { value: 'dockerfile', label: 'Dockerfile', description: 'Dockerfile 컨테이너 빌드 정책' },
+    { value: 'serverless', label: 'Serverless', description: 'serverless.yml 함수/권한 설정' },
+    { value: 'arm', label: 'ARM Template', description: 'Azure ARM JSON 템플릿' },
+    { value: 'bicep', label: 'Bicep', description: 'Azure .bicep 템플릿' },
+    { value: 'openapi', label: 'OpenAPI', description: 'openapi.yaml/json API 명세' },
+    { value: 'github_actions', label: 'GitHub Actions', description: '.github/workflows/*.yml 정적 분석' },
+    { value: 'gitlab_ci', label: 'GitLab CI', description: '.gitlab-ci.yml 파이프라인 정책' },
+    { value: 'ansible', label: 'Ansible', description: 'playbook, role YAML 설정' },
+] as const;
+
 export default function NewScanPage() {
     const router = useRouter();
     const [uploadMode, setUploadMode] = useState<UploadMode>('scan-target');
+    const [scannerProvider, setScannerProvider] = useState<ScannerProvider>('trivy');
     const [file, setFile] = useState<File | null>(null);
     const [selectedProjectId, setSelectedProjectId] = useState<string>('');
     const [selectedOrgId, setSelectedOrgId] = useState<string>('');
@@ -64,6 +83,13 @@ export default function NewScanPage() {
         scanners: ['vuln', 'license'],
         timeout: '10m',
     });
+    const [checkovOptions, setCheckovOptions] = useState<Required<CheckovScanOptions>>({
+        frameworks: [],
+        checks: [],
+        skipChecks: [],
+        quiet: true,
+        timeout: '10m',
+    });
 
     const { data: projectsData } = useProjects();
     const { data: orgsData } = useOrganizations();
@@ -73,6 +99,7 @@ export default function NewScanPage() {
     const projects = projectsData?.data || [];
     const organizations = orgsData || [];
     const isScanningTarget = uploadMode === 'scan-target';
+    const isCheckovScan = isScanningTarget && scannerProvider === 'checkov';
     const acceptedFiles = isScanningTarget
         ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.spdx,.cdx,.cyclonedx,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,.qcow2,.vmdk,.vhd,.vhdx,.img,Dockerfile'
         : '.json,.sarif';
@@ -98,7 +125,14 @@ export default function NewScanPage() {
         setUploadMode(mode);
         resetFileState();
         if (mode === 'scan-target') {
-            setSourceType('TRIVY_JSON');
+            setSourceType(scannerProvider === 'checkov' ? 'CHECKOV_JSON' : 'TRIVY_JSON');
+        }
+    };
+
+    const handleScannerChange = (scanner: ScannerProvider) => {
+        setScannerProvider(scanner);
+        if (uploadMode === 'scan-target') {
+            setSourceType(scanner === 'checkov' ? 'CHECKOV_JSON' : 'TRIVY_JSON');
         }
     };
 
@@ -154,6 +188,15 @@ export default function NewScanPage() {
         });
     };
 
+    const toggleCheckovFramework = (value: string) => {
+        setCheckovOptions((current) => ({
+            ...current,
+            frameworks: current.frameworks.includes(value)
+                ? current.frameworks.filter((item) => item !== value)
+                : [...current.frameworks, value],
+        }));
+    };
+
     const handleUpload = async () => {
         if (!file) {
             setErrorMessage('업로드할 파일을 선택해주세요.');
@@ -165,12 +208,12 @@ export default function NewScanPage() {
             return;
         }
 
-        if (isScanningTarget && trivyOptions.scanners.length === 0) {
+        if (isScanningTarget && scannerProvider === 'trivy' && trivyOptions.scanners.length === 0) {
             setErrorMessage('Trivy scanner를 최소 1개 이상 선택해주세요.');
             return;
         }
 
-        if (isScanningTarget && trivyOptions.severities.length === 0) {
+        if (isScanningTarget && scannerProvider === 'trivy' && trivyOptions.severities.length === 0) {
             setErrorMessage('심각도를 최소 1개 이상 선택해주세요.');
             return;
         }
@@ -191,11 +234,13 @@ export default function NewScanPage() {
                 projectId: selectedProjectId || undefined,
                 file,
                 scanTarget: isScanningTarget,
-                trivyOptions: isScanningTarget ? trivyOptions : undefined,
+                scanner: isScanningTarget ? scannerProvider : undefined,
+                trivyOptions: isScanningTarget && scannerProvider === 'trivy' ? trivyOptions : undefined,
+                checkovOptions: isScanningTarget && scannerProvider === 'checkov' ? checkovOptions : undefined,
                 scanOperationId: nextOperationId || undefined,
                 signal: uploadAbortController.signal,
                 metadata: {
-                    sourceType: isScanningTarget ? 'TRIVY_JSON' : sourceType,
+                    sourceType: isScanningTarget ? (scannerProvider === 'checkov' ? 'CHECKOV_JSON' : 'TRIVY_JSON') : sourceType,
                     projectName: !selectedProjectId ? projectName.trim() : undefined,
                     organizationId: selectedOrgId || undefined,
                     imageRef: file.name,
@@ -297,6 +342,32 @@ export default function NewScanPage() {
                             </button>
                         </div>
 
+                        {isScanningTarget && (
+                            <div className="mb-6 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                                <label className="mb-3 block text-sm font-medium text-slate-300">실행 스캐너</label>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {[
+                                        { value: 'trivy' as const, label: 'Trivy', description: '패키지 취약점, 라이선스, Secret, Misconfig 검사' },
+                                        { value: 'checkov' as const, label: 'Checkov', description: 'IaC, Kubernetes, Dockerfile, CI 설정 오류 검사' },
+                                    ].map((scanner) => (
+                                        <button
+                                            key={scanner.value}
+                                            type="button"
+                                            onClick={() => handleScannerChange(scanner.value)}
+                                            className={`rounded-lg border p-3 text-left transition ${
+                                                scannerProvider === scanner.value
+                                                    ? 'border-cyan-400 bg-cyan-500/10 text-white'
+                                                    : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                                            }`}
+                                        >
+                                            <div className="font-semibold">{scanner.label}</div>
+                                            <div className="mt-1 text-xs text-slate-400">{scanner.description}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div
                             className={`relative rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
                                 dragActive ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-500'
@@ -354,6 +425,7 @@ export default function NewScanPage() {
                                 >
                                     <option value="TRIVY_JSON">Trivy JSON</option>
                                     <option value="TRIVY_SARIF">Trivy SARIF</option>
+                                    <option value="CHECKOV_JSON">Checkov JSON</option>
                                     <option value="MANUAL">수동 업로드</option>
                                 </select>
                             </div>
@@ -467,12 +539,82 @@ export default function NewScanPage() {
                     </div>
 
                     <aside className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-                        <h2 className="text-lg font-semibold text-white">Trivy 실행 옵션</h2>
-                        <p className="mt-2 text-sm text-slate-400">
-                            폐쇄망 기본값은 DB 다운로드를 시도하지 않도록 설정되어 있습니다.
-                        </p>
+                        {isCheckovScan && (
+                            <div className="checkov-mode-panel mb-6 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+                                <h2 className="text-lg font-semibold text-white">Checkov 실행 옵션</h2>
+                                <p className="mt-2 text-sm text-slate-300">
+                                    폐쇄망 기본값은 외부 모듈 다운로드 비활성화입니다. 필요한 프레임워크만 선택하면 스캔 시간을 줄일 수 있습니다.
+                                </p>
 
-                        <div className={`mt-5 space-y-4 ${!isScanningTarget ? 'pointer-events-none opacity-50' : ''}`}>
+                                <div className="mt-5 space-y-4">
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-300">Framework</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {CHECKOV_FRAMEWORK_OPTIONS.map((framework) => (
+                                                <label
+                                                    key={framework.value}
+                                                    title={framework.description}
+                                                    className="flex cursor-help items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 p-2 text-xs text-slate-300"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checkovOptions.frameworks.includes(framework.value)}
+                                                        onChange={() => toggleCheckovFramework(framework.value)}
+                                                        className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-900"
+                                                    />
+                                                    <span>
+                                                        <span className="block font-medium text-slate-100">{framework.label}</span>
+                                                        <span className="mt-0.5 block leading-4 text-slate-500">{framework.description}</span>
+                                                    </span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <p className="mt-2 text-xs text-slate-500">선택하지 않으면 Checkov가 지원 프레임워크를 자동 감지합니다.</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-300">실행할 Check ID</label>
+                                        <textarea
+                                            value={checkovOptions.checks.join(',')}
+                                            onChange={(e) => setCheckovOptions((current) => ({ ...current, checks: e.target.value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean) }))}
+                                            placeholder="예: CKV_AWS_20, CKV_K8S_8"
+                                            className="min-h-[72px] w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <p className="mt-1 text-xs text-slate-500">비워두면 전체 정책을 실행합니다.</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-300">제외할 Check ID</label>
+                                        <textarea
+                                            value={checkovOptions.skipChecks.join(',')}
+                                            onChange={(e) => setCheckovOptions((current) => ({ ...current, skipChecks: e.target.value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean) }))}
+                                            placeholder="예: CKV_AWS_999"
+                                            className="min-h-[72px] w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-300">Timeout</label>
+                                        <input
+                                            type="text"
+                                            value={checkovOptions.timeout}
+                                            onChange={(e) => setCheckovOptions((current) => ({ ...current, timeout: e.target.value }))}
+                                            placeholder="10m"
+                                            className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <p className="mt-1 text-xs text-slate-500">예: 30s, 10m, 1h</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {!isCheckovScan && (
+                            <>
+                                <h2 className="text-lg font-semibold text-white">Trivy 실행 옵션</h2>
+                                <p className="mt-2 text-sm text-slate-400">
+                                    폐쇄망 기본값은 DB 다운로드를 시도하지 않도록 설정되어 있습니다.
+                                </p>
+
+                                <div className={`mt-5 space-y-4 ${!isScanningTarget ? 'hidden pointer-events-none opacity-50' : ''}`}>
                             <div>
                                 <label className="mb-2 block text-sm font-medium text-slate-300">Scan mode</label>
                                 <select
@@ -604,7 +746,9 @@ export default function NewScanPage() {
                                 />
                                 <p className="mt-1 text-xs text-slate-500">예: 30s, 10m, 1h</p>
                             </div>
-                        </div>
+                                </div>
+                            </>
+                        )}
 
                         <div className="mt-6 rounded-lg bg-slate-950/60 p-4 text-xs text-slate-400">
                             압축 파일은 서버 임시 폴더에만 해제되고, 스캔이 끝나면 원본과 해제된 파일이 함께 삭제됩니다.

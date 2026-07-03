@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { NotificationEventType, Role, RoleScope } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TrivyParserService, ParsedScanResult } from './services/trivy-parser.service';
+import { CheckovParserService } from './services/checkov-parser.service';
 import { VulnSyncService } from './services/vuln-sync.service';
 import { LicenseParserService } from '../licenses/services/license-parser.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
@@ -29,6 +30,7 @@ export class ScansService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly trivyParser: TrivyParserService,
+        private readonly checkovParser: CheckovParserService,
         private readonly licenseParser: LicenseParserService,
         private readonly vulnSyncService: VulnSyncService,
         private readonly policyEngine: PolicyEngineService,
@@ -312,6 +314,8 @@ export class ScansService {
                 high: scan.summary.high,
                 medium: scan.summary.medium,
                 low: scan.summary.low,
+                unknown: scan.summary.unknown,
+                total: scan.summary.totalVulns,
             } : undefined,
             project: scan.project ? {
                 id: scan.project.id,
@@ -425,8 +429,10 @@ export class ScansService {
         sourceInfo?: { uploaderIp?: string; userAgent?: string; uploadedById?: string },
         currentUser?: RequestUser,
     ) {
-        // Parse the scan result first to get artifact info
-        const parsed = this.trivyParser.parse(rawResult, dto.sourceType);
+        // Parse the scan result first to get artifact info.
+        const parsed = dto.sourceType === 'CHECKOV_JSON'
+            ? this.checkovParser.parse(rawResult)
+            : this.trivyParser.parse(rawResult, dto.sourceType);
 
         // Resolve project - either use provided projectId or auto-create
         const resolvedProjectId = await this.resolveProject(projectId, dto, parsed.artifactName, currentUser);
@@ -483,13 +489,15 @@ export class ScansService {
             // Don't fail the scan upload if sync fails
         }
 
-        // Process licenses from packages
-        try {
-            const licenseResult = await this.licenseParser.processLicenses(scanResult.id, rawResult);
-            this.logger.log(`Processed ${licenseResult.processed} package licenses for scan ${scanResult.id}`);
-        } catch (error) {
-            this.logger.warn(`Failed to process licenses for scan ${scanResult.id}: ${error.message}`);
-            // Don't fail the scan upload if license processing fails
+        // Process licenses from package-oriented scanners only.
+        if (dto.sourceType !== 'CHECKOV_JSON') {
+            try {
+                const licenseResult = await this.licenseParser.processLicenses(scanResult.id, rawResult);
+                this.logger.log(`Processed ${licenseResult.processed} package licenses for scan ${scanResult.id}`);
+            } catch (error) {
+                this.logger.warn(`Failed to process licenses for scan ${scanResult.id}: ${error.message}`);
+                // Don't fail the scan upload if license processing fails
+            }
         }
 
         // Create summary

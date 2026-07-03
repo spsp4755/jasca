@@ -36,6 +36,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ScansService } from './scans.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
 import { TrivyScanOptions, TrivyScanService } from './services/trivy-scan.service';
+import { CheckovScanOptions, CheckovScanService } from './services/checkov-scan.service';
 
 const TRIVY_UPLOAD_ROOT = path.join(os.tmpdir(), 'jasca-trivy-uploads');
 const MAX_TRIVY_UPLOAD_BYTES = parseSizeBytes(process.env.TRIVY_UPLOAD_MAX_BYTES, 200 * 1024 * 1024);
@@ -113,6 +114,20 @@ function parseTrivyScanOptions(body: any): TrivyScanOptions {
     };
 }
 
+function parseCheckovScanOptions(body: any): CheckovScanOptions {
+    return {
+        frameworks: parseListField(body.checkovFrameworks || body.frameworks),
+        checks: parseListField(body.checkovChecks || body.checks),
+        skipChecks: parseListField(body.checkovSkipChecks || body.skipChecks),
+        quiet: parseBooleanField(body.quiet, true),
+        timeout: typeof body.checkovTimeout === 'string'
+            ? body.checkovTimeout
+            : typeof body.timeout === 'string'
+                ? body.timeout
+                : undefined,
+    };
+}
+
 const trivyUploadStorage = diskStorage({
     destination: (req, file, cb) => {
         const uploadDir = path.join(TRIVY_UPLOAD_ROOT, randomUUID());
@@ -130,6 +145,7 @@ export class ScansController {
     constructor(
         private readonly scansService: ScansService,
         private readonly trivyScanService: TrivyScanService,
+        private readonly checkovScanService: CheckovScanService,
     ) { }
 
     @Get()
@@ -181,6 +197,7 @@ export class ScansController {
         @Query('organizationId') organizationIdParam: string | undefined,
         @Query('imageRef') imageRef: string | undefined,
         @Query('tag') tag: string | undefined,
+        @Query('sourceType') sourceType: SourceType | undefined,
         @Body() body: any,
         @Req() req: Request,
     ) {
@@ -191,7 +208,9 @@ export class ScansController {
 
         // Build DTO from query params
         const dto: UploadScanDto = {
-            sourceType: SourceType.TRIVY_JSON,
+            sourceType: sourceType && Object.values(SourceType).includes(sourceType)
+                ? sourceType
+                : SourceType.TRIVY_JSON,
             projectName: projectName,
             organizationId: organizationId,
             imageRef: imageRef,
@@ -275,14 +294,14 @@ export class ScansController {
     }
 
     /**
-     * Scan an uploaded target file with Trivy, then store the generated Trivy JSON result.
+     * Scan an uploaded target file with a server-side scanner, then store the generated JSON result.
      */
     @Post('scan/file')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
     @ApiBearerAuth()
     @ApiSecurity('api-key')
-    @ApiOperation({ summary: 'Upload a target file or archive and scan it with Trivy' })
+    @ApiOperation({ summary: 'Upload a target file or archive and scan it with Trivy or Checkov' })
     @ApiQuery({ name: 'projectId', required: false, description: 'Project ID - if not provided, use projectName & organizationId in body' })
     @ApiConsumes('multipart/form-data')
     @UseInterceptors(FileInterceptor('file', {
@@ -301,24 +320,37 @@ export class ScansController {
 
         const user = (req as any).user;
         const scanOperationId = typeof body.scanOperationId === 'string' ? body.scanOperationId : undefined;
+        const scanner = String(body.scanner || 'trivy').toLowerCase() === 'checkov' ? 'checkov' : 'trivy';
         let responseReady = false;
         if (scanOperationId) {
             req.on('close', () => {
                 if (!responseReady && (req as any).aborted) {
-                    this.trivyScanService.cancelScan(scanOperationId);
+                    if (scanner === 'checkov') {
+                        this.checkovScanService.cancelScan(scanOperationId);
+                    } else {
+                        this.trivyScanService.cancelScan(scanOperationId);
+                    }
                 }
             });
         }
-        const rawResult = await this.trivyScanService.scanUploadedFile(
-            file.path,
-            parseTrivyScanOptions(body),
-            scanOperationId,
-        );
-        if (this.trivyScanService.isCancellationRequested(scanOperationId)) {
+
+        const rawResult = scanner === 'checkov'
+            ? await this.checkovScanService.scanUploadedFile(
+                file.path,
+                parseCheckovScanOptions(body),
+                scanOperationId,
+            )
+            : await this.trivyScanService.scanUploadedFile(
+                file.path,
+                parseTrivyScanOptions(body),
+                scanOperationId,
+            );
+
+        if (scanner === 'trivy' && this.trivyScanService.isCancellationRequested(scanOperationId)) {
             throw new BadRequestException('Trivy scan was cancelled by the user');
         }
         const dto: UploadScanDto = {
-            sourceType: SourceType.TRIVY_JSON,
+            sourceType: scanner === 'checkov' ? SourceType.CHECKOV_JSON : SourceType.TRIVY_JSON,
             projectName: body.projectName,
             organizationId: body.organizationId || user?.organizationId,
             imageRef: body.imageRef || file.originalname,
@@ -339,12 +371,14 @@ export class ScansController {
 
         const savedScan = await this.scansService.uploadScan(projectId, dto, rawResult, {
             uploaderIp: uploaderIp || 'unknown',
-            userAgent: req.headers['user-agent'] || 'Browser Trivy Scan',
+            userAgent: req.headers['user-agent'] || `Browser ${scanner} Scan`,
             uploadedById: user?.id,
         }, user);
-        this.trivyScanService.markScanSaved(scanOperationId, savedScan.id);
+        if (scanner === 'trivy') {
+            this.trivyScanService.markScanSaved(scanOperationId, savedScan.id);
+        }
 
-        if (this.trivyScanService.isCancellationRequested(scanOperationId)) {
+        if (scanner === 'trivy' && this.trivyScanService.isCancellationRequested(scanOperationId)) {
             if (scanOperationId) this.trivyScanService.consumeSavedScan(scanOperationId);
             await this.scansService.delete(savedScan.id, user).catch(() => undefined);
             throw new BadRequestException('Trivy scan was cancelled by the user');
@@ -361,15 +395,17 @@ export class ScansController {
     @ApiSecurity('api-key')
     @ApiOperation({ summary: 'Cancel a running Trivy scan' })
     async cancelTrivyScan(@Param('operationId') operationId: string, @Req() req: Request) {
-        const cancelled = this.trivyScanService.cancelScan(operationId);
+        const trivyCancelled = this.trivyScanService.cancelScan(operationId);
+        const checkovCancelled = this.checkovScanService.cancelScan(operationId);
         const savedScanId = this.trivyScanService.consumeSavedScan(operationId);
         if (savedScanId) {
             await this.scansService.delete(savedScanId, (req as any).user).catch(() => undefined);
         }
+        const cancelled = trivyCancelled || checkovCancelled;
         return {
             cancelled,
             deletedSavedResult: !!savedScanId,
-            message: cancelled ? 'Trivy scan cancellation requested' : 'No running Trivy scan found for the operation ID',
+            message: cancelled ? 'Scan cancellation requested' : 'No running scan found for the operation ID',
         };
     }
 
