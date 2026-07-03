@@ -2198,6 +2198,20 @@ export interface CheckovSettings {
     allowInternalModuleDownload: boolean;
 }
 
+export interface ZapSettings {
+    enabled: boolean;
+    zapBaseUrl: string;
+    apiKey?: string;
+    connectTimeoutSeconds: number;
+    maxScanDurationMinutes: number;
+    maxConcurrentScans: number;
+    allowBaselineScan: boolean;
+    allowActiveScan: boolean;
+    allowedTargetPatterns: string[];
+    blockedTargetPatterns: string[];
+    defaultRiskThresholdForNotification: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+}
+
 export interface AiSettings {
     provider: 'openai' | 'anthropic' | 'vllm' | 'ollama' | 'custom';
     apiUrl?: string;
@@ -2223,6 +2237,10 @@ export function useTrivySettings() {
 
 export function useCheckovSettings() {
     return useSettings<CheckovSettings>('checkov');
+}
+
+export function useZapSettings() {
+    return useSettings<ZapSettings>('zap');
 }
 
 export function useAiSettings() {
