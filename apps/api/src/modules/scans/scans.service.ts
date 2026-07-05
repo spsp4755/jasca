@@ -3,6 +3,7 @@ import { NotificationEventType, Role, RoleScope } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TrivyParserService, ParsedScanResult } from './services/trivy-parser.service';
 import { CheckovParserService } from './services/checkov-parser.service';
+import { ZapParserService } from './services/zap-parser.service';
 import { VulnSyncService } from './services/vuln-sync.service';
 import { LicenseParserService } from '../licenses/services/license-parser.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
@@ -31,6 +32,7 @@ export class ScansService {
         private readonly prisma: PrismaService,
         private readonly trivyParser: TrivyParserService,
         private readonly checkovParser: CheckovParserService,
+        private readonly zapParser: ZapParserService,
         private readonly licenseParser: LicenseParserService,
         private readonly vulnSyncService: VulnSyncService,
         private readonly policyEngine: PolicyEngineService,
@@ -432,7 +434,9 @@ export class ScansService {
         // Parse the scan result first to get artifact info.
         const parsed = dto.sourceType === 'CHECKOV_JSON'
             ? this.checkovParser.parse(rawResult)
-            : this.trivyParser.parse(rawResult, dto.sourceType);
+            : dto.sourceType === 'ZAP_JSON'
+                ? this.zapParser.parse(rawResult)
+                : this.trivyParser.parse(rawResult, dto.sourceType);
 
         // Resolve project - either use provided projectId or auto-create
         const resolvedProjectId = await this.resolveProject(projectId, dto, parsed.artifactName, currentUser);
@@ -490,7 +494,7 @@ export class ScansService {
         }
 
         // Process licenses from package-oriented scanners only.
-        if (dto.sourceType !== 'CHECKOV_JSON') {
+        if (dto.sourceType !== 'CHECKOV_JSON' && dto.sourceType !== 'ZAP_JSON') {
             try {
                 const licenseResult = await this.licenseParser.processLicenses(scanResult.id, rawResult);
                 this.logger.log(`Processed ${licenseResult.processed} package licenses for scan ${scanResult.id}`);
