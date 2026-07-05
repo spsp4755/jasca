@@ -19,8 +19,9 @@ import {
     AlertCircle,
     Terminal,
     Shield,
+    Globe,
 } from 'lucide-react';
-import { useCheckovSettings, useTrivySettings, useUpdateSettings, type CheckovSettings, type TrivySettings } from '@/lib/api-hooks';
+import { useCheckovSettings, useTrivySettings, useUpdateSettings, useZapSettings, type CheckovSettings, type TrivySettings, type ZapSettings } from '@/lib/api-hooks';
 
 interface ValidationResult {
     name: string;
@@ -51,6 +52,21 @@ const defaultCheckovConfig: CheckovSettings = {
     allowInternalModuleDownload: false,
 };
 
+const defaultZapConfig: ZapSettings = {
+    enabled: false,
+    zapBaseUrl: 'http://zap-scanner:8080',
+    apiKeyConfigured: false,
+    apiKey: '',
+    connectTimeoutSeconds: 10,
+    maxScanDurationMinutes: 30,
+    maxConcurrentScans: 1,
+    allowBaselineScan: true,
+    allowActiveScan: false,
+    allowedTargetPatterns: [],
+    blockedTargetPatterns: [],
+    defaultRiskThresholdForNotification: 'HIGH',
+};
+
 const normalizeScanners = (scanners?: string[]) => {
     const allowed = new Set(['vuln', 'license', 'misconfig', 'secret']);
     const normalized = (scanners || [])
@@ -62,10 +78,12 @@ const normalizeScanners = (scanners?: string[]) => {
 export default function TrivySettingsPage() {
     const { data: settings, isLoading, error, refetch } = useTrivySettings();
     const { data: checkovSettings, isLoading: isCheckovLoading, error: checkovError, refetch: refetchCheckov } = useCheckovSettings();
+    const { data: zapSettings, isLoading: isZapLoading, error: zapError, refetch: refetchZap } = useZapSettings();
     const updateMutation = useUpdateSettings();
 
     const [config, setConfig] = useState<TrivySettings>(defaultConfig);
     const [checkovConfig, setCheckovConfig] = useState<CheckovSettings>(defaultCheckovConfig);
+    const [zapConfig, setZapConfig] = useState<ZapSettings>(defaultZapConfig);
     const [saved, setSaved] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
     const [testResult, setTestResult] = useState<'success' | 'error' | 'testing' | null>(null);
@@ -85,6 +103,18 @@ export default function TrivySettingsPage() {
         }
     }, [checkovSettings]);
 
+    useEffect(() => {
+        if (zapSettings) {
+            setZapConfig({
+                ...defaultZapConfig,
+                ...zapSettings,
+                apiKey: '',
+                allowedTargetPatterns: zapSettings.allowedTargetPatterns || [],
+                blockedTargetPatterns: zapSettings.blockedTargetPatterns || [],
+            });
+        }
+    }, [zapSettings]);
+
     const handleSave = async () => {
         try {
             await Promise.all([
@@ -95,6 +125,10 @@ export default function TrivySettingsPage() {
                 updateMutation.mutateAsync({
                     key: 'checkov',
                     value: checkovConfig,
+                }),
+                updateMutation.mutateAsync({
+                    key: 'zap',
+                    value: zapConfig,
                 }),
             ]);
             setSaved(true);
@@ -108,12 +142,22 @@ export default function TrivySettingsPage() {
     const handleReset = () => {
         setConfig(defaultConfig);
         setCheckovConfig(defaultCheckovConfig);
+        setZapConfig(defaultZapConfig);
         setHasChanges(true);
     };
 
     const updateCheckovConfig = <K extends keyof CheckovSettings>(key: K, value: CheckovSettings[K]) => {
         setCheckovConfig(prev => ({ ...prev, [key]: value }));
         setHasChanges(true);
+    };
+
+    const updateZapConfig = <K extends keyof ZapSettings>(key: K, value: ZapSettings[K]) => {
+        setZapConfig(prev => ({ ...prev, [key]: value }));
+        setHasChanges(true);
+    };
+
+    const updateZapPatternList = (key: 'allowedTargetPatterns' | 'blockedTargetPatterns', value: string) => {
+        updateZapConfig(key, value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean));
     };
 
     const handleTest = async () => {
@@ -160,7 +204,7 @@ export default function TrivySettingsPage() {
         setHasChanges(true);
     };
 
-    if (isLoading || isCheckovLoading) {
+    if (isLoading || isCheckovLoading || isZapLoading) {
         return (
             <div className="flex items-center justify-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -168,7 +212,7 @@ export default function TrivySettingsPage() {
         );
     }
 
-    if (error || checkovError) {
+    if (error || checkovError || zapError) {
         return (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center">
                 <AlertTriangle className="h-12 w-12 mx-auto text-red-500 mb-4" />
@@ -198,11 +242,12 @@ export default function TrivySettingsPage() {
                     onClick={() => {
                         refetch();
                         refetchCheckov();
+                        refetchZap();
                     }}
-                    disabled={isLoading || isCheckovLoading}
+                    disabled={isLoading || isCheckovLoading || isZapLoading}
                     className="p-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
                 >
-                    <RefreshCw className={`h-5 w-5 ${isLoading || isCheckovLoading ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-5 w-5 ${isLoading || isCheckovLoading || isZapLoading ? 'animate-spin' : ''}`} />
                 </button>
             </div>
 
@@ -527,6 +572,145 @@ export default function TrivySettingsPage() {
                             className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${checkovConfig.allowInternalModuleDownload ? 'translate-x-6' : ''}`}
                         />
                     </button>
+                </div>
+            </div>
+
+            {/* ZAP Settings */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                    <Globe className="h-5 w-5" />
+                    OWASP ZAP 웹 스캔 설정
+                </h3>
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800 dark:border-orange-800 dark:bg-orange-900/20 dark:text-orange-200">
+                    ZAP은 별도 ZAP 서버 또는 컨테이너로 운영합니다. JASCA는 아래 URL로 ZAP API를 호출하고,
+                    허용 대상 목록에 등록된 내부 URL만 스캔합니다.
+                </div>
+
+                <div className="mt-4 space-y-4">
+                    <div className="flex items-center justify-between py-3">
+                        <div>
+                            <p className="font-medium text-slate-900 dark:text-white">ZAP 스캔 활성화</p>
+                            <p className="text-sm text-slate-500">비활성화 상태에서는 사용자가 ZAP URL 스캔을 실행할 수 없습니다.</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => updateZapConfig('enabled', !zapConfig.enabled)}
+                            className={`relative h-6 w-12 rounded-full transition-colors ${zapConfig.enabled ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                        >
+                            <span className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${zapConfig.enabled ? 'translate-x-6' : ''}`} />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">ZAP 서버 URL</label>
+                            <input
+                                type="url"
+                                value={zapConfig.zapBaseUrl}
+                                onChange={(e) => updateZapConfig('zapBaseUrl', e.target.value)}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="http://zap-scanner:8080"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">ZAP API Key</label>
+                            <input
+                                type="password"
+                                value={zapConfig.apiKey || ''}
+                                onChange={(e) => updateZapConfig('apiKey', e.target.value)}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder={zapConfig.apiKeyConfigured ? '저장된 API Key 유지' : 'API Key가 없으면 비워두세요'}
+                            />
+                            {zapConfig.apiKeyConfigured && !zapConfig.apiKey && (
+                                <p className="mt-1 text-xs text-green-600 dark:text-green-400">기존 API Key가 저장되어 있습니다. 비워두고 저장하면 기존 값이 유지됩니다.</p>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">연결 타임아웃(초)</label>
+                            <input
+                                type="number"
+                                min={1}
+                                value={zapConfig.connectTimeoutSeconds}
+                                onChange={(e) => updateZapConfig('connectTimeoutSeconds', Number(e.target.value))}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">최대 스캔 시간(분)</label>
+                            <input
+                                type="number"
+                                min={1}
+                                value={zapConfig.maxScanDurationMinutes}
+                                onChange={(e) => updateZapConfig('maxScanDurationMinutes', Number(e.target.value))}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">동시 스캔 수</label>
+                            <input
+                                type="number"
+                                min={1}
+                                value={zapConfig.maxConcurrentScans}
+                                onChange={(e) => updateZapConfig('maxConcurrentScans', Number(e.target.value))}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                            <input
+                                type="checkbox"
+                                checked={zapConfig.allowBaselineScan}
+                                onChange={(e) => updateZapConfig('allowBaselineScan', e.target.checked)}
+                                className="mt-1"
+                            />
+                            <span>
+                                <span className="block font-medium text-slate-900 dark:text-white">Baseline/Passive 스캔 허용</span>
+                                <span className="text-sm text-slate-500">운영 기본값입니다. Spider 후 passive alerts를 수집합니다.</span>
+                            </span>
+                        </label>
+                        <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                            <input
+                                type="checkbox"
+                                checked={zapConfig.allowActiveScan}
+                                onChange={(e) => updateZapConfig('allowActiveScan', e.target.checked)}
+                                className="mt-1"
+                            />
+                            <span>
+                                <span className="block font-medium text-slate-900 dark:text-white">Active Scan 허용</span>
+                                <span className="text-sm text-slate-500">대상 서비스에 부하를 줄 수 있어 운영에서는 신중하게 켜야 합니다.</span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">허용 대상 패턴</label>
+                            <textarea
+                                value={zapConfig.allowedTargetPatterns.join('\n')}
+                                onChange={(e) => updateZapPatternList('allowedTargetPatterns', e.target.value)}
+                                rows={5}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder={'*.internal\nhttps://app.koreacb.com'}
+                            />
+                            <p className="mt-1 text-xs text-slate-500">한 줄에 하나씩 입력합니다. 예: *.internal, https://app.koreacb.com</p>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">차단 대상 패턴</label>
+                            <textarea
+                                value={zapConfig.blockedTargetPatterns.join('\n')}
+                                onChange={(e) => updateZapPatternList('blockedTargetPatterns', e.target.value)}
+                                rows={5}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder={'admin.internal\n*.prod.internal'}
+                            />
+                            <p className="mt-1 text-xs text-slate-500">허용 목록에 포함되어도 차단 목록에 걸리면 스캔이 거부됩니다.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
