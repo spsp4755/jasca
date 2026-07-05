@@ -37,6 +37,7 @@ import { ScansService } from './scans.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
 import { TrivyScanOptions, TrivyScanService } from './services/trivy-scan.service';
 import { CheckovScanOptions, CheckovScanService } from './services/checkov-scan.service';
+import { ZapScanOptions, ZapScanService } from './services/zap-scan.service';
 
 const TRIVY_UPLOAD_ROOT = path.join(os.tmpdir(), 'jasca-trivy-uploads');
 const MAX_TRIVY_UPLOAD_BYTES = parseSizeBytes(process.env.TRIVY_UPLOAD_MAX_BYTES, 200 * 1024 * 1024);
@@ -146,6 +147,7 @@ export class ScansController {
         private readonly scansService: ScansService,
         private readonly trivyScanService: TrivyScanService,
         private readonly checkovScanService: CheckovScanService,
+        private readonly zapScanService: ZapScanService,
     ) { }
 
     @Get()
@@ -388,6 +390,70 @@ export class ScansController {
         return savedScan;
     }
 
+    @Post('scan/zap')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
+    @ApiBearerAuth()
+    @ApiSecurity('api-key')
+    @ApiOperation({ summary: 'Scan a web URL with OWASP ZAP and store the result' })
+    @ApiQuery({ name: 'projectId', required: false, description: 'Project ID - if not provided, use projectName & organizationId in body' })
+    async scanZapTarget(
+        @Query('projectId') projectId: string | undefined,
+        @Body() body: ZapScanOptions & {
+            projectName?: string;
+            organizationId?: string;
+            imageRef?: string;
+            tag?: string;
+            scanOperationId?: string;
+        },
+        @Req() req: Request,
+    ) {
+        if (!body?.targetUrl || typeof body.targetUrl !== 'string') {
+            throw new BadRequestException('targetUrl is required for ZAP scans');
+        }
+
+        const user = (req as any).user;
+        const scanOperationId = typeof body.scanOperationId === 'string' ? body.scanOperationId : undefined;
+        let responseReady = false;
+
+        if (scanOperationId) {
+            req.on('close', () => {
+                if (!responseReady && (req as any).aborted) {
+                    this.zapScanService.cancelScan(scanOperationId);
+                }
+            });
+        }
+
+        const rawResult = await this.zapScanService.scanUrl({
+            targetUrl: body.targetUrl,
+            scanMode: body.scanMode,
+        }, scanOperationId);
+
+        const dto: UploadScanDto = {
+            sourceType: SourceType.ZAP_JSON,
+            projectName: body.projectName,
+            organizationId: body.organizationId || user?.organizationId,
+            imageRef: body.imageRef || body.targetUrl,
+            tag: body.tag,
+        };
+
+        const forwarded = req.headers['x-forwarded-for'];
+        const forwardedIp = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+        let uploaderIp = forwardedIp || req.ip || req.socket?.remoteAddress;
+        if (uploaderIp === '::1' || uploaderIp === '::ffff:127.0.0.1') {
+            uploaderIp = '127.0.0.1';
+        }
+
+        const savedScan = await this.scansService.uploadScan(projectId, dto, rawResult, {
+            uploaderIp: uploaderIp || 'unknown',
+            userAgent: req.headers['user-agent'] || 'Browser ZAP Scan',
+            uploadedById: user?.id,
+        }, user);
+
+        responseReady = true;
+        return savedScan;
+    }
+
     @Post('scan/cancel/:operationId')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
@@ -397,11 +463,12 @@ export class ScansController {
     async cancelTrivyScan(@Param('operationId') operationId: string, @Req() req: Request) {
         const trivyCancelled = this.trivyScanService.cancelScan(operationId);
         const checkovCancelled = this.checkovScanService.cancelScan(operationId);
+        const zapCancelled = await this.zapScanService.cancelScan(operationId);
         const savedScanId = this.trivyScanService.consumeSavedScan(operationId);
         if (savedScanId) {
             await this.scansService.delete(savedScanId, (req as any).user).catch(() => undefined);
         }
-        const cancelled = trivyCancelled || checkovCancelled;
+        const cancelled = trivyCancelled || checkovCancelled || zapCancelled;
         return {
             cancelled,
             deletedSavedResult: !!savedScanId,
