@@ -153,7 +153,8 @@ export default function ScanDetailPage() {
     const evidenceSummary = evidence?.resultSummary;
     const sourceType = (scan as any).sourceType || '';
     const isCheckovScan = sourceType === 'CHECKOV_JSON' || evidence?.scanner === 'checkov' || (scan as any).artifactType === 'checkov';
-    const scannerLabel = isCheckovScan ? 'Checkov' : 'Trivy';
+    const isZapScan = sourceType === 'ZAP_JSON' || evidence?.scanner === 'zap' || (scan as any).artifactType === 'zap';
+    const scannerLabel = isZapScan ? 'ZAP' : isCheckovScan ? 'Checkov' : 'Trivy';
     const evidenceCommands = [
         ...(Array.isArray(evidence?.commands) ? evidence.commands : []),
         ...(evidence?.command ? [{ phase: `${scannerLabel.toLowerCase()}-scan`, command: evidence.command }] : []),
@@ -164,7 +165,14 @@ export default function ScanDetailPage() {
         if (value === undefined || value === null || value === '') return '-';
         return String(value);
     };
-    const evidenceStats = isCheckovScan
+    const evidenceStats = isZapScan
+        ? [
+            ['Alerts', vulnerabilities.length],
+            ['Mode', evidence?.scanMode || '-'],
+            ['ZAP Version', evidence?.zapVersion || (scan as any).trivyVersion || '-'],
+            ['Target', evidence?.targetUrl || targetName],
+        ]
+        : isCheckovScan
         ? [
             ['Failed Checks', vulnerabilities.length],
             ['Frameworks', formatOptionValue(evidence?.options?.frameworks)],
@@ -477,7 +485,9 @@ export default function ScanDetailPage() {
                             {scannerLabel} 검사 검증 정보
                         </h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            {isCheckovScan
+                            {isZapScan
+                                ? 'ZAP 결과는 웹 URL에서 수집된 alert 수를 기준으로 판단합니다.'
+                                : isCheckovScan
                                 ? '정책 실패가 0건이어도 아래 값이 있으면 Checkov 실행과 결과 파싱이 완료된 것입니다.'
                                 : '취약점이 0건이어도 아래 값이 있으면 Trivy 실행과 결과 파싱이 완료된 것입니다.'}
                         </p>
@@ -501,15 +511,17 @@ export default function ScanDetailPage() {
                                 </p>
                             </div>
                             <div>
-                                <span className="text-sm text-slate-500 dark:text-slate-400">{isCheckovScan ? '입력 유형' : '파일 크기'}</span>
+                                <span className="text-sm text-slate-500 dark:text-slate-400">{isZapScan ? '대상 URL' : isCheckovScan ? '입력 유형' : '파일 크기'}</span>
                                 <p className="font-medium text-slate-900 dark:text-white">
-                                    {isCheckovScan ? (evidence.inputKind || '-') : formatBytes(evidence.fileSizeBytes)}
+                                    {isZapScan ? (evidence.targetUrl || targetName) : isCheckovScan ? (evidence.inputKind || '-') : formatBytes(evidence.fileSizeBytes)}
                                 </p>
                             </div>
                             <div>
-                                <span className="text-sm text-slate-500 dark:text-slate-400">{isCheckovScan ? 'Checkov Framework' : '검사 모드'}</span>
+                                <span className="text-sm text-slate-500 dark:text-slate-400">{isZapScan ? 'ZAP 모드' : isCheckovScan ? 'Checkov Framework' : '검사 모드'}</span>
                                 <p className="font-medium text-slate-900 dark:text-white">
-                                    {isCheckovScan
+                                    {isZapScan
+                                        ? evidence.scanMode || '-'
+                                        : isCheckovScan
                                         ? formatOptionValue(evidence.options?.frameworks)
                                         : `${evidence.scanMode || '-'}${evidence.archiveType ? ` / ${evidence.archiveType}` : ''}`}
                                 </p>
@@ -522,7 +534,7 @@ export default function ScanDetailPage() {
                             </div>
                         </div>
 
-                        <div className={`grid grid-cols-2 md:grid-cols-3 ${isCheckovScan ? 'lg:grid-cols-4' : 'lg:grid-cols-6'} gap-3`}>
+                        <div className={`grid grid-cols-2 md:grid-cols-3 ${isCheckovScan || isZapScan ? 'lg:grid-cols-4' : 'lg:grid-cols-6'} gap-3`}>
                             {evidenceStats.map(([label, value]) => (
                                 <div key={label} className="rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 p-3">
                                     <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
@@ -535,7 +547,26 @@ export default function ScanDetailPage() {
                             <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
                                 <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">실행 옵션</h4>
                                 <div className="space-y-2 text-sm">
-                                    {isCheckovScan ? (
+                                    {isZapScan ? (
+                                        <>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Mode</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.scanMode || '-'}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Target URL</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right break-all">{evidence.targetUrl || targetName}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Max Duration</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.maxScanDurationMinutes)} min</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Active Allowed</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.allowActiveScan)}</span>
+                                            </div>
+                                        </>
+                                    ) : isCheckovScan ? (
                                         <>
                                             <div className="flex justify-between gap-4">
                                                 <span className="text-slate-500">Framework</span>
@@ -702,14 +733,17 @@ export default function ScanDetailPage() {
                                         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">
                                             {vuln.vulnerability?.title || vuln.vulnerability?.description || '-'}
                                         </p>
-                                        <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
+                                        <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-500">
                                             <span className="flex items-center gap-1">
                                                 <Package className="h-3 w-3" />
-                                                {vuln.pkgName}@{vuln.pkgVersion}
+                                                {isZapScan ? `URL: ${vuln.pkgName || '-'}` : `${vuln.pkgName}@${vuln.pkgVersion}`}
                                             </span>
+                                            {isZapScan && (
+                                                <span>Method: {vuln.installedVersion || vuln.pkgVersion || '-'}</span>
+                                            )}
                                             {vuln.fixedVersion && (
                                                 <span className="text-green-600 dark:text-green-400">
-                                                    Fixed: {vuln.fixedVersion}
+                                                    {isZapScan ? `Solution: ${vuln.fixedVersion}` : `Fixed: ${vuln.fixedVersion}`}
                                                 </span>
                                             )}
                                         </div>

@@ -140,6 +140,7 @@ function VulnerabilityBar({
     const unknownTotal = summary.unknown || 0;
     const total = summary.total ?? (knownTotal + unknownTotal);
     const isCheckov = sourceType === 'CHECKOV_JSON';
+    const isZap = sourceType === 'ZAP_JSON';
     if (total === 0) return (
         <div className="flex items-center gap-2">
             <CheckCircle className="h-4 w-4 text-green-500" />
@@ -151,7 +152,7 @@ function VulnerabilityBar({
         <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
             <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                {isCheckov ? `정책 위반 ${unknownTotal}` : `UNKNOWN ${unknownTotal}`}
+                {isZap ? `정보성 알림 ${unknownTotal}` : isCheckov ? `정책 위반 ${unknownTotal}` : `UNKNOWN ${unknownTotal}`}
             </span>
         </div>
     );
@@ -1107,7 +1108,7 @@ export default function ScansPage() {
                         스캔 결과가 없습니다
                     </h3>
                     <p className="text-slate-600 dark:text-slate-400">
-                        Trivy 또는 Checkov 스캔을 실행하거나 결과 파일을 업로드해주세요.
+                        Trivy, Checkov, ZAP 스캔을 실행하거나 결과 파일을 업로드해주세요.
                     </p>
                 </div>
             ) : viewMode === 'table' ? (
