@@ -32,6 +32,7 @@ IMAGE_ARCHIVE="${IMAGE_ARCHIVE:-$SCRIPT_DIR/jasca-offline.tar.gz}"
 IMAGE_TAR="${IMAGE_TAR:-$SCRIPT_DIR/jasca-offline.tar}"
 IMAGE_NAME="${IMAGE_NAME:-jasca-offline:latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-jasca}"
+DOCKER_NETWORK="${DOCKER_NETWORK:-jasca-net}"
 WEB_PORT="${WEB_PORT:-3005}"
 API_PORT="${API_PORT:-3001}"
 EXPOSE_API_PORT="${EXPOSE_API_PORT:-0}"
@@ -48,8 +49,16 @@ TRIVY_RPM_OS_VERSION="${TRIVY_RPM_OS_VERSION:-}"
 SCAN_RESULT_RETENTION_DAYS="${SCAN_RESULT_RETENTION_DAYS:-0}"
 HOSTS_MOUNT="${HOSTS_MOUNT:-/etc/hosts}"
 EXTRA_HOSTS="${EXTRA_HOSTS:-}"
+ENABLE_ZAP_CONTAINER="${ENABLE_ZAP_CONTAINER:-0}"
+ZAP_CONTAINER_NAME="${ZAP_CONTAINER_NAME:-zap-scanner}"
+ZAP_IMAGE_NAME="${ZAP_IMAGE_NAME:-ghcr.io/zaproxy/zaproxy:stable}"
+ZAP_IMAGE_ARCHIVE="${ZAP_IMAGE_ARCHIVE:-$SCRIPT_DIR/zaproxy-stable-amd64.tar.gz}"
 ZAP_BASE_URL="${ZAP_BASE_URL:-}"
 ZAP_API_KEY="${ZAP_API_KEY:-}"
+
+if [ "$ENABLE_ZAP_CONTAINER" = "1" ] && [ -z "$ZAP_BASE_URL" ]; then
+    ZAP_BASE_URL="http://${ZAP_CONTAINER_NAME}:8080"
+fi
 
 if [ -z "$CORS_ORIGIN" ]; then
     echo "Error: CORS_ORIGIN must be set in $ENV_FILE"
@@ -99,6 +108,61 @@ case "$IMAGE_ARCHIVE" in
         ;;
 esac
 
+if [ -n "$DOCKER_NETWORK" ]; then
+    if ! docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1; then
+        echo "Creating Docker network: $DOCKER_NETWORK"
+        docker network create "$DOCKER_NETWORK" >/dev/null
+    fi
+fi
+
+if [ "$ENABLE_ZAP_CONTAINER" = "1" ]; then
+    if [ -f "$ZAP_IMAGE_ARCHIVE" ]; then
+        case "$ZAP_IMAGE_ARCHIVE" in
+            *.tar.gz|*.tgz)
+                echo "Loading ZAP Docker image from compressed archive: $ZAP_IMAGE_ARCHIVE"
+                gzip -dc "$ZAP_IMAGE_ARCHIVE" | docker load
+                ;;
+            *.tar)
+                echo "Loading ZAP Docker image from archive: $ZAP_IMAGE_ARCHIVE"
+                docker load -i "$ZAP_IMAGE_ARCHIVE"
+                ;;
+            *)
+                echo "Error: unsupported ZAP archive extension. Use .tar or .tar.gz"
+                exit 1
+                ;;
+        esac
+    else
+        echo "Error: ENABLE_ZAP_CONTAINER=1 but ZAP image archive was not found: $ZAP_IMAGE_ARCHIVE"
+        echo "Set ENABLE_ZAP_CONTAINER=0 if you use an already-running external ZAP service."
+        exit 1
+    fi
+
+    if [ "$(docker ps -aq -f name=^/${ZAP_CONTAINER_NAME}$)" ]; then
+        echo "Replacing existing ZAP container: $ZAP_CONTAINER_NAME"
+        docker stop "$ZAP_CONTAINER_NAME" >/dev/null || true
+        docker rm "$ZAP_CONTAINER_NAME" >/dev/null || true
+    fi
+
+    ZAP_RUN_ARGS=(
+      -d
+      --name "$ZAP_CONTAINER_NAME"
+      --restart unless-stopped
+    )
+
+    if [ -n "$DOCKER_NETWORK" ]; then
+        ZAP_RUN_ARGS+=(--network "$DOCKER_NETWORK")
+    fi
+
+    echo "Starting ZAP scanner container..."
+    docker run "${ZAP_RUN_ARGS[@]}" "$ZAP_IMAGE_NAME" \
+      zap.sh -daemon \
+        -host 0.0.0.0 \
+        -port 8080 \
+        -config api.disablekey=true \
+        -config api.addrs.addr.name=.* \
+        -config api.addrs.addr.regex=true
+fi
+
 if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then
     echo "Replacing existing container: $CONTAINER_NAME"
     docker stop "$CONTAINER_NAME" >/dev/null || true
@@ -122,6 +186,10 @@ DOCKER_RUN_ARGS=(
   -v "${APP_DIR}/redis:/var/lib/redis"
   -v "${APP_DIR}/scan-results:/app/jasca/scan-results"
 )
+
+if [ -n "$DOCKER_NETWORK" ]; then
+    DOCKER_RUN_ARGS+=(--network "$DOCKER_NETWORK")
+fi
 
 if [ -n "$TRIVY_RPM_OS_FAMILY" ]; then
     DOCKER_RUN_ARGS+=(-e "TRIVY_RPM_OS_FAMILY=${TRIVY_RPM_OS_FAMILY}")
@@ -180,4 +248,7 @@ echo "JASCA is running."
 echo "Web: ${CORS_ORIGIN} or http://localhost:${WEB_PORT}"
 echo "Container API port: ${API_PORT} (set EXPOSE_API_PORT=1 to publish it on the host)"
 echo "Data directory: ${APP_DIR}"
+if [ "$ENABLE_ZAP_CONTAINER" = "1" ]; then
+    echo "ZAP scanner: ${ZAP_CONTAINER_NAME} (${ZAP_BASE_URL:-http://${ZAP_CONTAINER_NAME}:8080})"
+fi
 echo "Logs: docker logs -f ${CONTAINER_NAME}"
