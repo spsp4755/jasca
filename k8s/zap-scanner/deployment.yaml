@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zap-scanner
+  namespace: jasca
+  labels:
+    app: zap-scanner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zap-scanner
+  template:
+    metadata:
+      labels:
+        app: zap-scanner
+    spec:
+      containers:
+        - name: zap
+          image: ghcr.io/zaproxy/zaproxy:stable
+          imagePullPolicy: IfNotPresent
+          args:
+            - zap.sh
+            - -daemon
+            - -host
+            - 0.0.0.0
+            - -port
+            - "8080"
+            - -config
+            - api.disablekey=false
+            - -config
+            - api.addrs.addr.name=.*
+            - -config
+            - api.addrs.addr.regex=true
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "3Gi"

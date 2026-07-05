@@ -34,8 +34,8 @@ const defaultSettings: Record<string, unknown> = {
     },
     zap: {
         enabled: false,
-        zapBaseUrl: 'http://zap-scanner:8080',
-        apiKey: '',
+        zapBaseUrl: process.env.ZAP_BASE_URL || 'http://zap-scanner:8080',
+        apiKey: process.env.ZAP_API_KEY || '',
         connectTimeoutSeconds: 10,
         maxScanDurationMinutes: 30,
         maxConcurrentScans: 1,

@@ -14,3 +14,4 @@ data:
   TRIVY_RPM_OS_VERSION: ""
   SCAN_RESULT_DIR: "/app/jasca/scan-results"
   SCAN_RESULT_RETENTION_DAYS: "0"
+  ZAP_BASE_URL: "http://zap-scanner:8080"

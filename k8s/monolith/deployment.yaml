@@ -40,6 +40,11 @@ spec:
                 secretKeyRef:
                   name: jasca-secret
                   key: DB_PASSWORD
+            - name: ZAP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jasca-secret
+                  key: ZAP_API_KEY
             - name: DATABASE_URL
               value: "postgresql://jasca:$(DB_PASSWORD)@localhost:5432/jasca"
           volumeMounts:

@@ -48,6 +48,8 @@ TRIVY_RPM_OS_VERSION="${TRIVY_RPM_OS_VERSION:-}"
 SCAN_RESULT_RETENTION_DAYS="${SCAN_RESULT_RETENTION_DAYS:-0}"
 HOSTS_MOUNT="${HOSTS_MOUNT:-/etc/hosts}"
 EXTRA_HOSTS="${EXTRA_HOSTS:-}"
+ZAP_BASE_URL="${ZAP_BASE_URL:-}"
+ZAP_API_KEY="${ZAP_API_KEY:-}"
 
 if [ -z "$CORS_ORIGIN" ]; then
     echo "Error: CORS_ORIGIN must be set in $ENV_FILE"
@@ -135,6 +137,14 @@ fi
 
 if [ -n "$SYFT_BINARY_PATH" ]; then
     DOCKER_RUN_ARGS+=(-e "SYFT_BINARY_PATH=${SYFT_BINARY_PATH}")
+fi
+
+if [ -n "$ZAP_BASE_URL" ]; then
+    DOCKER_RUN_ARGS+=(-e "ZAP_BASE_URL=${ZAP_BASE_URL}")
+fi
+
+if [ -n "$ZAP_API_KEY" ]; then
+    DOCKER_RUN_ARGS+=(-e "ZAP_API_KEY=${ZAP_API_KEY}")
 fi
 
 if [ "$EXPOSE_API_PORT" = "1" ]; then
