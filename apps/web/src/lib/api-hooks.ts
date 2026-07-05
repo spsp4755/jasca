@@ -384,7 +384,7 @@ export function useScan(id: string) {
 
 // Upload scan DTO interface
 export interface UploadScanDto {
-    sourceType: 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'CI_BAMBOO' | 'CI_GITLAB' | 'CI_JENKINS' | 'CI_GITHUB_ACTIONS' | 'MANUAL';
+    sourceType: 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'ZAP_JSON' | 'CI_BAMBOO' | 'CI_GITLAB' | 'CI_JENKINS' | 'CI_GITHUB_ACTIONS' | 'MANUAL';
     projectName?: string;
     organizationId?: string;
     imageRef?: string;
@@ -416,6 +416,17 @@ export interface CheckovScanOptions {
     skipChecks?: string[];
     quiet?: boolean;
     timeout?: string;
+}
+
+export interface ZapScanRequest {
+    projectId?: string;
+    targetUrl: string;
+    scanMode: 'baseline' | 'passive' | 'active';
+    projectName?: string;
+    organizationId?: string;
+    imageRef?: string;
+    tag?: string;
+    scanOperationId?: string;
 }
 
 export function useUploadScan() {
@@ -2192,6 +2203,55 @@ export interface TrivySettings {
     timeout: string;
     cacheDir: string;
     scanners: string[];
+}
+
+export function useZapScan() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (request: ZapScanRequest) => {
+            const token = useAuthStore.getState().accessToken;
+            const params = request.projectId ? `?projectId=${encodeURIComponent(request.projectId)}` : '';
+            const response = await fetch(`${API_BASE}/scans/scan/zap${params}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({
+                    targetUrl: request.targetUrl,
+                    scanMode: request.scanMode,
+                    projectName: request.projectName,
+                    organizationId: request.organizationId,
+                    imageRef: request.imageRef,
+                    tag: request.tag,
+                    scanOperationId: request.scanOperationId,
+                }),
+            });
+
+            if (!response.ok) {
+                const responseText = await response.text().catch(() => '');
+                let message = 'ZAP scan failed';
+                if (responseText) {
+                    try {
+                        const error = JSON.parse(responseText);
+                        message = error.message || message;
+                    } catch {
+                        message = responseText.slice(0, 500) || message;
+                    }
+                }
+                throw new Error(message);
+            }
+
+            return response.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['scans'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ['project-scans'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ['projects'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+            queryClient.refetchQueries({ queryKey: ['notifications'] });
+        },
+    });
 }
 
 export interface CheckovSettings {

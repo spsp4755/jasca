@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Archive, ArrowLeft, CheckCircle, FileJson, Loader2, ShieldCheck, Upload, AlertCircle } from 'lucide-react';
+import { Archive, ArrowLeft, CheckCircle, FileJson, Globe, Loader2, ShieldCheck, Upload, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useCancelTrivyScan, useOrganizations, useProjects, useUploadScan } from '@/lib/api-hooks';
+import { useCancelTrivyScan, useOrganizations, useProjects, useUploadScan, useZapScan } from '@/lib/api-hooks';
 import type { CheckovScanOptions, TrivyScanOptions } from '@/lib/api-hooks';
 
 type UploadMode = 'scan-target' | 'result-file';
-type SourceType = 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'MANUAL';
-type ScannerProvider = 'trivy' | 'checkov';
+type SourceType = 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'ZAP_JSON' | 'MANUAL';
+type ScannerProvider = 'trivy' | 'checkov' | 'zap';
 
 const SEVERITY_OPTIONS = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'];
 const SCANNER_OPTIONS = [
@@ -62,6 +62,8 @@ export default function NewScanPage() {
     const [selectedOrgId, setSelectedOrgId] = useState<string>('');
     const [projectName, setProjectName] = useState<string>('');
     const [sourceType, setSourceType] = useState<SourceType>('TRIVY_JSON');
+    const [zapTargetUrl, setZapTargetUrl] = useState('');
+    const [zapScanMode, setZapScanMode] = useState<'baseline' | 'passive' | 'active'>('baseline');
     const [dragActive, setDragActive] = useState(false);
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'cancelling' | 'success' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState<string>('');
@@ -94,12 +96,14 @@ export default function NewScanPage() {
     const { data: projectsData } = useProjects();
     const { data: orgsData } = useOrganizations();
     const uploadMutation = useUploadScan();
+    const zapScanMutation = useZapScan();
     const cancelScanMutation = useCancelTrivyScan();
 
     const projects = projectsData?.data || [];
     const organizations = orgsData || [];
     const isScanningTarget = uploadMode === 'scan-target';
     const isCheckovScan = isScanningTarget && scannerProvider === 'checkov';
+    const isZapScan = isScanningTarget && scannerProvider === 'zap';
     const acceptedFiles = isScanningTarget
         ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.spdx,.cdx,.cyclonedx,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,.qcow2,.vmdk,.vhd,.vhdx,.img,Dockerfile'
         : '.json,.sarif';
@@ -125,14 +129,17 @@ export default function NewScanPage() {
         setUploadMode(mode);
         resetFileState();
         if (mode === 'scan-target') {
-            setSourceType(scannerProvider === 'checkov' ? 'CHECKOV_JSON' : 'TRIVY_JSON');
+            setSourceType(scannerProvider === 'checkov' ? 'CHECKOV_JSON' : scannerProvider === 'zap' ? 'ZAP_JSON' : 'TRIVY_JSON');
         }
     };
 
     const handleScannerChange = (scanner: ScannerProvider) => {
         setScannerProvider(scanner);
+        if (scanner === 'zap') {
+            setFile(null);
+        }
         if (uploadMode === 'scan-target') {
-            setSourceType(scanner === 'checkov' ? 'CHECKOV_JSON' : 'TRIVY_JSON');
+            setSourceType(scanner === 'checkov' ? 'CHECKOV_JSON' : scanner === 'zap' ? 'ZAP_JSON' : 'TRIVY_JSON');
         }
     };
 
@@ -198,6 +205,60 @@ export default function NewScanPage() {
     };
 
     const handleUpload = async () => {
+        if (isZapScan) {
+            if (!zapTargetUrl.trim()) {
+                setErrorMessage('ZAP으로 검사할 URL을 입력해주세요.');
+                return;
+            }
+
+            if (!selectedProjectId && !projectName.trim()) {
+                setErrorMessage('프로젝트를 선택하거나 새 프로젝트 이름을 입력해주세요.');
+                return;
+            }
+
+            setUploadStatus('uploading');
+            setErrorMessage('');
+            cancelRequestedRef.current = false;
+            const nextOperationId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            setScanOperationId(nextOperationId);
+
+            try {
+                const scanResult = await zapScanMutation.mutateAsync({
+                    projectId: selectedProjectId || undefined,
+                    targetUrl: zapTargetUrl.trim(),
+                    scanMode: zapScanMode,
+                    projectName: !selectedProjectId ? projectName.trim() : undefined,
+                    organizationId: selectedOrgId || undefined,
+                    imageRef: zapTargetUrl.trim(),
+                    scanOperationId: nextOperationId,
+                });
+
+                if (!isPageActiveRef.current) return;
+
+                setUploadStatus('success');
+                setScanOperationId('');
+                const destination = scanResult?.id ? `/dashboard/scans/${scanResult.id}` : '/dashboard/scans';
+                redirectTimeoutRef.current = window.setTimeout(() => {
+                    if (isPageActiveRef.current) {
+                        router.push(destination);
+                    }
+                }, 1500);
+            } catch (error: any) {
+                if (!isPageActiveRef.current) return;
+
+                setScanOperationId('');
+                if (cancelRequestedRef.current) {
+                    setUploadStatus('idle');
+                    setErrorMessage('ZAP 스캔을 중지했습니다.');
+                    return;
+                }
+
+                setUploadStatus('error');
+                setErrorMessage(error.message || 'ZAP 스캔에 실패했습니다.');
+            }
+            return;
+        }
+
         if (!file) {
             setErrorMessage('업로드할 파일을 선택해주세요.');
             return;
@@ -234,7 +295,7 @@ export default function NewScanPage() {
                 projectId: selectedProjectId || undefined,
                 file,
                 scanTarget: isScanningTarget,
-                scanner: isScanningTarget ? scannerProvider : undefined,
+                scanner: isScanningTarget && scannerProvider !== 'zap' ? scannerProvider : undefined,
                 trivyOptions: isScanningTarget && scannerProvider === 'trivy' ? trivyOptions : undefined,
                 checkovOptions: isScanningTarget && scannerProvider === 'checkov' ? checkovOptions : undefined,
                 scanOperationId: nextOperationId || undefined,
@@ -349,6 +410,7 @@ export default function NewScanPage() {
                                     {[
                                         { value: 'trivy' as const, label: 'Trivy', description: '패키지 취약점, 라이선스, Secret, Misconfig 검사' },
                                         { value: 'checkov' as const, label: 'Checkov', description: 'IaC, Kubernetes, Dockerfile, CI 설정 오류 검사' },
+                                        { value: 'zap' as const, label: 'ZAP', description: '웹 URL 대상 DAST Baseline/Passive 검사' },
                                     ].map((scanner) => (
                                         <button
                                             key={scanner.value}
@@ -368,6 +430,39 @@ export default function NewScanPage() {
                             </div>
                         )}
 
+                        {isZapScan && (
+                            <div className="mb-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-4">
+                                <div className="mb-3 flex items-center gap-2 text-orange-100">
+                                    <Globe className="h-5 w-5" />
+                                    <span className="font-semibold">ZAP 웹 URL 스캔</span>
+                                </div>
+                                <label className="mb-2 block text-sm font-medium text-orange-100">검사 대상 URL</label>
+                                <input
+                                    type="url"
+                                    value={zapTargetUrl}
+                                    onChange={(e) => setZapTargetUrl(e.target.value)}
+                                    placeholder="https://app.internal"
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                />
+                                <div className="mt-4">
+                                    <label className="mb-2 block text-sm font-medium text-orange-100">스캔 모드</label>
+                                    <select
+                                        value={zapScanMode}
+                                        onChange={(e) => setZapScanMode(e.target.value as 'baseline' | 'passive' | 'active')}
+                                        className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    >
+                                        <option value="baseline">Baseline - Spider 실행 후 Passive Alert 수집</option>
+                                        <option value="passive">Passive - Baseline과 동일한 안전 모드</option>
+                                        <option value="active">Active - 관리자 허용 시에만 사용</option>
+                                    </select>
+                                </div>
+                                <p className="mt-3 text-xs text-orange-100/80">
+                                    관리자 설정의 허용 대상 패턴에 포함된 URL만 스캔할 수 있습니다.
+                                </p>
+                            </div>
+                        )}
+
+                        {!isZapScan && (
                         <div
                             className={`relative rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
                                 dragActive ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-500'
@@ -414,6 +509,7 @@ export default function NewScanPage() {
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {!isScanningTarget && (
                             <div className="mt-6">
@@ -495,7 +591,7 @@ export default function NewScanPage() {
                         <button
                             type="button"
                             onClick={handleUpload}
-                            disabled={uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || !file}
+                            disabled={uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (!file && !isZapScan)}
                             className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-700"
                         >
                             {uploadStatus === 'uploading' ? (
@@ -539,6 +635,28 @@ export default function NewScanPage() {
                     </div>
 
                     <aside className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+                        {isZapScan && (
+                            <div className="mb-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-4">
+                                <h2 className="text-lg font-semibold text-white">ZAP 실행 옵션</h2>
+                                <p className="mt-2 text-sm text-slate-300">
+                                    ZAP은 웹 애플리케이션 URL을 대상으로 DAST 검사를 수행합니다. 폐쇄망에서는 관리자 설정의 ZAP 서버 URL과 허용 대상 패턴이 먼저 구성되어야 합니다.
+                                </p>
+                                <div className="mt-4 space-y-3 text-sm text-slate-300">
+                                    <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                                        <p className="font-medium text-white">Baseline</p>
+                                        <p className="mt-1 text-slate-400">대상을 spider로 탐색하고 passive alert를 수집하는 운영 기본 모드입니다.</p>
+                                    </div>
+                                    <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                                        <p className="font-medium text-white">Passive</p>
+                                        <p className="mt-1 text-slate-400">현재 1차 구현에서는 Baseline과 동일한 안전 스캔 흐름으로 처리됩니다.</p>
+                                    </div>
+                                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+                                        <p className="font-medium text-red-100">Active</p>
+                                        <p className="mt-1 text-red-100/80">대상 서비스에 부하를 줄 수 있어 관리자 설정에서 허용된 경우에만 실행됩니다.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {isCheckovScan && (
                             <div className="checkov-mode-panel mb-6 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4">
                                 <h2 className="text-lg font-semibold text-white">Checkov 실행 옵션</h2>
@@ -607,7 +725,7 @@ export default function NewScanPage() {
                                 </div>
                             </div>
                         )}
-                        {!isCheckovScan && (
+                        {!isCheckovScan && !isZapScan && (
                             <>
                                 <h2 className="text-lg font-semibold text-white">Trivy 실행 옵션</h2>
                                 <p className="mt-2 text-sm text-slate-400">
