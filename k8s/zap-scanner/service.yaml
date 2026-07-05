@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: zap-scanner
+  namespace: jasca
+  labels:
+    app: zap-scanner
+spec:
+  selector:
+    app: zap-scanner
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
