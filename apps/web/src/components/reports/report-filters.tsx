@@ -28,7 +28,6 @@ const formats = [
     { id: '', name: '전체' },
     { id: 'pdf', name: 'PDF' },
     { id: 'csv', name: 'CSV' },
-    { id: 'xlsx', name: 'XLSX' },
 ];
 
 export function ReportFilters({ filters, onFilterChange }: ReportFiltersProps) {
