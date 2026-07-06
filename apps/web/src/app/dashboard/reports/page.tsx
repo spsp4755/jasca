@@ -45,6 +45,9 @@ const reportTypes = [
     { id: 'project_status', name: '프로젝트 현황', description: '개별 프로젝트 상세 리포트' },
 ];
 
+const reportFormats = ['pdf', 'csv'] as const;
+type ReportFormat = typeof reportFormats[number];
+
 function getStatusBadge(status: string) {
     switch (status) {
         case 'completed':
@@ -98,7 +101,7 @@ export default function ReportsPage() {
 
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [selectedType, setSelectedType] = useState('');
-    const [selectedFormat, setSelectedFormat] = useState<'pdf' | 'csv' | 'xlsx'>('pdf');
+    const [selectedFormat, setSelectedFormat] = useState<ReportFormat>('pdf');
     const [reportName, setReportName] = useState('');
 
     // Schedule state
@@ -109,7 +112,7 @@ export default function ReportsPage() {
 
     const [editingReport, setEditingReport] = useState<Report | null>(null);
     const [editName, setEditName] = useState('');
-    const [editFormat, setEditFormat] = useState<'pdf' | 'csv' | 'xlsx'>('pdf');
+    const [editFormat, setEditFormat] = useState<ReportFormat>('pdf');
 
     const [previewReport, setPreviewReport] = useState<Report | null>(null);
 
@@ -206,7 +209,7 @@ export default function ReportsPage() {
             await createMutation.mutateAsync({
                 name: `${report.name} (복사본)`,
                 type: report.type,
-                format: report.format as 'pdf' | 'csv' | 'xlsx',
+                format: (reportFormats.includes(report.format as ReportFormat) ? report.format : 'pdf') as ReportFormat,
             });
         } catch (err) {
             console.error('Failed to duplicate report:', err);
@@ -219,7 +222,7 @@ export default function ReportsPage() {
             await createMutation.mutateAsync({
                 name: `${report.name} (재생성)`,
                 type: report.type,
-                format: report.format as 'pdf' | 'csv' | 'xlsx',
+                format: (reportFormats.includes(report.format as ReportFormat) ? report.format : 'pdf') as ReportFormat,
             });
         } catch (err) {
             console.error('Failed to regenerate report:', err);
@@ -305,7 +308,7 @@ export default function ReportsPage() {
     const handleEdit = (report: Report) => {
         setEditingReport(report);
         setEditName(report.name);
-        setEditFormat(report.format as 'pdf' | 'csv' | 'xlsx');
+        setEditFormat((reportFormats.includes(report.format as ReportFormat) ? report.format : 'pdf') as ReportFormat);
     };
 
     const handleUpdate = async () => {
@@ -515,6 +518,16 @@ export default function ReportsPage() {
                             </button>
                         </div>
                         <div className="p-6 space-y-6">
+                        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-100">
+                            <p className="font-semibold">리포트 생성 시 처리되는 내용</p>
+                            <p className="mt-1">
+                                생성 버튼을 누르면 서버가 현재 JASCA DB의 스캔/취약점/프로젝트 데이터를 기준으로 리포트 작업을 만들고,
+                                완료되면 목록에서 다운로드할 수 있습니다. 현재 운영 포맷은 PDF와 CSV입니다.
+                            </p>
+                            <p className="mt-2 text-xs text-blue-700 dark:text-blue-200">
+                                정기 생성 스케줄은 설정값을 저장하는 단계이며, 실제 스케줄러 운영은 별도 자동화 설정이 필요합니다.
+                            </p>
+                        </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                                 리포트 이름
@@ -552,7 +565,7 @@ export default function ReportsPage() {
                                 출력 형식
                             </label>
                             <div className="flex gap-3">
-                                {(['pdf', 'csv', 'xlsx'] as const).map((format) => (
+                                {reportFormats.map((format) => (
                                     <button
                                         key={format}
                                         onClick={() => setSelectedFormat(format)}
@@ -712,7 +725,7 @@ export default function ReportsPage() {
                                     출력 형식
                                 </label>
                                 <div className="flex gap-3">
-                                    {(['pdf', 'csv', 'xlsx'] as const).map((format) => (
+                                    {reportFormats.map((format) => (
                                         <button
                                             key={format}
                                             onClick={() => setEditFormat(format)}
@@ -764,7 +777,7 @@ export default function ReportsPage() {
                     </h3>
                     <p className="text-slate-600 dark:text-slate-400 mb-6 max-w-md mx-auto">
                         프로젝트의 보안 현황을 파악할 수 있는 리포트를 생성해보세요.<br />
-                        PDF, CSV, Excel 형식으로 내보낼 수 있습니다.
+                        PDF 또는 CSV 형식으로 내보낼 수 있습니다.
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                         <button

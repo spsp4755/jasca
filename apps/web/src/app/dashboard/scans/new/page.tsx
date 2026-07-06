@@ -37,20 +37,19 @@ const ANALYSIS_STRATEGY_OPTIONS = [
 ] as const;
 
 const CHECKOV_FRAMEWORK_OPTIONS = [
-    { value: 'terraform', label: 'Terraform', description: '.tf, .tf.json IaC 설정' },
-    { value: 'terraform_plan', label: 'Terraform Plan', description: 'terraform plan JSON 결과' },
-    { value: 'cloudformation', label: 'CloudFormation', description: 'AWS CFN YAML/JSON 템플릿' },
-    { value: 'kubernetes', label: 'Kubernetes', description: 'Deployment, Pod, Service YAML' },
-    { value: 'helm', label: 'Helm', description: 'Helm Chart, values.yaml' },
-    { value: 'kustomize', label: 'Kustomize', description: 'kustomization.yaml 구성' },
-    { value: 'dockerfile', label: 'Dockerfile', description: 'Dockerfile 컨테이너 빌드 정책' },
-    { value: 'serverless', label: 'Serverless', description: 'serverless.yml 함수/권한 설정' },
-    { value: 'arm', label: 'ARM Template', description: 'Azure ARM JSON 템플릿' },
-    { value: 'bicep', label: 'Bicep', description: 'Azure .bicep 템플릿' },
-    { value: 'openapi', label: 'OpenAPI', description: 'openapi.yaml/json API 명세' },
-    { value: 'github_actions', label: 'GitHub Actions', description: '.github/workflows/*.yml 정적 분석' },
-    { value: 'gitlab_ci', label: 'GitLab CI', description: '.gitlab-ci.yml 파이프라인 정책' },
-    { value: 'ansible', label: 'Ansible', description: 'playbook, role YAML 설정' },
+    { value: 'terraform', label: 'Terraform', description: '.tf, .tf.json IaC 설정', detail: 'Terraform 코드나 모듈 압축 파일을 올릴 때 선택합니다.' },
+    { value: 'terraform_plan', label: 'Terraform Plan', description: 'terraform plan JSON 결과', detail: 'terraform show -json으로 만든 plan 결과를 검토할 때 사용합니다.' },
+    { value: 'kubernetes', label: 'Kubernetes', description: 'Deployment, Pod, Service YAML', detail: '폐쇄망 k8s manifest의 권한, 보안 컨텍스트, 리소스 설정을 점검합니다.' },
+    { value: 'helm', label: 'Helm', description: 'Helm Chart, values.yaml', detail: 'Chart.yaml, templates, values.yaml을 포함한 Helm chart 압축 파일에 적합합니다.' },
+    { value: 'kustomize', label: 'Kustomize', description: 'kustomization.yaml 구성', detail: 'base/overlay 구조의 kustomize 디렉터리를 압축해서 올릴 때 사용합니다.' },
+    { value: 'dockerfile', label: 'Dockerfile', description: 'Dockerfile 컨테이너 빌드 정책', detail: 'root 사용자, sudo, latest 태그, 위험한 패키지 설치 패턴 등을 확인합니다.' },
+    { value: 'serverless', label: 'Serverless', description: 'serverless.yml 함수/권한 설정', detail: '사내에서 serverless.yml을 관리하는 경우에만 선택하면 됩니다.' },
+    { value: 'arm', label: 'ARM Template', description: 'Azure ARM JSON 템플릿', detail: 'Azure를 사용하지 않는 폐쇄망이면 선택하지 않아도 됩니다.' },
+    { value: 'bicep', label: 'Bicep', description: 'Azure .bicep 템플릿', detail: 'Azure Bicep 템플릿을 내부 IaC로 관리할 때만 사용합니다.' },
+    { value: 'openapi', label: 'OpenAPI', description: 'openapi.yaml/json API 명세', detail: 'API 스펙의 인증, 보안 스키마, 노출 정보를 점검합니다.' },
+    { value: 'github_actions', label: 'GitHub Actions', description: '.github/workflows/*.yml 정적 분석', detail: '폐쇄망 GitHub Enterprise를 쓰는 경우 워크플로 보안 설정을 확인합니다.' },
+    { value: 'gitlab_ci', label: 'GitLab CI', description: '.gitlab-ci.yml 파이프라인 정책', detail: '사내 GitLab CI YAML의 권한, 스크립트, secret 사용 패턴을 점검합니다.' },
+    { value: 'ansible', label: 'Ansible', description: 'playbook, role YAML 설정', detail: '서버 설정 자동화 playbook이나 role을 점검할 때 선택합니다.' },
 ] as const;
 
 export default function NewScanPage() {
@@ -718,8 +717,7 @@ export default function NewScanPage() {
                                             {CHECKOV_FRAMEWORK_OPTIONS.map((framework) => (
                                                 <label
                                                     key={framework.value}
-                                                    title={framework.description}
-                                                    className="flex cursor-help items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 p-2 text-xs text-slate-300"
+                                                    className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-300"
                                                 >
                                                     <input
                                                         type="checkbox"
@@ -730,6 +728,7 @@ export default function NewScanPage() {
                                                     <span>
                                                         <span className="block font-medium text-slate-100">{framework.label}</span>
                                                         <span className="mt-0.5 block leading-4 text-slate-500">{framework.description}</span>
+                                                        <span className="mt-1 block leading-4 text-cyan-100/80">{framework.detail}</span>
                                                     </span>
                                                 </label>
                                             ))}
