@@ -64,6 +64,8 @@ export default function NewScanPage() {
     const [sourceType, setSourceType] = useState<SourceType>('TRIVY_JSON');
     const [zapTargetUrl, setZapTargetUrl] = useState('');
     const [zapScanMode, setZapScanMode] = useState<'baseline' | 'passive' | 'active'>('baseline');
+    const [zapAuthType, setZapAuthType] = useState<'none' | 'cookie' | 'authorization'>('none');
+    const [zapAuthValue, setZapAuthValue] = useState('');
     const [dragActive, setDragActive] = useState(false);
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'cancelling' | 'success' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState<string>('');
@@ -104,6 +106,10 @@ export default function NewScanPage() {
     const isScanningTarget = uploadMode === 'scan-target';
     const isCheckovScan = isScanningTarget && scannerProvider === 'checkov';
     const isZapScan = isScanningTarget && scannerProvider === 'zap';
+    const scanActionLabel = isZapScan ? 'ZAP 검사 실행' : isCheckovScan ? 'Checkov 검사 실행' : 'Trivy 검사 실행';
+    const scanProgressLabel = isZapScan ? 'ZAP 검사 중...' : isCheckovScan ? 'Checkov 검사 중...' : 'Trivy 검사 중...';
+    const missingZapRequiredInput = isZapScan && (!zapTargetUrl.trim() || (zapAuthType !== 'none' && !zapAuthValue.trim()));
+    const isSubmitDisabled = uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (isZapScan ? missingZapRequiredInput : !file);
     const acceptedFiles = isScanningTarget
         ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.spdx,.cdx,.cyclonedx,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,.qcow2,.vmdk,.vhd,.vhdx,.img,Dockerfile'
         : '.json,.sarif';
@@ -216,6 +222,11 @@ export default function NewScanPage() {
                 return;
             }
 
+            if (zapAuthType !== 'none' && !zapAuthValue.trim()) {
+                setErrorMessage('ZAP 인증 스캔을 사용하려면 Cookie 또는 Authorization 값을 입력해주세요.');
+                return;
+            }
+
             setUploadStatus('uploading');
             setErrorMessage('');
             cancelRequestedRef.current = false;
@@ -227,6 +238,10 @@ export default function NewScanPage() {
                     projectId: selectedProjectId || undefined,
                     targetUrl: zapTargetUrl.trim(),
                     scanMode: zapScanMode,
+                    authentication: zapAuthType === 'none' ? { type: 'none' } : {
+                        type: zapAuthType,
+                        value: zapAuthValue.trim(),
+                    },
                     projectName: !selectedProjectId ? projectName.trim() : undefined,
                     organizationId: selectedOrgId || undefined,
                     imageRef: zapTargetUrl.trim(),
@@ -459,6 +474,38 @@ export default function NewScanPage() {
                                 <p className="mt-3 text-xs text-orange-100/80">
                                     관리자 설정의 허용 대상 패턴에 포함된 URL만 스캔할 수 있습니다.
                                 </p>
+                                <div className="mt-5 rounded-lg border border-orange-200/30 bg-slate-950/30 p-3">
+                                    <label className="mb-2 block text-sm font-medium text-orange-100">인증 방식</label>
+                                    <select
+                                        value={zapAuthType}
+                                        onChange={(e) => {
+                                            setZapAuthType(e.target.value as 'none' | 'cookie' | 'authorization');
+                                            setZapAuthValue('');
+                                        }}
+                                        className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    >
+                                        <option value="none">인증 없음 - 로그인 전 공개 화면만 스캔</option>
+                                        <option value="cookie">Cookie - 로그인 세션 쿠키를 스캔 중에만 사용</option>
+                                        <option value="authorization">Authorization Header - Bearer/API 토큰 사용</option>
+                                    </select>
+                                    {zapAuthType !== 'none' && (
+                                        <div className="mt-3">
+                                            <label className="mb-2 block text-sm font-medium text-orange-100">
+                                                {zapAuthType === 'cookie' ? 'Cookie 헤더 값' : 'Authorization 헤더 값'}
+                                            </label>
+                                            <textarea
+                                                value={zapAuthValue}
+                                                onChange={(e) => setZapAuthValue(e.target.value)}
+                                                rows={3}
+                                                placeholder={zapAuthType === 'cookie' ? 'SESSION=...; KEYCLOAK_IDENTITY=...' : 'Bearer eyJ...'}
+                                                className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            />
+                                            <p className="mt-2 text-xs text-orange-100/80">
+                                                입력값은 ZAP 스캔 중 요청 헤더로만 사용하고, 스캔 결과에는 저장하지 않습니다. 테스트 전용 계정의 세션을 권장합니다.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
 
@@ -591,13 +638,13 @@ export default function NewScanPage() {
                         <button
                             type="button"
                             onClick={handleUpload}
-                            disabled={uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (!file && !isZapScan)}
+                            disabled={isSubmitDisabled}
                             className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-700"
                         >
                             {uploadStatus === 'uploading' ? (
                                 <>
                                     <Loader2 className="h-5 w-5 animate-spin" />
-                                    {isScanningTarget ? 'Trivy 검사 중...' : '업로드 중...'}
+                                    {isScanningTarget ? scanProgressLabel : '업로드 중...'}
                                 </>
                             ) : uploadStatus === 'success' ? (
                                 <>
@@ -607,7 +654,7 @@ export default function NewScanPage() {
                             ) : (
                                 <>
                                     <Upload className="h-5 w-5" />
-                                    {isScanningTarget ? 'Trivy 검사 실행' : '결과 업로드'}
+                                    {isScanningTarget ? scanActionLabel : '결과 업로드'}
                                 </>
                             )}
                         </button>

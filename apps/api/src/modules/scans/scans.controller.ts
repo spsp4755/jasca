@@ -427,6 +427,7 @@ export class ScansController {
         const rawResult = await this.zapScanService.scanUrl({
             targetUrl: body.targetUrl,
             scanMode: body.scanMode,
+            authentication: body.authentication,
         }, scanOperationId);
 
         const dto: UploadScanDto = {

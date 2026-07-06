@@ -30,7 +30,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # Install Node.js 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g pnpm
+    && npm install -g pnpm@11.7.0
 
 # Setup directories
 WORKDIR /app
@@ -39,8 +39,6 @@ WORKDIR /app
 FROM base AS prod-deps
 WORKDIR /app
 COPY . .
-# Force hoisting to ensure simple node_modules structure for copying
-RUN echo "shamefully-hoist=true" > .npmrc
 RUN pnpm install --frozen-lockfile
 # Generate prisma client (requires dev deps)
 RUN pnpm --filter @jasca/api prisma:generate

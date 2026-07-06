@@ -8,11 +8,17 @@
 
 .turbo
 .cache
+.git
+.corepack
+.corepack-cache
+.playwright-mcp
 .vscode
 coverage
 local-data
 trivy-db
 release-assets-*
+output
+tmp
 dist/offline-bundle
 *.log
 .env.local
