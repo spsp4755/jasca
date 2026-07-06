@@ -36,6 +36,26 @@ export class ZapClientService {
         await this.getJson(options, '/JSON/spider/action/stop/', { scanId });
     }
 
+    async addRequestHeaderRule(
+        options: ZapClientOptions,
+        description: string,
+        headerName: string,
+        headerValue: string,
+    ): Promise<void> {
+        await this.getJson(options, '/JSON/replacer/action/addRule/', {
+            description,
+            enabled: 'true',
+            matchType: 'REQ_HEADER',
+            matchRegex: 'false',
+            matchString: headerName,
+            replacement: headerValue,
+        });
+    }
+
+    async removeRule(options: ZapClientOptions, description: string): Promise<void> {
+        await this.getJson(options, '/JSON/replacer/action/removeRule/', { description });
+    }
+
     private async getJson<T>(options: ZapClientOptions, path: string, query: Record<string, string>): Promise<T> {
         const url = new URL(path, this.normalizeBaseUrl(options.baseUrl));
         if (options.apiKey) {

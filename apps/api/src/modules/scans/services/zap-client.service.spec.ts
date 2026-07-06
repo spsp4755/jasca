@@ -64,6 +64,35 @@ describe('ZapClientService', () => {
         expect(calledUrl).toContain('count=999999');
     });
 
+    it('adds and removes temporary request header rules', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({}),
+        } as any);
+
+        const client = new ZapClientService();
+        await client.addRequestHeaderRule(
+            { baseUrl: 'http://zap:8080', apiKey: 'key', timeoutMs: 1000 },
+            'jasca-auth-op-1',
+            'Authorization',
+            'Bearer token',
+        );
+        await client.removeRule(
+            { baseUrl: 'http://zap:8080', apiKey: 'key', timeoutMs: 1000 },
+            'jasca-auth-op-1',
+        );
+
+        const addUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+        const removeUrl = (global.fetch as jest.Mock).mock.calls[1][0] as string;
+        expect(addUrl).toContain('/JSON/replacer/action/addRule/');
+        expect(addUrl).toContain('description=jasca-auth-op-1');
+        expect(addUrl).toContain('matchType=REQ_HEADER');
+        expect(addUrl).toContain('matchString=Authorization');
+        expect(addUrl).toContain('replacement=Bearer+token');
+        expect(removeUrl).toContain('/JSON/replacer/action/removeRule/');
+        expect(removeUrl).toContain('description=jasca-auth-op-1');
+    });
+
     it('throws a clear error when ZAP is unreachable', async () => {
         global.fetch = jest.fn().mockRejectedValue(new Error('ECONNREFUSED'));
 

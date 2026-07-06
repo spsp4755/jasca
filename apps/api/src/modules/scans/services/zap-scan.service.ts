@@ -6,6 +6,12 @@ import { ZapPolicyService, ZapSettings } from './zap-policy.service';
 export interface ZapScanOptions {
     targetUrl: string;
     scanMode?: 'baseline' | 'passive' | 'active';
+    authentication?: ZapScanAuthentication;
+}
+
+export interface ZapScanAuthentication {
+    type?: 'none' | 'cookie' | 'authorization';
+    value?: string;
 }
 
 @Injectable()
@@ -21,9 +27,11 @@ export class ZapScanService {
 
     async scanUrl(options: ZapScanOptions, operationId?: string): Promise<any> {
         const startedAt = Date.now();
+        const operationKey = operationId || `internal-${startedAt}-${Math.random().toString(16).slice(2)}`;
         const settings = await this.getSettings();
         const target = this.policyService.validateTargetUrl(options.targetUrl, settings);
         const scanMode = options.scanMode || 'baseline';
+        const authentication = this.normalizeAuthentication(options.authentication);
 
         if (scanMode === 'active' && !settings.allowActiveScan) {
             throw new BadRequestException('ZAP Active Scan is disabled by administrator settings.');
@@ -33,31 +41,39 @@ export class ZapScanService {
             throw new BadRequestException('ZAP Baseline Scan is disabled by administrator settings.');
         }
 
+        if (this.activeScans.size >= settings.maxConcurrentScans) {
+            throw new BadRequestException(`ZAP scan concurrency limit reached (${settings.maxConcurrentScans}). Try again after the current scan completes.`);
+        }
+
         const clientOptions: ZapClientOptions = {
             baseUrl: settings.zapBaseUrl,
             apiKey: settings.apiKey,
             timeoutMs: settings.connectTimeoutSeconds * 1000,
         };
         const timeoutMs = settings.maxScanDurationMinutes * 60 * 1000;
+        const authRuleNames: string[] = [];
 
-        if (operationId) {
-            this.activeScans.set(operationId, { cancelled: false });
-        }
+        this.activeScans.set(operationKey, { cancelled: false });
 
         try {
             const zapVersion = await this.zapClient.getVersion(clientOptions);
-            this.throwIfCancelled(operationId);
+            this.throwIfCancelled(operationKey);
+
+            for (const header of this.buildAuthenticationHeaders(authentication)) {
+                const ruleName = this.buildRuleName(operationKey, header.kind);
+                await this.zapClient.addRequestHeaderRule(clientOptions, ruleName, header.name, header.value);
+                authRuleNames.push(ruleName);
+            }
+            this.throwIfCancelled(operationKey);
 
             const spiderScanId = await this.zapClient.spiderScan(clientOptions, target.href);
-            if (operationId) {
-                this.activeScans.set(operationId, { scanId: spiderScanId, cancelled: false });
-            }
+            this.activeScans.set(operationKey, { scanId: spiderScanId, cancelled: false });
 
-            await this.waitForSpider(clientOptions, spiderScanId, timeoutMs, operationId);
-            this.throwIfCancelled(operationId);
+            await this.waitForSpider(clientOptions, spiderScanId, timeoutMs, operationKey);
+            this.throwIfCancelled(operationKey);
 
             const alerts = await this.zapClient.alerts(clientOptions, target.href);
-            this.throwIfCancelled(operationId);
+            this.throwIfCancelled(operationKey);
 
             return {
                 zapVersion,
@@ -78,6 +94,10 @@ export class ZapScanService {
                         startedAt: new Date(startedAt).toISOString(),
                         completedAt: new Date().toISOString(),
                         durationMs: Date.now() - startedAt,
+                        authentication: authentication.type === 'none' ? undefined : {
+                            type: authentication.type,
+                            requestHeaders: this.buildAuthenticationHeaders(authentication).map((header) => header.name),
+                        },
                         options: {
                             maxScanDurationMinutes: settings.maxScanDurationMinutes,
                             allowActiveScan: settings.allowActiveScan,
@@ -86,9 +106,10 @@ export class ZapScanService {
                 },
             };
         } finally {
-            if (operationId) {
-                this.activeScans.delete(operationId);
-            }
+            await Promise.all(authRuleNames.map((ruleName) => this.zapClient.removeRule(clientOptions, ruleName).catch((error) => {
+                this.logger.warn(`Failed to remove ZAP auth rule ${ruleName}: ${(error as Error).message}`);
+            })));
+            this.activeScans.delete(operationKey);
         }
     }
 
@@ -137,6 +158,48 @@ export class ZapScanService {
         if (operationId && this.activeScans.get(operationId)?.cancelled) {
             throw new BadRequestException('ZAP scan was cancelled by the user');
         }
+    }
+
+    private normalizeAuthentication(authentication?: ZapScanAuthentication): Required<ZapScanAuthentication> {
+        const type = authentication?.type || 'none';
+        const value = authentication?.value?.trim() || '';
+
+        if (type === 'none') {
+            return { type: 'none', value: '' };
+        }
+
+        if (!['cookie', 'authorization'].includes(type)) {
+            throw new BadRequestException('Unsupported ZAP authentication type.');
+        }
+
+        if (!value) {
+            throw new BadRequestException(`ZAP ${type} authentication value is required.`);
+        }
+
+        if (value.length > 16 * 1024 || /[\r\n]/.test(value)) {
+            throw new BadRequestException('ZAP authentication value is invalid.');
+        }
+
+        return { type, value };
+    }
+
+    private buildAuthenticationHeaders(authentication: Required<ZapScanAuthentication>): Array<{ kind: string; name: string; value: string }> {
+        if (authentication.type === 'cookie') {
+            return [{ kind: 'cookie', name: 'Cookie', value: authentication.value }];
+        }
+
+        if (authentication.type === 'authorization') {
+            return [{ kind: 'authorization', name: 'Authorization', value: authentication.value }];
+        }
+
+        return [];
+    }
+
+    private buildRuleName(operationId: string | undefined, kind: string): string {
+        const id = (operationId || `${Date.now()}-${Math.random().toString(16).slice(2)}`)
+            .replace(/[^a-zA-Z0-9._-]/g, '-')
+            .slice(0, 80);
+        return `jasca-auth-${id}-${kind}`;
     }
 
     private async getSettings(): Promise<ZapSettings> {

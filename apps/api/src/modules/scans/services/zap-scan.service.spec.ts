@@ -15,6 +15,8 @@ describe('ZapScanService', () => {
         spiderStatus: jest.fn(),
         alerts: jest.fn(),
         stopSpider: jest.fn(),
+        addRequestHeaderRule: jest.fn(),
+        removeRule: jest.fn(),
     };
 
     beforeEach(() => {
@@ -37,6 +39,8 @@ describe('ZapScanService', () => {
         zapClient.spiderScan.mockResolvedValue('1');
         zapClient.spiderStatus.mockResolvedValue(100);
         zapClient.stopSpider.mockResolvedValue(undefined);
+        zapClient.addRequestHeaderRule.mockResolvedValue(undefined);
+        zapClient.removeRule.mockResolvedValue(undefined);
         zapClient.alerts.mockResolvedValue([
             {
                 pluginid: '10038',
@@ -110,6 +114,91 @@ describe('ZapScanService', () => {
 
         await expect(scanPromise).rejects.toThrow(BadRequestException);
         expect(zapClient.stopSpider).toHaveBeenCalledWith(expect.any(Object), '1');
+    });
+
+    it('uses temporary Authorization header rules without storing the secret in scan evidence', async () => {
+        const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
+        const result = await service.scanUrl({
+            targetUrl: 'https://demo.internal',
+            scanMode: 'baseline',
+            authentication: {
+                type: 'authorization',
+                value: 'Bearer secret-token',
+            },
+        }, 'op-auth');
+
+        expect(zapClient.addRequestHeaderRule).toHaveBeenCalledWith(
+            expect.objectContaining({ baseUrl: 'http://zap:8080', apiKey: 'key' }),
+            'jasca-auth-op-auth-authorization',
+            'Authorization',
+            'Bearer secret-token',
+        );
+        expect(zapClient.removeRule).toHaveBeenCalledWith(
+            expect.objectContaining({ baseUrl: 'http://zap:8080', apiKey: 'key' }),
+            'jasca-auth-op-auth-authorization',
+        );
+        expect(JSON.stringify(result)).not.toContain('secret-token');
+        expect(result.Metadata.JascaScanEvidence.authentication).toEqual({
+            type: 'authorization',
+            requestHeaders: ['Authorization'],
+        });
+    });
+
+    it('uses temporary Cookie header rules for cookie-authenticated scans', async () => {
+        const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
+        await service.scanUrl({
+            targetUrl: 'https://demo.internal',
+            scanMode: 'baseline',
+            authentication: {
+                type: 'cookie',
+                value: 'SESSION=abc; Path=/',
+            },
+        }, 'op-cookie');
+
+        expect(zapClient.addRequestHeaderRule).toHaveBeenCalledWith(
+            expect.any(Object),
+            'jasca-auth-op-cookie-cookie',
+            'Cookie',
+            'SESSION=abc; Path=/',
+        );
+        expect(zapClient.removeRule).toHaveBeenCalledWith(
+            expect.any(Object),
+            'jasca-auth-op-cookie-cookie',
+        );
+    });
+
+    it('rejects concurrent ZAP scans when the administrator limit is already reached', async () => {
+        let resolveStatus: (value: number) => void = () => undefined;
+        zapClient.spiderStatus.mockReturnValue(new Promise<number>((resolve) => {
+            resolveStatus = resolve;
+        }));
+
+        const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
+        const firstScan = service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'baseline' }, 'op-1');
+
+        await waitUntil(() => zapClient.spiderStatus.mock.calls.length > 0);
+        await expect(service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'baseline' }, 'op-2'))
+            .rejects.toThrow(BadRequestException);
+
+        resolveStatus(100);
+        await firstScan;
+    });
+
+    it('enforces the concurrency limit even when no operation id is provided', async () => {
+        let resolveStatus: (value: number) => void = () => undefined;
+        zapClient.spiderStatus.mockReturnValue(new Promise<number>((resolve) => {
+            resolveStatus = resolve;
+        }));
+
+        const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
+        const firstScan = service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'baseline' });
+
+        await waitUntil(() => zapClient.spiderStatus.mock.calls.length > 0);
+        await expect(service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'baseline' }))
+            .rejects.toThrow(BadRequestException);
+
+        resolveStatus(100);
+        await firstScan;
     });
 });
 

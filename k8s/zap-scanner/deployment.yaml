@@ -27,7 +27,7 @@ spec:
             - -port
             - "8080"
             - -config
-            - api.disablekey=false
+            - api.disablekey=true
             - -config
             - api.addrs.addr.name=.*
             - -config
