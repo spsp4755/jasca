@@ -114,6 +114,7 @@ model User {
   workflowChanges VulnerabilityWorkflow[] @relation("WorkflowChangedBy")
   evidenceCreated FixEvidence[] @relation("EvidenceCreatedBy")
   createdManualAdvisories ManualAdvisory[] @relation("ManualAdvisoryCreatedBy")
+  createdSemgrepRules SemgrepRule[] @relation("SemgrepRuleCreatedBy")
   
   // Auth extension relations
   emailVerification   EmailVerification?
@@ -1391,3 +1392,21 @@ enum LicensePolicyAction {
   BLOCK   // Block/fail policy check
 }
 
+
+// Custom Semgrep rules managed by security admins (CxQL-style customization).
+// Rules are merged with the bundled ruleset at scan time.
+model SemgrepRule {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  yaml        String   // semgrep rule file content (one or more rules)
+  isActive    Boolean  @default(true)
+
+  createdById String?
+  createdBy   User?    @relation("SemgrepRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+}

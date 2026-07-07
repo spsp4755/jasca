@@ -28,6 +28,7 @@ import { ExceptionsModule } from './modules/exceptions/exceptions.module';
 import { LicensesModule } from './modules/licenses/licenses.module';
 import { DatabaseModule } from './modules/database/database.module';
 import { ManualAdvisoriesModule } from './modules/manual-advisories/manual-advisories.module';
+import { SemgrepRulesModule } from './modules/semgrep-rules/semgrep-rules.module';
 import { VulnPortalModule } from './modules/vuln-portal/vuln-portal.module';
 
 @Module({
@@ -63,6 +64,7 @@ import { VulnPortalModule } from './modules/vuln-portal/vuln-portal.module';
         ExceptionsModule,
         LicensesModule,
         ManualAdvisoriesModule,
+        SemgrepRulesModule,
         VulnPortalModule,
         DatabaseModule,
     ],
