@@ -22,7 +22,7 @@ import {
     Download,
     FileJson,
 } from 'lucide-react';
-import { useScan, useLicensesByScan, LicenseClassification } from '@/lib/api-hooks';
+import { useScan, useLicensesByScan, useScanBestFixes, LicenseClassification } from '@/lib/api-hooks';
 import { AiButton, AiResultPanel } from '@/components/ai';
 import { useAiExecution } from '@/hooks/use-ai-execution';
 import { downloadWithAuth } from '@/lib/api/fetch-utils';
@@ -104,6 +104,7 @@ export default function ScanDetailPage() {
     const id = params?.id as string;
     const { data: scan, isLoading, error, refetch } = useScan(id);
     const { data: licenses, isLoading: licensesLoading } = useLicensesByScan(id);
+    const { data: bestFixes } = useScanBestFixes(id);
     const [showLicenses, setShowLicenses] = useState(false);
     const [downloading, setDownloading] = useState<string | null>(null);
 
@@ -177,6 +178,15 @@ export default function ScanDetailPage() {
         ? [
             ['Failed Checks', vulnerabilities.length],
             ['Frameworks', formatOptionValue(evidence?.options?.frameworks)],
+            ['Input Kind', evidence?.inputKind || '-'],
+            ['Archive', evidence?.archiveType || '-'],
+        ]
+        : isSarifScan
+        ? [
+            ['Findings', vulnerabilities.length],
+            ['Profile', evidence?.options?.profile || '-'],
+            ['Languages', formatOptionValue(evidence?.options?.languages)],
+            ['Custom Rules', evidence?.options?.customRulesApplied ? 'applied' : '-'],
             ['Input Kind', evidence?.inputKind || '-'],
             ['Archive', evidence?.archiveType || '-'],
         ]
@@ -594,6 +604,25 @@ export default function ScanDetailPage() {
                                                 <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.timeout)}</span>
                                             </div>
                                         </>
+                                    ) : isSarifScan ? (
+                                        <>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Tool</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.scanner || '-'}{evidence.toolVersion ? ` ${evidence.toolVersion}` : ''}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Profile</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.options?.profile || '-'}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Languages</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.languages)}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500">Custom Rules</span>
+                                                <span className="font-medium text-slate-900 dark:text-white text-right">{evidence.options?.customRulesApplied ? 'applied' : '-'}</span>
+                                            </div>
+                                        </>
                                     ) : (
                                         <>
                                             <div className="flex justify-between gap-4">
@@ -655,6 +684,13 @@ export default function ScanDetailPage() {
                                                 </p>
                                             </div>
                                         ))
+                                    ) : isSarifScan ? (
+                                        <div className="text-sm">
+                                            <p className="font-medium text-slate-900 dark:text-white break-all">{evidence.originalFileName || targetName}</p>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                {evidence.inputKind || '-'}{evidence.archiveType ? ` / ${evidence.archiveType}` : ''} · findings {vulnerabilities.length}
+                                            </p>
+                                        </div>
                                     ) : (
                                         <p className="text-sm text-amber-600 dark:text-amber-300">
                                             Trivy Results가 0개입니다. 이 경우 검사 대상 형식, 스캔 모드, DB 설정을 다시 확인해야 합니다.
@@ -699,6 +735,52 @@ export default function ScanDetailPage() {
                 )}
             </div>
 
+            {/* Best Fix Suggestions */}
+            {bestFixes && (bestFixes.packageFixes.length > 0 || bestFixes.codeFixes.length > 0) && (
+                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Best Fix 제안</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                            공통 근원으로 묶었을 때 한 번의 조치로 여러 건이 해결되는 항목입니다.
+                        </p>
+                    </div>
+                    <div className="p-6 space-y-3">
+                        {bestFixes.packageFixes.slice(0, 5).map((fix) => (
+                            <div key={`pkg-${fix.pkgName}`} className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                                <div className="min-w-0">
+                                    <p className="font-medium text-slate-900 dark:text-white truncate">
+                                        <span className="text-emerald-600 dark:text-emerald-400">패키지 업그레이드</span>
+                                        <span className="mx-2 text-slate-300 dark:text-slate-600">|</span>
+                                        {fix.pkgName} <span className="text-slate-400">{fix.currentVersion}</span> → <span className="font-semibold">{fix.recommendedVersion}</span>
+                                    </p>
+                                    <p className="text-xs text-slate-500 mt-1 truncate">{fix.cveIds.join(', ')}</p>
+                                </div>
+                                <span className="shrink-0 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                    {fix.resolves}건 해결
+                                </span>
+                            </div>
+                        ))}
+                        {bestFixes.codeFixes.slice(0, 5).map((fix) => (
+                            <div key={`code-${fix.ruleId}-${fix.file}`} className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                                <div className="min-w-0">
+                                    <p className="font-medium text-slate-900 dark:text-white truncate">
+                                        <span className="text-violet-600 dark:text-violet-400">코드 패턴 수정</span>
+                                        <span className="mx-2 text-slate-300 dark:text-slate-600">|</span>
+                                        {fix.file}
+                                    </p>
+                                    <p className="text-xs text-slate-500 mt-1 truncate">
+                                        {fix.title || fix.ruleId} · {fix.locations.join(', ')}
+                                    </p>
+                                </div>
+                                <span className="shrink-0 px-3 py-1 rounded-full text-sm font-bold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                                    {fix.resolves}건 해결
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Vulnerabilities List */}
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
                 <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
@@ -739,7 +821,11 @@ export default function ScanDetailPage() {
                                         <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-500">
                                             <span className="flex items-center gap-1">
                                                 <Package className="h-3 w-3" />
-                                                {isZapScan ? `URL: ${vuln.pkgName || '-'}` : `${vuln.pkgName}@${vuln.pkgVersion}`}
+                                                {isZapScan
+                                                    ? `URL: ${vuln.pkgName || '-'}`
+                                                    : isSarifScan
+                                                        ? `${vuln.pkgName} (${vuln.pkgVersion || vuln.installedVersion || '-'})`
+                                                        : `${vuln.pkgName}@${vuln.pkgVersion || vuln.installedVersion || '-'}`}
                                             </span>
                                             {isZapScan && (
                                                 <span>Method: {vuln.installedVersion || vuln.pkgVersion || '-'}</span>

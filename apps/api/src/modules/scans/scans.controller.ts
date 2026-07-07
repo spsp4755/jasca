@@ -190,6 +190,14 @@ export class ScansController {
         return this.scansService.findById(id, (req as any).user);
     }
 
+    @Get(':id/best-fixes')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Best-fix suggestions: group open findings by common root (package upgrade / code pattern)' })
+    async getBestFixes(@Param('id') id: string, @Req() req: Request) {
+        return this.scansService.getBestFixes(id, (req as any).user);
+    }
+
     /**
      * Simple upload: Just send Trivy JSON directly
      * curl -X POST /api/scans/upload -H "Authorization: Bearer jasca_xxx" -H "Content-Type: application/json" -d @trivy.json
