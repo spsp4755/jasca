@@ -123,6 +123,7 @@ function parseSemgrepScanOptions(body: any): SemgrepScanOptions {
     return {
         profile,
         languages: parseListField(body.semgrepLanguages),
+        incremental: body.semgrepIncremental === 'true' || body.semgrepIncremental === true,
         timeout: typeof body.timeout === 'string' ? body.timeout : undefined,
     };
 }
@@ -369,7 +370,7 @@ export class ScansController {
             : scanner === 'semgrep'
                 ? await this.semgrepScanService.scanUploadedFile(
                     file.path,
-                    parseSemgrepScanOptions(body),
+                    { ...parseSemgrepScanOptions(body), projectId },
                     scanOperationId,
                 )
                 : await this.trivyScanService.scanUploadedFile(

@@ -421,6 +421,7 @@ export interface CheckovScanOptions {
 export interface SemgrepScanUiOptions {
     profile?: 'all' | 'security' | 'custom-only';
     languages?: string[];
+    incremental?: boolean;
     timeout?: string;
 }
 
@@ -496,6 +497,7 @@ export function useUploadScan() {
             if (scanTarget && semgrepOptions) {
                 if (semgrepOptions.profile) formData.append('semgrepProfile', semgrepOptions.profile);
                 if (semgrepOptions.languages?.length) formData.append('semgrepLanguages', semgrepOptions.languages.join(','));
+                if (semgrepOptions.incremental) formData.append('semgrepIncremental', 'true');
                 if (semgrepOptions.timeout) formData.append('timeout', semgrepOptions.timeout);
             }
 
