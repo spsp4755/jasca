@@ -32,9 +32,22 @@ describe('PolicyEngineService.verdict', () => {
     function buildService(evaluation: PolicyEvaluation, prismaOverrides: any = {}) {
         const prisma: any = {
             scanResult: {
-                findFirst: jest.fn().mockResolvedValue({ id: 'scan-latest', scannedAt: new Date('2026-07-07') }),
-                findUnique: jest.fn().mockResolvedValue({ scannedAt: new Date('2026-07-01') }),
+                findFirst: jest.fn().mockResolvedValue({
+                    id: 'scan-latest',
+                    scannedAt: new Date('2026-07-07'),
+                    sourceType: 'TRIVY_JSON',
+                    createdAt: new Date('2026-07-07'),
+                }),
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'scan-42',
+                    scannedAt: new Date('2026-07-01'),
+                    sourceType: 'TRIVY_JSON',
+                    createdAt: new Date('2026-07-01'),
+                }),
                 ...prismaOverrides,
+            },
+            scanVulnerability: {
+                findMany: jest.fn().mockResolvedValue([]),
             },
         };
         const service = new PolicyEngineService(prisma);
@@ -52,7 +65,34 @@ describe('PolicyEngineService.verdict', () => {
         expect(prisma.scanResult.findFirst).toHaveBeenCalledWith(
             expect.objectContaining({ where: { projectId: 'project-1' } }),
         );
-        expect(service.evaluate).toHaveBeenCalledWith('project-1', 'scan-latest', undefined, undefined);
+        expect(service.evaluate).toHaveBeenCalledWith('project-1', 'scan-latest', undefined, undefined, undefined);
+    });
+
+    it('excludes baseline vulnerabilities when newOnly is set', async () => {
+        const { service, prisma } = buildService(passingEvaluation);
+        // first findFirst resolves the latest scan, second resolves the baseline scan
+        prisma.scanResult.findFirst
+            .mockResolvedValueOnce({
+                id: 'scan-latest',
+                scannedAt: new Date('2026-07-07'),
+                sourceType: 'TRIVY_JSON',
+                createdAt: new Date('2026-07-07'),
+            })
+            .mockResolvedValueOnce({ id: 'scan-baseline' });
+        prisma.scanVulnerability.findMany.mockResolvedValue([{ vulnHash: 'hash-old' }]);
+
+        await service.verdict('project-1', undefined, undefined, undefined, true);
+
+        expect(prisma.scanVulnerability.findMany).toHaveBeenCalledWith(
+            expect.objectContaining({ where: { scanResultId: 'scan-baseline' } }),
+        );
+        expect(service.evaluate).toHaveBeenCalledWith(
+            'project-1',
+            'scan-latest',
+            undefined,
+            undefined,
+            new Set(['hash-old']),
+        );
     });
 
     it('returns FAIL with violations when evaluation blocks', async () => {
