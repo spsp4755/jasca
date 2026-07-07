@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     Controller,
     Get,
     Post,
@@ -9,6 +10,7 @@ import {
     Query,
     UseGuards,
 } from '@nestjs/common';
+import { Environment } from '@prisma/client';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -46,6 +48,27 @@ export class PoliciesController {
     @ApiQuery({ name: 'status', required: false })
     async findExceptions(@Query('status') status?: string, @CurrentUser() user?: any) {
         return this.policiesService.findExceptions(user, status);
+    }
+
+    // CI/CD deployment gate - must be before :id route to avoid being caught by it
+    @Get('verdict')
+    @ApiOperation({ summary: 'Policy PASS/FAIL verdict for CI/CD gates (latest scan unless scanResultId given)' })
+    @ApiQuery({ name: 'projectId', required: true })
+    @ApiQuery({ name: 'scanResultId', required: false })
+    @ApiQuery({ name: 'environment', required: false, enum: Environment })
+    async verdict(
+        @Query('projectId') projectId: string,
+        @Query('scanResultId') scanResultId?: string,
+        @Query('environment') environment?: Environment,
+        @CurrentUser() user?: any,
+    ) {
+        if (!projectId) {
+            throw new BadRequestException('projectId is required');
+        }
+        if (environment && !Object.values(Environment).includes(environment)) {
+            throw new BadRequestException(`Invalid environment: ${environment}`);
+        }
+        return this.policyEngine.verdict(projectId, scanResultId, environment, user);
     }
 
     @Get(':id')
