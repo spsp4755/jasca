@@ -210,6 +210,29 @@ export class PolicyEngineService {
             scanVulns = scanVulns.filter((v) => !excludeVulnHashes.has(v.vulnHash));
         }
 
+        // Grace period: a rule with conditions.gracePeriodDays only counts
+        // vulnerabilities first detected in this project more than N days ago
+        // (Veracode-style remediation grace period).
+        const needsFirstDetected = policies.some((p) =>
+            p.rules.some((r) => (r.conditions as any)?.gracePeriodDays !== undefined),
+        );
+        let firstDetectedAt: Map<string, Date> | undefined;
+        if (needsFirstDetected && scanVulns.length > 0) {
+            const grouped = await this.prisma.scanVulnerability.groupBy({
+                by: ['vulnHash'],
+                where: {
+                    vulnHash: { in: scanVulns.map((v) => v.vulnHash) },
+                    scanResult: { projectId },
+                },
+                _min: { createdAt: true },
+            });
+            firstDetectedAt = new Map(
+                grouped
+                    .filter((g) => g._min.createdAt)
+                    .map((g) => [g.vulnHash, g._min.createdAt as Date]),
+            );
+        }
+
         const result: PolicyEvaluation = {
             allowed: true,
             violations: [],
@@ -220,7 +243,7 @@ export class PolicyEngineService {
         // Evaluate each policy
         for (const policy of policies) {
             for (const rule of policy.rules) {
-                const matchedVulns = this.evaluateRule(rule, scanVulns, policy.exceptions);
+                const matchedVulns = this.evaluateRule(rule, scanVulns, policy.exceptions, firstDetectedAt);
 
                 if (matchedVulns.length > 0) {
                     const violation: PolicyViolation = {
@@ -265,6 +288,7 @@ export class PolicyEngineService {
             pkgName: string;
             pkgVersion: string;
             fixedVersion?: string | null;
+            vulnHash?: string;
             vulnerability: {
                 cveId: string;
                 severity: Severity;
@@ -273,10 +297,21 @@ export class PolicyEngineService {
             };
         }>,
         exceptions: PolicyExceptionType[],
+        firstDetectedAt?: Map<string, Date>,
     ) {
         const conditions = rule.conditions as any;
 
         let filtered = vulns.filter((v) => !this.isExcepted(v, exceptions));
+
+        if (conditions.gracePeriodDays !== undefined && firstDetectedAt) {
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - Number(conditions.gracePeriodDays));
+            filtered = filtered.filter((v) => {
+                const detected = v.vulnHash ? firstDetectedAt.get(v.vulnHash) : undefined;
+                // unknown first-detection dates are treated as overdue (fail-safe)
+                return !detected || detected <= cutoff;
+            });
+        }
 
         switch (rule.ruleType) {
             case 'SEVERITY_THRESHOLD':

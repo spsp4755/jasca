@@ -555,6 +555,7 @@ export interface Vulnerability {
     status: 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'FIX_SUBMITTED' | 'VERIFYING' | 'FIXED' | 'CLOSED' | 'IGNORED' | 'FALSE_POSITIVE';
     title: string;
     description?: string;
+    cweIds?: string[];
     assigneeId?: string;
     assignee?: {
         name: string;
@@ -659,6 +660,7 @@ export function useVulnerability(id: string) {
                 severity: item.vulnerability?.severity || item.severity || 'UNKNOWN',
                 title: item.vulnerability?.title || item.title || '',
                 description: item.vulnerability?.description || item.description || '',
+                cweIds: item.vulnerability?.cweIds || item.cweIds || [],
                 // Direct fields from scanVulnerability
                 pkgName: item.pkgName || '',
                 installedVersion: item.pkgVersion || item.installedVersion || '',
@@ -2587,5 +2589,59 @@ export function useProjectLicenseSummary(params?: {
             const queryString = searchParams.toString();
             return authFetch(`${API_BASE}/licenses/by-project-summary${queryString ? `?${queryString}` : ''}`);
         },
+    });
+}
+
+// ============================================
+// Compliance & Remediation (offline, bundled mappings)
+// ============================================
+
+export interface OwaspCategorySummary {
+    id: string;
+    name: string;
+    count: number;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    cweIds: string[];
+    sampleCveIds: string[];
+}
+
+export interface CweTop25Summary {
+    rank: number;
+    cweId: string;
+    name: string;
+    count: number;
+}
+
+export interface OwaspComplianceReport {
+    projectId: string;
+    generatedAt: string;
+    totalOpenVulnerabilities: number;
+    owaspTop10: OwaspCategorySummary[];
+    cweTop25: CweTop25Summary[];
+    unmappedCount: number;
+}
+
+export function useOwaspComplianceReport(projectId?: string) {
+    return useQuery<OwaspComplianceReport>({
+        queryKey: ['owasp-compliance-report', projectId],
+        queryFn: () => authFetch(`${API_BASE}/reports/compliance?projectId=${projectId}`),
+        enabled: !!projectId,
+    });
+}
+
+export interface RemediationGuidance {
+    cweId: string;
+    guidance: string;
+}
+
+export function useRemediationGuidance(cweIds?: string[]) {
+    const key = (cweIds || []).join(',');
+    return useQuery<RemediationGuidance[]>({
+        queryKey: ['remediation-guidance', key],
+        queryFn: () => authFetch(`${API_BASE}/reports/remediation?cweIds=${encodeURIComponent(key)}`),
+        enabled: key.length > 0,
     });
 }
