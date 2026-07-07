@@ -8,8 +8,8 @@ import { useCancelTrivyScan, useOrganizations, useProjects, useUploadScan, useZa
 import type { CheckovScanOptions, TrivyScanOptions } from '@/lib/api-hooks';
 
 type UploadMode = 'scan-target' | 'result-file';
-type SourceType = 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'ZAP_JSON' | 'MANUAL';
-type ScannerProvider = 'trivy' | 'checkov' | 'zap';
+type SourceType = 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'ZAP_JSON' | 'SARIF' | 'MANUAL';
+type ScannerProvider = 'trivy' | 'checkov' | 'zap' | 'semgrep';
 
 const SEVERITY_OPTIONS = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'];
 const SCANNER_OPTIONS = [
@@ -105,8 +105,9 @@ export default function NewScanPage() {
     const isScanningTarget = uploadMode === 'scan-target';
     const isCheckovScan = isScanningTarget && scannerProvider === 'checkov';
     const isZapScan = isScanningTarget && scannerProvider === 'zap';
-    const scanActionLabel = isZapScan ? 'ZAP 검사 실행' : isCheckovScan ? 'Checkov 검사 실행' : 'Trivy 검사 실행';
-    const scanProgressLabel = isZapScan ? 'ZAP 검사 중...' : isCheckovScan ? 'Checkov 검사 중...' : 'Trivy 검사 중...';
+    const isSemgrepScan = isScanningTarget && scannerProvider === 'semgrep';
+    const scanActionLabel = isZapScan ? 'ZAP 검사 실행' : isCheckovScan ? 'Checkov 검사 실행' : isSemgrepScan ? 'Semgrep 검사 실행' : 'Trivy 검사 실행';
+    const scanProgressLabel = isZapScan ? 'ZAP 검사 중...' : isCheckovScan ? 'Checkov 검사 중...' : isSemgrepScan ? 'Semgrep 검사 중...' : 'Trivy 검사 중...';
     const missingZapRequiredInput = isZapScan && (!zapTargetUrl.trim() || (zapAuthType !== 'none' && !zapAuthValue.trim()));
     const isSubmitDisabled = uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (isZapScan ? missingZapRequiredInput : !file);
     const acceptedFiles = isScanningTarget
@@ -134,7 +135,7 @@ export default function NewScanPage() {
         setUploadMode(mode);
         resetFileState();
         if (mode === 'scan-target') {
-            setSourceType(scannerProvider === 'checkov' ? 'CHECKOV_JSON' : scannerProvider === 'zap' ? 'ZAP_JSON' : 'TRIVY_JSON');
+            setSourceType(scannerProvider === 'checkov' ? 'CHECKOV_JSON' : scannerProvider === 'zap' ? 'ZAP_JSON' : scannerProvider === 'semgrep' ? 'SARIF' : 'TRIVY_JSON');
         }
     };
 
@@ -144,7 +145,7 @@ export default function NewScanPage() {
             setFile(null);
         }
         if (uploadMode === 'scan-target') {
-            setSourceType(scanner === 'checkov' ? 'CHECKOV_JSON' : scanner === 'zap' ? 'ZAP_JSON' : 'TRIVY_JSON');
+            setSourceType(scanner === 'checkov' ? 'CHECKOV_JSON' : scanner === 'zap' ? 'ZAP_JSON' : scanner === 'semgrep' ? 'SARIF' : 'TRIVY_JSON');
         }
     };
 
@@ -315,7 +316,9 @@ export default function NewScanPage() {
                 scanOperationId: nextOperationId || undefined,
                 signal: uploadAbortController.signal,
                 metadata: {
-                    sourceType: isScanningTarget ? (scannerProvider === 'checkov' ? 'CHECKOV_JSON' : 'TRIVY_JSON') : sourceType,
+                    sourceType: isScanningTarget
+                        ? (scannerProvider === 'checkov' ? 'CHECKOV_JSON' : scannerProvider === 'semgrep' ? 'SARIF' : 'TRIVY_JSON')
+                        : sourceType,
                     projectName: !selectedProjectId ? projectName.trim() : undefined,
                     organizationId: selectedOrgId || undefined,
                     imageRef: file.name,
@@ -425,6 +428,7 @@ export default function NewScanPage() {
                                         { value: 'trivy' as const, label: 'Trivy', description: '패키지 취약점, 라이선스, Secret, Misconfig 검사' },
                                         { value: 'checkov' as const, label: 'Checkov', description: 'IaC, Kubernetes, Dockerfile, CI 설정 오류 검사' },
                                         { value: 'zap' as const, label: 'ZAP', description: '웹 URL 대상 DAST Baseline/Passive 검사' },
+                                        { value: 'semgrep' as const, label: 'Semgrep (SAST)', description: '소스코드 취약 패턴 검사 — 소스 zip/tar 업로드' },
                                     ].map((scanner) => (
                                         <button
                                             key={scanner.value}
@@ -568,6 +572,7 @@ export default function NewScanPage() {
                                     <option value="TRIVY_JSON">Trivy JSON</option>
                                     <option value="TRIVY_SARIF">Trivy SARIF</option>
                                     <option value="CHECKOV_JSON">Checkov JSON</option>
+                                    <option value="SARIF">SARIF (외부 SAST 결과 — Semgrep, CodeQL, Checkmarx 등)</option>
                                     <option value="MANUAL">수동 업로드</option>
                                 </select>
                             </div>
@@ -771,7 +776,17 @@ export default function NewScanPage() {
                                 </div>
                             </div>
                         )}
-                        {!isCheckovScan && !isZapScan && (
+                        {isSemgrepScan && (
+                            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                                <h2 className="text-lg font-semibold text-white">Semgrep 실행 안내</h2>
+                                <p className="mt-2 text-sm text-slate-400">
+                                    소스코드(.zip, .tar, .tar.gz) 또는 단일 소스 파일을 업로드하면 서버에 내장된 Semgrep 룰로
+                                    소스코드 취약 패턴(SAST)을 검사합니다. 결과는 SAST (SARIF) 카테고리로 등록되며, 폐쇄망에서
+                                    외부 연결 없이 동작합니다.
+                                </p>
+                            </div>
+                        )}
+                        {!isCheckovScan && !isZapScan && !isSemgrepScan && (
                             <>
                                 <h2 className="text-lg font-semibold text-white">Trivy 실행 옵션</h2>
                                 <p className="mt-2 text-sm text-slate-400">
