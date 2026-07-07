@@ -384,7 +384,7 @@ export function useScan(id: string) {
 
 // Upload scan DTO interface
 export interface UploadScanDto {
-    sourceType: 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'ZAP_JSON' | 'CI_BAMBOO' | 'CI_GITLAB' | 'CI_JENKINS' | 'CI_GITHUB_ACTIONS' | 'MANUAL';
+    sourceType: 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'ZAP_JSON' | 'SARIF' | 'CI_BAMBOO' | 'CI_GITLAB' | 'CI_JENKINS' | 'CI_GITHUB_ACTIONS' | 'MANUAL';
     projectName?: string;
     organizationId?: string;
     imageRef?: string;
@@ -451,7 +451,7 @@ export function useUploadScan() {
             file: File;
             metadata: UploadScanDto;
             scanTarget?: boolean;
-            scanner?: 'trivy' | 'checkov';
+            scanner?: 'trivy' | 'checkov' | 'semgrep';
             trivyOptions?: TrivyScanOptions;
             checkovOptions?: CheckovScanOptions;
             scanOperationId?: string;
