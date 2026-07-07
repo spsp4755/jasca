@@ -418,6 +418,12 @@ export interface CheckovScanOptions {
     timeout?: string;
 }
 
+export interface SemgrepScanUiOptions {
+    profile?: 'all' | 'security' | 'custom-only';
+    languages?: string[];
+    timeout?: string;
+}
+
 export interface ZapScanRequest {
     projectId?: string;
     targetUrl: string;
@@ -444,6 +450,7 @@ export function useUploadScan() {
             scanner,
             trivyOptions,
             checkovOptions,
+            semgrepOptions,
             scanOperationId,
             signal,
         }: {
@@ -454,6 +461,7 @@ export function useUploadScan() {
             scanner?: 'trivy' | 'checkov' | 'semgrep';
             trivyOptions?: TrivyScanOptions;
             checkovOptions?: CheckovScanOptions;
+            semgrepOptions?: SemgrepScanUiOptions;
             scanOperationId?: string;
             signal?: AbortSignal;
         }) => {
@@ -483,6 +491,12 @@ export function useUploadScan() {
                     if (value === undefined || value === null) return;
                     formData.append(key, Array.isArray(value) ? value.join(',') : String(value));
                 });
+            }
+
+            if (scanTarget && semgrepOptions) {
+                if (semgrepOptions.profile) formData.append('semgrepProfile', semgrepOptions.profile);
+                if (semgrepOptions.languages?.length) formData.append('semgrepLanguages', semgrepOptions.languages.join(','));
+                if (semgrepOptions.timeout) formData.append('timeout', semgrepOptions.timeout);
             }
 
             if (scanTarget && scanOperationId) {

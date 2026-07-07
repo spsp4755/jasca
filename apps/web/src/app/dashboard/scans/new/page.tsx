@@ -93,6 +93,10 @@ export default function NewScanPage() {
         quiet: true,
         timeout: '10m',
     });
+    const [semgrepOptions, setSemgrepOptions] = useState<{ profile: 'all' | 'security' | 'custom-only'; languages: string[] }>({
+        profile: 'all',
+        languages: [],
+    });
 
     const { data: projectsData } = useProjects();
     const { data: orgsData } = useOrganizations();
@@ -313,6 +317,7 @@ export default function NewScanPage() {
                 scanner: isScanningTarget && scannerProvider !== 'zap' ? scannerProvider : undefined,
                 trivyOptions: isScanningTarget && scannerProvider === 'trivy' ? trivyOptions : undefined,
                 checkovOptions: isScanningTarget && scannerProvider === 'checkov' ? checkovOptions : undefined,
+                semgrepOptions: isScanningTarget && scannerProvider === 'semgrep' ? semgrepOptions : undefined,
                 scanOperationId: nextOperationId || undefined,
                 signal: uploadAbortController.signal,
                 metadata: {
@@ -777,13 +782,69 @@ export default function NewScanPage() {
                             </div>
                         )}
                         {isSemgrepScan && (
-                            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-                                <h2 className="text-lg font-semibold text-white">Semgrep 실행 안내</h2>
-                                <p className="mt-2 text-sm text-slate-400">
-                                    소스코드(.zip, .tar, .tar.gz) 또는 단일 소스 파일을 업로드하면 서버에 내장된 Semgrep 룰로
-                                    소스코드 취약 패턴(SAST)을 검사합니다. 결과는 SAST (SARIF) 카테고리로 등록되며, 폐쇄망에서
-                                    외부 연결 없이 동작합니다.
-                                </p>
+                            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 space-y-4">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-white">Semgrep 실행 옵션</h2>
+                                    <p className="mt-2 text-sm text-slate-400">
+                                        소스코드(.zip, .tar, .tar.gz)를 업로드하면 서버에 내장된 Semgrep 룰로 소스코드
+                                        취약 패턴(SAST)을 검사합니다. 폐쇄망에서 외부 연결 없이 동작합니다.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-slate-300">스캔 프로파일</label>
+                                    <div className="space-y-2">
+                                        {([
+                                            { value: 'all', label: '전체 룰', description: '번들 룰 전체 + 커스텀 룰 (가장 넓은 커버리지)' },
+                                            { value: 'security', label: '보안 룰만', description: 'security 카테고리 룰만 적용 (노이즈·시간 감소)' },
+                                            { value: 'custom-only', label: '커스텀 룰만', description: '관리자가 등록한 조직 커스텀 룰만 적용' },
+                                        ] as const).map((p) => (
+                                            <label key={p.value} className="flex items-start gap-2 text-sm text-slate-300 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="semgrepProfile"
+                                                    checked={semgrepOptions.profile === p.value}
+                                                    onChange={() => setSemgrepOptions((prev) => ({ ...prev, profile: p.value }))}
+                                                    className="mt-0.5"
+                                                />
+                                                <span>
+                                                    <span className="font-medium text-white">{p.label}</span>
+                                                    <span className="ml-2 text-xs text-slate-400">{p.description}</span>
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                {semgrepOptions.profile !== 'custom-only' && (
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-slate-300">
+                                            언어 제한 <span className="font-normal text-slate-500">(선택 없음 = 전체 언어)</span>
+                                        </label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {['javascript', 'typescript', 'python', 'java', 'go', 'ruby', 'php', 'c', 'csharp', 'kotlin', 'rust', 'terraform', 'dockerfile'].map((lang) => {
+                                                const checked = semgrepOptions.languages.includes(lang);
+                                                return (
+                                                    <button
+                                                        key={lang}
+                                                        type="button"
+                                                        onClick={() => setSemgrepOptions((prev) => ({
+                                                            ...prev,
+                                                            languages: prev.languages.includes(lang)
+                                                                ? prev.languages.filter((l) => l !== lang)
+                                                                : [...prev.languages, lang],
+                                                        }))}
+                                                        className={`px-2.5 py-1 rounded-full text-xs transition ${
+                                                            checked
+                                                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400'
+                                                                : 'border border-slate-700 text-slate-400 hover:border-slate-500'
+                                                        }`}
+                                                    >
+                                                        {lang}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                         {!isCheckovScan && !isZapScan && !isSemgrepScan && (
