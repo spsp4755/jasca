@@ -2645,3 +2645,58 @@ export function useRemediationGuidance(cweIds?: string[]) {
         enabled: key.length > 0,
     });
 }
+
+// ============================================
+// Custom Semgrep Rules (CxQL-style customization)
+// ============================================
+
+export interface SemgrepRule {
+    id: string;
+    name: string;
+    description?: string | null;
+    yaml: string;
+    isActive: boolean;
+    createdBy?: { id: string; name: string; email: string } | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface SemgrepRuleInput {
+    name: string;
+    description?: string;
+    yaml: string;
+    isActive?: boolean;
+}
+
+export function useSemgrepRules() {
+    return useQuery<SemgrepRule[]>({
+        queryKey: ['semgrep-rules'],
+        queryFn: () => authFetch(`${API_BASE}/semgrep-rules`),
+    });
+}
+
+export function useCreateSemgrepRule() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (input: SemgrepRuleInput) =>
+            authFetch(`${API_BASE}/semgrep-rules`, { method: 'POST', body: JSON.stringify(input) }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['semgrep-rules'] }),
+    });
+}
+
+export function useUpdateSemgrepRule() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ id, ...input }: Partial<SemgrepRuleInput> & { id: string }) =>
+            authFetch(`${API_BASE}/semgrep-rules/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['semgrep-rules'] }),
+    });
+}
+
+export function useDeleteSemgrepRule() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id: string) => authFetch(`${API_BASE}/semgrep-rules/${id}`, { method: 'DELETE' }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['semgrep-rules'] }),
+    });
+}
