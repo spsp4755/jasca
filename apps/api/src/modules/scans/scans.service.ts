@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { TrivyParserService, ParsedScanResult } from './services/trivy-parser.service';
 import { CheckovParserService } from './services/checkov-parser.service';
 import { ZapParserService } from './services/zap-parser.service';
+import { SarifParserService } from './services/sarif-parser.service';
 import { VulnSyncService } from './services/vuln-sync.service';
 import { LicenseParserService } from '../licenses/services/license-parser.service';
 import { UploadScanDto } from './dto/upload-scan.dto';
@@ -33,6 +34,7 @@ export class ScansService {
         private readonly trivyParser: TrivyParserService,
         private readonly checkovParser: CheckovParserService,
         private readonly zapParser: ZapParserService,
+        private readonly sarifParser: SarifParserService,
         private readonly licenseParser: LicenseParserService,
         private readonly vulnSyncService: VulnSyncService,
         private readonly policyEngine: PolicyEngineService,
@@ -45,7 +47,21 @@ export class ScansService {
     }
 
     private getScanEvidence(rawResult: any) {
-        return rawResult?.Metadata?.JascaScanEvidence || null;
+        const evidence = rawResult?.Metadata?.JascaScanEvidence;
+        if (evidence) return evidence;
+
+        // Uploaded SARIF files carry no JascaScanEvidence; derive the scanner
+        // from the SARIF tool driver so the UI can attribute the result.
+        const driver = rawResult?.runs?.[0]?.tool?.driver;
+        if (driver?.name) {
+            return {
+                scanner: String(driver.name).toLowerCase(),
+                sourceType: 'SARIF',
+                toolVersion: driver.version,
+            };
+        }
+
+        return null;
     }
 
     private getTotalFindingCount(summary?: { critical?: number; high?: number; medium?: number; low?: number; unknown?: number; total?: number }) {
@@ -436,7 +452,9 @@ export class ScansService {
             ? this.checkovParser.parse(rawResult)
             : dto.sourceType === 'ZAP_JSON'
                 ? this.zapParser.parse(rawResult)
-                : this.trivyParser.parse(rawResult, dto.sourceType);
+                : dto.sourceType === 'SARIF'
+                    ? this.sarifParser.parse(rawResult)
+                    : this.trivyParser.parse(rawResult, dto.sourceType);
 
         // Resolve project - either use provided projectId or auto-create
         const resolvedProjectId = await this.resolveProject(projectId, dto, parsed.artifactName, currentUser);
@@ -494,7 +512,7 @@ export class ScansService {
         }
 
         // Process licenses from package-oriented scanners only.
-        if (dto.sourceType !== 'CHECKOV_JSON' && dto.sourceType !== 'ZAP_JSON') {
+        if (dto.sourceType !== 'CHECKOV_JSON' && dto.sourceType !== 'ZAP_JSON' && dto.sourceType !== 'SARIF') {
             try {
                 const licenseResult = await this.licenseParser.processLicenses(scanResult.id, rawResult);
                 this.logger.log(`Processed ${licenseResult.processed} package licenses for scan ${scanResult.id}`);
