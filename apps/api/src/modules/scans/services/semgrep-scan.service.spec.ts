@@ -58,6 +58,82 @@ describe('SemgrepScanService.resolveBundledConfigs', () => {
     });
 });
 
+describe('SemgrepScanService incremental helpers', () => {
+    const service = new SemgrepScanService(undefined, undefined);
+    const anyService = service as any;
+
+    it('computeManifest hashes files with relative posix paths', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semgrep-manifest-'));
+        try {
+            fs.mkdirSync(path.join(dir, 'src'));
+            fs.writeFileSync(path.join(dir, 'src', 'a.ts'), 'aaa');
+            fs.writeFileSync(path.join(dir, 'b.ts'), 'bbb');
+
+            const manifest = anyService.computeManifest(dir);
+            expect(Object.keys(manifest).sort()).toEqual(['b.ts', 'src/a.ts']);
+            expect(manifest['src/a.ts']).toMatch(/^[0-9a-f]{64}$/);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('diffManifests classifies changed, unchanged, and deleted files', () => {
+        const diff = anyService.diffManifests(
+            { 'same.ts': 'h1', 'mod.ts': 'h2', 'gone.ts': 'h3' },
+            { 'same.ts': 'h1', 'mod.ts': 'h2-new', 'new.ts': 'h4' },
+        );
+        expect(diff.unchanged).toEqual(['same.ts']);
+        expect(diff.changed.sort()).toEqual(['mod.ts', 'new.ts']);
+        expect(diff.deleted).toEqual(['gone.ts']);
+    });
+
+    const sarifWith = (results: any[], rules: any[] = []) => ({
+        version: '2.1.0',
+        runs: [{ tool: { driver: { name: 'Semgrep', rules } }, results }],
+    });
+    const finding = (ruleId: string, file: string) => ({
+        ruleId,
+        message: { text: 'm' },
+        locations: [{ physicalLocation: { artifactLocation: { uri: file } } }],
+    });
+
+    it('mergeBaselineResults appends unchanged-file findings and their rules', () => {
+        const newSarif = sarifWith([finding('r-new', 'changed.ts')], [{ id: 'r-new' }]);
+        const baseline = sarifWith(
+            [finding('r-old', 'same.ts'), finding('r-old', 'changed.ts'), finding('r-old', 'gone.ts')],
+            [{ id: 'r-old' }],
+        );
+
+        const reused = anyService.mergeBaselineResults(newSarif, baseline, new Set(['same.ts']));
+
+        expect(reused).toBe(1); // only same.ts survives; changed.ts is rescanned, gone.ts dropped
+        const run = newSarif.runs[0];
+        expect(run.results).toHaveLength(2);
+        expect(run.tool.driver.rules.map((r: any) => r.id).sort()).toEqual(['r-new', 'r-old']);
+    });
+
+    it('buildSarifFromBaseline keeps only surviving files', () => {
+        const baseline = sarifWith([finding('r', 'keep.ts'), finding('r', 'deleted.ts')], [{ id: 'r' }]);
+        const rebuilt = anyService.buildSarifFromBaseline(baseline, new Set(['keep.ts']));
+        expect(rebuilt.runs[0].results).toHaveLength(1);
+        expect(rebuilt.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri).toBe('keep.ts');
+    });
+
+    it('findBaseline picks the newest scan that has a manifest', async () => {
+        const prisma: any = {
+            scanResult: {
+                findMany: jest.fn().mockResolvedValue([
+                    { id: 'no-manifest', rawResult: {}, createdAt: new Date() },
+                    { id: 'with-manifest', rawResult: { Metadata: { JascaFileManifest: { 'a.ts': 'h' } } }, createdAt: new Date() },
+                ]),
+            },
+        };
+        const svc: any = new SemgrepScanService(undefined, prisma);
+        const baseline = await svc.findBaseline('p1');
+        expect(baseline.id).toBe('with-manifest');
+    });
+});
+
 describe('SemgrepScanService.writeCustomRules', () => {
     let tmpDir: string;
 
