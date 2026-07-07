@@ -23,6 +23,7 @@ const SOURCE_TYPES: { value: UploadScanDto['sourceType']; label: string }[] = [
     { value: 'TRIVY_JSON', label: 'Trivy JSON' },
     { value: 'TRIVY_SARIF', label: 'Trivy SARIF' },
     { value: 'CHECKOV_JSON', label: 'Checkov JSON' },
+    { value: 'SARIF', label: 'SARIF (외부 SAST 결과 — Semgrep, CodeQL, Checkmarx 등)' },
     { value: 'MANUAL', label: '수동 업로드' },
     { value: 'CI_GITHUB_ACTIONS', label: 'GitHub Actions' },
     { value: 'CI_GITLAB', label: 'GitLab CI' },
