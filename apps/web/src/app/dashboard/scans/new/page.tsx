@@ -93,9 +93,10 @@ export default function NewScanPage() {
         quiet: true,
         timeout: '10m',
     });
-    const [semgrepOptions, setSemgrepOptions] = useState<{ profile: 'all' | 'security' | 'custom-only'; languages: string[] }>({
+    const [semgrepOptions, setSemgrepOptions] = useState<{ profile: 'all' | 'security' | 'custom-only'; languages: string[]; incremental: boolean }>({
         profile: 'all',
         languages: [],
+        incremental: false,
     });
 
     const { data: projectsData } = useProjects();
@@ -317,7 +318,9 @@ export default function NewScanPage() {
                 scanner: isScanningTarget && scannerProvider !== 'zap' ? scannerProvider : undefined,
                 trivyOptions: isScanningTarget && scannerProvider === 'trivy' ? trivyOptions : undefined,
                 checkovOptions: isScanningTarget && scannerProvider === 'checkov' ? checkovOptions : undefined,
-                semgrepOptions: isScanningTarget && scannerProvider === 'semgrep' ? semgrepOptions : undefined,
+                semgrepOptions: isScanningTarget && scannerProvider === 'semgrep'
+                    ? { ...semgrepOptions, incremental: semgrepOptions.incremental && !!selectedProjectId }
+                    : undefined,
                 scanOperationId: nextOperationId || undefined,
                 signal: uploadAbortController.signal,
                 metadata: {
@@ -813,6 +816,25 @@ export default function NewScanPage() {
                                             </label>
                                         ))}
                                     </div>
+                                </div>
+                                <div>
+                                    <label className={`flex items-start gap-2 text-sm ${selectedProjectId ? 'text-slate-300 cursor-pointer' : 'text-slate-500'}`}>
+                                        <input
+                                            type="checkbox"
+                                            disabled={!selectedProjectId}
+                                            checked={semgrepOptions.incremental && !!selectedProjectId}
+                                            onChange={(e) => setSemgrepOptions((prev) => ({ ...prev, incremental: e.target.checked }))}
+                                            className="mt-0.5"
+                                        />
+                                        <span>
+                                            <span className="font-medium text-white">증분 스캔</span>
+                                            <span className="ml-2 text-xs text-slate-400">
+                                                {selectedProjectId
+                                                    ? '직전 스캔 대비 변경된 파일만 검사하고 결과를 병합합니다 (빠름)'
+                                                    : '기존 프로젝트를 선택하면 사용할 수 있습니다'}
+                                            </span>
+                                        </span>
+                                    </label>
                                 </div>
                                 {semgrepOptions.profile !== 'custom-only' && (
                                     <div>

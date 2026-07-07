@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable, Logger, Optional, RequestTimeoutException, ServiceUnavailableException } from '@nestjs/common';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { SemgrepRulesService } from '../../semgrep-rules/semgrep-rules.service';
 
 const execFileAsync = promisify(execFile);
@@ -19,7 +21,22 @@ export interface SemgrepScanOptions {
     profile?: SemgrepScanProfile;
     /** 번들 룰을 특정 언어 디렉토리로 제한 (예: ['javascript', 'python']) */
     languages?: string[];
+    /** 직전 스캔 대비 변경된 파일만 스캔하고 결과를 병합 (Checkmarx 증분 스캔 방식) */
+    incremental?: boolean;
+    /** incremental 기준선(baseline) 조회에 필요한 프로젝트 */
+    projectId?: string;
 }
+
+type FileManifest = Record<string, string>; // relative posix path -> sha256
+
+interface ManifestDiff {
+    changed: string[]; // new or modified
+    unchanged: string[];
+    deleted: string[];
+}
+
+// ponytail: incremental falls back to a full scan above this to avoid huge arg lists
+const MAX_INCREMENTAL_TARGETS = 500;
 
 interface PreparedTarget {
     targetPath: string;
@@ -41,7 +58,10 @@ export class SemgrepScanService {
     private readonly archiveMaxEntries = Number(process.env.SEMGREP_ARCHIVE_MAX_ENTRIES || DEFAULT_ARCHIVE_MAX_ENTRIES);
     private readonly activeScans = new Map<string, { cancel: () => void; startedAt: number }>();
 
-    constructor(@Optional() private readonly semgrepRulesService?: SemgrepRulesService) { }
+    constructor(
+        @Optional() private readonly semgrepRulesService?: SemgrepRulesService,
+        @Optional() private readonly prisma?: PrismaService,
+    ) { }
 
     async scanUploadedFile(filePath: string, options: SemgrepScanOptions = {}, operationId?: string): Promise<any> {
         const uploadDir = path.dirname(filePath);
@@ -64,22 +84,72 @@ export class SemgrepScanService {
             if (bundledConfigs.length === 0 && !customRulesDir) {
                 throw new BadRequestException('적용할 룰이 없습니다. custom-only 프로파일은 활성화된 커스텀 룰이 필요합니다.');
             }
-            const args = [
-                'scan',
-                '--sarif',
-                '--metrics=off',
-                '--disable-version-check',
-                '--quiet',
-                ...bundledConfigs.flatMap((config) => ['--config', config]),
-                ...(customRulesDir ? ['--config', customRulesDir] : []),
-                prepared.targetPath,
-            ];
-            this.logger.log(`Semgrep scan prepared. operationId=${operationId || 'n/a'} input=${prepared.inputKind} file=${path.basename(filePath)}`);
 
-            const stdout = await this.runSemgrep(args, timeoutMs, operationId);
-            const result = JSON.parse(stdout);
+            // Incremental scan: compare the file manifest against the latest
+            // baseline of the same project and only scan changed files.
+            const cwd = prepared.inputKind === 'directory' ? prepared.targetPath : path.dirname(prepared.targetPath);
+            const manifest = prepared.inputKind === 'directory' ? this.computeManifest(prepared.targetPath) : null;
+            let baseline: { id: string; rawResult: any; createdAt: Date } | null = null;
+            let diff: ManifestDiff | null = null;
+            let incrementalSkipReason: string | null = null;
+
+            if (options.incremental) {
+                if (!manifest) {
+                    incrementalSkipReason = '단일 파일 업로드는 증분 스캔을 지원하지 않습니다';
+                } else if (!options.projectId || !this.prisma) {
+                    incrementalSkipReason = '기존 프로젝트를 선택해야 증분 스캔이 가능합니다';
+                } else {
+                    baseline = await this.findBaseline(options.projectId);
+                    if (!baseline) {
+                        incrementalSkipReason = '비교할 이전 Semgrep 스캔이 없습니다';
+                    } else if (await this.customRulesChangedSince(baseline.createdAt)) {
+                        baseline = null;
+                        incrementalSkipReason = '커스텀 룰이 변경되어 전체 스캔으로 전환합니다';
+                    } else {
+                        diff = this.diffManifests(baseline.rawResult?.Metadata?.JascaFileManifest || {}, manifest);
+                        if (diff.changed.length > MAX_INCREMENTAL_TARGETS) {
+                            baseline = null;
+                            diff = null;
+                            incrementalSkipReason = `변경 파일이 ${MAX_INCREMENTAL_TARGETS}개를 초과해 전체 스캔으로 전환합니다`;
+                        }
+                    }
+                }
+            }
+            const isIncremental = Boolean(options.incremental && baseline && diff);
+
+            let result: any;
+            if (isIncremental && diff!.changed.length === 0) {
+                // nothing changed: reuse the baseline results for surviving files
+                result = this.buildSarifFromBaseline(baseline!.rawResult, new Set(diff!.unchanged));
+                this.logger.log(`Semgrep incremental scan: no changed files, reused baseline ${baseline!.id}`);
+            } else {
+                const targets = isIncremental ? diff!.changed : ['.'];
+                const args = [
+                    'scan',
+                    '--sarif',
+                    '--metrics=off',
+                    '--disable-version-check',
+                    '--quiet',
+                    ...bundledConfigs.flatMap((config) => ['--config', config]),
+                    ...(customRulesDir ? ['--config', customRulesDir] : []),
+                    ...(prepared.inputKind === 'directory' ? targets : [path.basename(prepared.targetPath)]),
+                ];
+                this.logger.log(`Semgrep scan prepared. operationId=${operationId || 'n/a'} input=${prepared.inputKind} incremental=${isIncremental} targets=${prepared.inputKind === 'directory' ? targets.length : 1} file=${path.basename(filePath)}`);
+
+                const stdout = await this.runSemgrep(args, timeoutMs, operationId, cwd);
+                result = JSON.parse(stdout);
+
+                if (isIncremental) {
+                    const reused = this.mergeBaselineResults(result, baseline!.rawResult, new Set(diff!.unchanged));
+                    this.logger.log(`Semgrep incremental scan: ${diff!.changed.length} changed file(s) scanned, ${reused} finding(s) reused from baseline ${baseline!.id}`);
+                }
+            }
+
             // Same evidence convention as the other scanner services
             result.Metadata = result.Metadata || {};
+            if (manifest) {
+                result.Metadata.JascaFileManifest = manifest;
+            }
             result.Metadata.JascaScanEvidence = {
                 executedBy: 'jasca',
                 scanner: 'semgrep',
@@ -96,7 +166,19 @@ export class SemgrepScanService {
                     languages: options.languages || [],
                     timeout: options.timeout || '10m',
                     customRulesApplied: Boolean(customRulesDir),
+                    incrementalRequested: Boolean(options.incremental),
                 },
+                incremental: options.incremental
+                    ? (isIncremental
+                        ? {
+                            applied: true,
+                            baselineScanId: baseline!.id,
+                            changedFiles: diff!.changed.length,
+                            unchangedFiles: diff!.unchanged.length,
+                            deletedFiles: diff!.deleted.length,
+                        }
+                        : { applied: false, reason: incrementalSkipReason })
+                    : undefined,
             };
             return result;
         } catch (error) {
@@ -124,6 +206,99 @@ export class SemgrepScanService {
         }
         activeScan.cancel();
         return true;
+    }
+
+    /** sha256 manifest of every file under dir (relative posix paths). */
+    private computeManifest(dir: string): FileManifest {
+        const manifest: FileManifest = {};
+        const walk = (current: string) => {
+            for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+                const full = path.join(current, entry.name);
+                if (entry.isDirectory()) {
+                    walk(full);
+                } else if (entry.isFile()) {
+                    const rel = path.relative(dir, full).split(path.sep).join('/');
+                    manifest[rel] = createHash('sha256').update(fs.readFileSync(full)).digest('hex');
+                }
+            }
+        };
+        walk(dir);
+        return manifest;
+    }
+
+    private diffManifests(baseline: FileManifest, current: FileManifest): ManifestDiff {
+        const changed: string[] = [];
+        const unchanged: string[] = [];
+        for (const [file, hash] of Object.entries(current)) {
+            if (baseline[file] === hash) unchanged.push(file);
+            else changed.push(file);
+        }
+        const deleted = Object.keys(baseline).filter((file) => !(file in current));
+        return { changed, unchanged, deleted };
+    }
+
+    /** Latest jasca-executed semgrep scan of the project that carries a file manifest. */
+    private async findBaseline(projectId: string): Promise<{ id: string; rawResult: any; createdAt: Date } | null> {
+        if (!this.prisma) return null;
+        const candidates = await this.prisma.scanResult.findMany({
+            where: { projectId, sourceType: 'SARIF' },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+            select: { id: true, rawResult: true, createdAt: true },
+        });
+        return candidates.find((scan) => (scan.rawResult as any)?.Metadata?.JascaFileManifest) as any || null;
+    }
+
+    /** Rule updates invalidate incremental reuse (same caveat as Checkmarx). */
+    private async customRulesChangedSince(baselineCreatedAt: Date): Promise<boolean> {
+        if (!this.prisma) return false;
+        const latest = await this.prisma.semgrepRule.findFirst({
+            where: { isActive: true },
+            orderBy: { updatedAt: 'desc' },
+            select: { updatedAt: true },
+        });
+        return Boolean(latest && latest.updatedAt > baselineCreatedAt);
+    }
+
+    private resultFile(result: any): string | undefined {
+        return result?.locations?.[0]?.physicalLocation?.artifactLocation?.uri;
+    }
+
+    /** Append the baseline's findings for unchanged files to the new SARIF. Returns reused count. */
+    private mergeBaselineResults(newSarif: any, baselineSarif: any, unchangedFiles: Set<string>): number {
+        const newRun = newSarif?.runs?.[0];
+        const baseRun = baselineSarif?.runs?.[0];
+        if (!newRun || !baseRun) return 0;
+
+        const reused = (baseRun.results || []).filter((result: any) => {
+            const file = this.resultFile(result);
+            return file && unchangedFiles.has(file);
+        });
+        if (reused.length === 0) return 0;
+
+        newRun.results = [...(newRun.results || []), ...reused];
+
+        const newRuleIds = new Set((newRun.tool?.driver?.rules || []).map((rule: any) => rule.id));
+        const reusedRuleIds = new Set(reused.map((result: any) => result.ruleId));
+        const extraRules = (baseRun.tool?.driver?.rules || [])
+            .filter((rule: any) => reusedRuleIds.has(rule.id) && !newRuleIds.has(rule.id));
+        if (extraRules.length > 0 && newRun.tool?.driver) {
+            newRun.tool.driver.rules = [...(newRun.tool.driver.rules || []), ...extraRules];
+        }
+        return reused.length;
+    }
+
+    /** No files changed: rebuild a SARIF from the baseline, keeping only surviving files. */
+    private buildSarifFromBaseline(baselineSarif: any, unchangedFiles: Set<string>): any {
+        const baseRun = baselineSarif?.runs?.[0] || {};
+        const results = (baseRun.results || []).filter((result: any) => {
+            const file = this.resultFile(result);
+            return file && unchangedFiles.has(file);
+        });
+        return {
+            version: baselineSarif?.version || '2.1.0',
+            runs: [{ tool: baseRun.tool, results }],
+        };
     }
 
     /**
@@ -214,9 +389,9 @@ export class SemgrepScanService {
         return { targetPath: extractDir, inputKind: 'directory', archiveType };
     }
 
-    private runSemgrep(args: string[], timeoutMs: number, operationId?: string): Promise<string> {
+    private runSemgrep(args: string[], timeoutMs: number, operationId?: string, cwd?: string): Promise<string> {
         return new Promise((resolve, reject) => {
-            const child = spawn(this.semgrepBinary, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            const child = spawn(this.semgrepBinary, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd });
             const stdoutChunks: Buffer[] = [];
             const stderrChunks: Buffer[] = [];
             let cancelledByUser = false;
