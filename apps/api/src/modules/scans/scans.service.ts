@@ -348,6 +348,97 @@ export class ScansService {
         return { results: transformedResults, total };
     }
 
+    /**
+     * Best-fix suggestions (Checkmarx "Best Fix Location" approximation):
+     * groups open findings by their common root so one action resolves many.
+     * - package groups: upgrade pkgName to the fixed version -> resolves N CVEs
+     * - code groups: same rule in the same file -> fixing the pattern resolves N findings
+     */
+    async getBestFixes(id: string, currentUser?: RequestUser) {
+        const scan = await this.prisma.scanResult.findUnique({
+            where: { id },
+            include: {
+                project: { include: { organization: true } },
+                vulnerabilities: {
+                    where: { status: { notIn: ['FIXED', 'FALSE_POSITIVE', 'CLOSED'] } },
+                    include: { vulnerability: { select: { cveId: true, severity: true, title: true } } },
+                },
+            },
+        });
+
+        if (!scan) {
+            throw new NotFoundException('Scan result not found');
+        }
+        if (currentUser) {
+            assertProjectAccess(currentUser, scan.project);
+        }
+
+        const severityRank: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, UNKNOWN: 0 };
+        const summarize = (items: typeof scan.vulnerabilities) => {
+            const counts = { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 };
+            let top: string = 'UNKNOWN';
+            for (const v of items) {
+                const sev = v.vulnerability.severity;
+                if (sev === 'CRITICAL') counts.critical += 1;
+                else if (sev === 'HIGH') counts.high += 1;
+                else if (sev === 'MEDIUM') counts.medium += 1;
+                else if (sev === 'LOW') counts.low += 1;
+                else counts.unknown += 1;
+                if ((severityRank[sev] ?? 0) > (severityRank[top] ?? 0)) top = sev;
+            }
+            return { ...counts, topSeverity: top };
+        };
+
+        const withFix = scan.vulnerabilities.filter((v) => v.fixedVersion);
+        const packageGroups = new Map<string, typeof scan.vulnerabilities>();
+        for (const v of withFix) {
+            const key = v.pkgName;
+            packageGroups.set(key, [...(packageGroups.get(key) || []), v]);
+        }
+        const packageFixes = [...packageGroups.entries()].map(([pkgName, items]) => {
+            // ponytail: naive numeric-aware string sort instead of full semver parsing
+            const fixedVersions = [...new Set(items.map((v) => v.fixedVersion!))]
+                .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            return {
+                type: 'package' as const,
+                pkgName,
+                currentVersion: items[0].pkgVersion,
+                recommendedVersion: fixedVersions[fixedVersions.length - 1],
+                resolves: items.length,
+                ...summarize(items),
+                cveIds: items.map((v) => v.vulnerability.cveId).slice(0, 10),
+            };
+        });
+
+        const withoutFix = scan.vulnerabilities.filter((v) => !v.fixedVersion);
+        const codeGroups = new Map<string, typeof scan.vulnerabilities>();
+        for (const v of withoutFix) {
+            const key = `${v.vulnerability.cveId}::${v.pkgName}`;
+            codeGroups.set(key, [...(codeGroups.get(key) || []), v]);
+        }
+        const codeFixes = [...codeGroups.entries()]
+            .filter(([, items]) => items.length >= 2)
+            .map(([key, items]) => ({
+                type: 'code' as const,
+                ruleId: key.split('::')[0],
+                file: key.split('::')[1],
+                title: items[0].vulnerability.title,
+                locations: items.map((v) => v.pkgVersion).slice(0, 10),
+                resolves: items.length,
+                ...summarize(items),
+            }));
+
+        const byImpact = (a: { resolves: number; topSeverity: string }, b: { resolves: number; topSeverity: string }) =>
+            b.resolves - a.resolves || (severityRank[b.topSeverity] ?? 0) - (severityRank[a.topSeverity] ?? 0);
+
+        return {
+            scanResultId: scan.id,
+            totalOpenFindings: scan.vulnerabilities.length,
+            packageFixes: packageFixes.sort(byImpact).slice(0, 20),
+            codeFixes: codeFixes.sort(byImpact).slice(0, 20),
+        };
+    }
+
     async findById(id: string, currentUser?: RequestUser) {
         const scan = await this.prisma.scanResult.findUnique({
             where: { id },
