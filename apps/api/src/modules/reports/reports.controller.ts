@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ReportsService } from './reports.service';
+import { ComplianceService } from '../analysis/compliance.service';
 import * as PDFDocument from 'pdfkit';
 import * as path from 'path';
 
@@ -11,7 +12,10 @@ import * as path from 'path';
 @UseGuards(JwtAuthGuard)
 @Controller('reports')
 export class ReportsController {
-    constructor(private readonly reportsService: ReportsService) { }
+    constructor(
+        private readonly reportsService: ReportsService,
+        private readonly complianceService: ComplianceService,
+    ) { }
 
     @Get()
     @ApiOperation({ summary: 'List all reports' })
@@ -57,6 +61,21 @@ export class ReportsController {
     @ApiQuery({ name: 'projectId', required: true })
     async generateReport(@Query('projectId') projectId: string) {
         return this.reportsService.generateVulnerabilityReport(projectId);
+    }
+
+    @Get('compliance')
+    @ApiOperation({ summary: 'OWASP Top 10 / CWE Top 25 compliance summary for a project' })
+    @ApiQuery({ name: 'projectId', required: true })
+    async getComplianceReport(@Query('projectId') projectId: string) {
+        return this.complianceService.getComplianceReport(projectId);
+    }
+
+    @Get('remediation')
+    @ApiOperation({ summary: 'Offline remediation guidance for CWE ids (comma-separated)' })
+    @ApiQuery({ name: 'cweIds', required: true, description: 'e.g. CWE-89,CWE-79' })
+    async getRemediation(@Query('cweIds') cweIds: string) {
+        const ids = (cweIds || '').split(',').map((s) => s.trim()).filter(Boolean);
+        return this.complianceService.getRemediationGuidance(ids);
     }
 
     @Get('statistics')

@@ -1,6 +1,6 @@
 import type { Scan } from './api-hooks';
 
-export type SecurityScanner = 'trivy' | 'checkov' | 'zap';
+export type SecurityScanner = 'trivy' | 'checkov' | 'zap' | 'sarif';
 
 export const SCANNER_META: Record<SecurityScanner, {
     label: string;
@@ -34,6 +34,14 @@ export const SCANNER_META: Record<SecurityScanner, {
         accentClass: 'bg-amber-500',
         badgeClass: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800',
     },
+    sarif: {
+        label: 'SAST (SARIF)',
+        shortLabel: '코드 취약점',
+        resultLabel: '코드 취약점',
+        description: 'SARIF 업로드 기반 소스코드 정적분석 결과 (Semgrep, CodeQL 등)',
+        accentClass: 'bg-violet-500',
+        badgeClass: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800',
+    },
 };
 
 export interface ScannerSummary {
@@ -58,6 +66,8 @@ export function getScanScanner(scan: Scan): SecurityScanner {
 
     if (evidenceScanner === 'zap' || sourceType === 'ZAP_JSON' || artifactType === 'zap') return 'zap';
     if (evidenceScanner === 'checkov' || sourceType === 'CHECKOV_JSON' || artifactType === 'checkov') return 'checkov';
+    // TRIVY_SARIF stays attributed to Trivy; only the generic SARIF upload path maps here
+    if (sourceType === 'SARIF') return 'sarif';
     return 'trivy';
 }
 
@@ -76,6 +86,7 @@ export function scannerSummariesToList(scans: Scan[]): ScannerSummary[] {
         trivy: createEmptySummary('trivy'),
         checkov: createEmptySummary('checkov'),
         zap: createEmptySummary('zap'),
+        sarif: createEmptySummary('sarif'),
     };
 
     for (const scan of scans) {
@@ -102,7 +113,7 @@ export function scannerSummariesToList(scans: Scan[]): ScannerSummary[] {
         }
     }
 
-    return [summaries.trivy, summaries.checkov, summaries.zap];
+    return [summaries.trivy, summaries.checkov, summaries.zap, summaries.sarif];
 }
 
 function createEmptySummary(scanner: SecurityScanner): ScannerSummary {
