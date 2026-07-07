@@ -11,8 +11,14 @@ const DEFAULT_ARCHIVE_MAX_ENTRIES = 20000;
 
 type ArchiveType = 'zip' | 'tar' | 'tar.gz';
 
+export type SemgrepScanProfile = 'all' | 'security' | 'custom-only';
+
 export interface SemgrepScanOptions {
     timeout?: string;
+    /** all: 번들 룰 전체, security: security 카테고리만, custom-only: 커스텀 룰만 */
+    profile?: SemgrepScanProfile;
+    /** 번들 룰을 특정 언어 디렉토리로 제한 (예: ['javascript', 'python']) */
+    languages?: string[];
 }
 
 interface PreparedTarget {
@@ -54,13 +60,17 @@ export class SemgrepScanService {
             const prepared = await this.prepareTarget(filePath);
             const timeoutMs = this.parseTimeoutMs(options.timeout || '10m');
             const customRulesDir = await this.writeCustomRules(uploadDir);
+            const bundledConfigs = this.resolveBundledConfigs(options);
+            if (bundledConfigs.length === 0 && !customRulesDir) {
+                throw new BadRequestException('적용할 룰이 없습니다. custom-only 프로파일은 활성화된 커스텀 룰이 필요합니다.');
+            }
             const args = [
                 'scan',
                 '--sarif',
                 '--metrics=off',
                 '--disable-version-check',
                 '--quiet',
-                '--config', this.rulesPath,
+                ...bundledConfigs.flatMap((config) => ['--config', config]),
                 ...(customRulesDir ? ['--config', customRulesDir] : []),
                 prepared.targetPath,
             ];
@@ -81,6 +91,12 @@ export class SemgrepScanService {
                 originalFileName: path.basename(filePath),
                 inputKind: prepared.inputKind,
                 archiveType: prepared.archiveType,
+                options: {
+                    profile: options.profile || 'all',
+                    languages: options.languages || [],
+                    timeout: options.timeout || '10m',
+                    customRulesApplied: Boolean(customRulesDir),
+                },
             };
             return result;
         } catch (error) {
@@ -108,6 +124,55 @@ export class SemgrepScanService {
         }
         activeScan.cancel();
         return true;
+    }
+
+    /**
+     * Resolve which bundled rule directories to pass as --config, based on
+     * the scan profile and language filter (Checkmarx preset-style scoping).
+     */
+    private resolveBundledConfigs(options: SemgrepScanOptions): string[] {
+        if (options.profile === 'custom-only') return [];
+
+        let bases = [this.rulesPath];
+        const languages = (options.languages || [])
+            .map((lang) => String(lang).toLowerCase().replace(/[^a-z0-9_-]/g, ''))
+            .filter(Boolean);
+
+        if (languages.length > 0) {
+            const resolved = languages
+                .map((lang) => path.join(this.rulesPath, lang))
+                .filter((dir) => fs.existsSync(dir));
+            if (resolved.length === 0) {
+                const available = fs.readdirSync(this.rulesPath, { withFileTypes: true })
+                    .filter((entry) => entry.isDirectory())
+                    .map((entry) => entry.name)
+                    .join(', ');
+                throw new BadRequestException(`지원하지 않는 언어입니다: ${languages.join(', ')}. 사용 가능: ${available}`);
+            }
+            bases = resolved;
+        }
+
+        if (options.profile !== 'security') return bases;
+
+        // security profile: collect nested */security directories under each base
+        const securityDirs = bases.flatMap((base) => this.findSecurityDirs(base, 4));
+        // a base without any security subdir (e.g. dockerfile/security IS the base) falls back to itself
+        return securityDirs.length > 0 ? securityDirs : bases;
+    }
+
+    private findSecurityDirs(base: string, maxDepth: number): string[] {
+        if (maxDepth < 0 || !fs.existsSync(base)) return [];
+        const found: string[] = [];
+        for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue;
+            const full = path.join(base, entry.name);
+            if (entry.name === 'security') {
+                found.push(full);
+            } else {
+                found.push(...this.findSecurityDirs(full, maxDepth - 1));
+            }
+        }
+        return found;
     }
 
     /**

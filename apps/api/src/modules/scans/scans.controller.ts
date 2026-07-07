@@ -38,7 +38,7 @@ import { UploadScanDto } from './dto/upload-scan.dto';
 import { TrivyScanOptions, TrivyScanService } from './services/trivy-scan.service';
 import { CheckovScanOptions, CheckovScanService } from './services/checkov-scan.service';
 import { ZapScanOptions, ZapScanService } from './services/zap-scan.service';
-import { SemgrepScanService } from './services/semgrep-scan.service';
+import { SemgrepScanOptions, SemgrepScanService } from './services/semgrep-scan.service';
 
 const TRIVY_UPLOAD_ROOT = path.join(os.tmpdir(), 'jasca-trivy-uploads');
 const MAX_TRIVY_UPLOAD_BYTES = parseSizeBytes(process.env.TRIVY_UPLOAD_MAX_BYTES, 200 * 1024 * 1024);
@@ -112,6 +112,17 @@ function parseTrivyScanOptions(body: any): TrivyScanOptions {
         ignoreUnfixed: parseBooleanField(body.ignoreUnfixed, false),
         severities: parseListField(body.severities),
         scanners: parseListField(body.scanners),
+        timeout: typeof body.timeout === 'string' ? body.timeout : undefined,
+    };
+}
+
+function parseSemgrepScanOptions(body: any): SemgrepScanOptions {
+    const profile = ['all', 'security', 'custom-only'].includes(body.semgrepProfile)
+        ? body.semgrepProfile
+        : undefined;
+    return {
+        profile,
+        languages: parseListField(body.semgrepLanguages),
         timeout: typeof body.timeout === 'string' ? body.timeout : undefined,
     };
 }
@@ -350,7 +361,7 @@ export class ScansController {
             : scanner === 'semgrep'
                 ? await this.semgrepScanService.scanUploadedFile(
                     file.path,
-                    { timeout: typeof body.timeout === 'string' ? body.timeout : undefined },
+                    parseSemgrepScanOptions(body),
                     scanOperationId,
                 )
                 : await this.trivyScanService.scanUploadedFile(
