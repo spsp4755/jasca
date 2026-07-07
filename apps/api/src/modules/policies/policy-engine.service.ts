@@ -51,9 +51,59 @@ export interface PolicyEvaluation {
     appliedExceptions: PolicyExceptionType[];
 }
 
+export interface PolicyVerdict extends PolicyEvaluation {
+    verdict: 'PASS' | 'FAIL';
+    projectId: string;
+    scanResultId: string;
+    scannedAt: Date | null;
+}
+
 @Injectable()
 export class PolicyEngineService {
     constructor(private readonly prisma: PrismaService) { }
+
+    /**
+     * CI/CD deployment-gate verdict. Evaluates policies against a specific
+     * scan (or the project's latest one) and returns a machine-friendly
+     * PASS/FAIL so pipelines can block non-compliant builds.
+     */
+    async verdict(
+        projectId: string,
+        scanResultId?: string,
+        environment?: PolicyEnvironment,
+        currentUser?: RequestUser,
+    ): Promise<PolicyVerdict> {
+        let scannedAt: Date | null = null;
+
+        if (!scanResultId) {
+            const latest = await this.prisma.scanResult.findFirst({
+                where: { projectId },
+                orderBy: { createdAt: 'desc' },
+                select: { id: true, scannedAt: true },
+            });
+            if (!latest) {
+                throw new NotFoundException('No scan results found for this project');
+            }
+            scanResultId = latest.id;
+            scannedAt = latest.scannedAt;
+        } else {
+            const scan = await this.prisma.scanResult.findUnique({
+                where: { id: scanResultId },
+                select: { scannedAt: true },
+            });
+            scannedAt = scan?.scannedAt ?? null;
+        }
+
+        const evaluation = await this.evaluate(projectId, scanResultId, environment, currentUser);
+
+        return {
+            verdict: evaluation.allowed ? 'PASS' : 'FAIL',
+            projectId,
+            scanResultId,
+            scannedAt,
+            ...evaluation,
+        };
+    }
 
     /**
      * Evaluate policies against a scan result
