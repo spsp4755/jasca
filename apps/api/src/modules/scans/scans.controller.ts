@@ -38,6 +38,7 @@ import { UploadScanDto } from './dto/upload-scan.dto';
 import { TrivyScanOptions, TrivyScanService } from './services/trivy-scan.service';
 import { CheckovScanOptions, CheckovScanService } from './services/checkov-scan.service';
 import { ZapScanOptions, ZapScanService } from './services/zap-scan.service';
+import { SemgrepScanService } from './services/semgrep-scan.service';
 
 const TRIVY_UPLOAD_ROOT = path.join(os.tmpdir(), 'jasca-trivy-uploads');
 const MAX_TRIVY_UPLOAD_BYTES = parseSizeBytes(process.env.TRIVY_UPLOAD_MAX_BYTES, 200 * 1024 * 1024);
@@ -148,6 +149,7 @@ export class ScansController {
         private readonly trivyScanService: TrivyScanService,
         private readonly checkovScanService: CheckovScanService,
         private readonly zapScanService: ZapScanService,
+        private readonly semgrepScanService: SemgrepScanService,
     ) { }
 
     @Get()
@@ -322,13 +324,16 @@ export class ScansController {
 
         const user = (req as any).user;
         const scanOperationId = typeof body.scanOperationId === 'string' ? body.scanOperationId : undefined;
-        const scanner = String(body.scanner || 'trivy').toLowerCase() === 'checkov' ? 'checkov' : 'trivy';
+        const requestedScanner = String(body.scanner || 'trivy').toLowerCase();
+        const scanner = requestedScanner === 'checkov' || requestedScanner === 'semgrep' ? requestedScanner : 'trivy';
         let responseReady = false;
         if (scanOperationId) {
             req.on('close', () => {
                 if (!responseReady && (req as any).aborted) {
                     if (scanner === 'checkov') {
                         this.checkovScanService.cancelScan(scanOperationId);
+                    } else if (scanner === 'semgrep') {
+                        this.semgrepScanService.cancelScan(scanOperationId);
                     } else {
                         this.trivyScanService.cancelScan(scanOperationId);
                     }
@@ -342,17 +347,27 @@ export class ScansController {
                 parseCheckovScanOptions(body),
                 scanOperationId,
             )
-            : await this.trivyScanService.scanUploadedFile(
-                file.path,
-                parseTrivyScanOptions(body),
-                scanOperationId,
-            );
+            : scanner === 'semgrep'
+                ? await this.semgrepScanService.scanUploadedFile(
+                    file.path,
+                    { timeout: typeof body.timeout === 'string' ? body.timeout : undefined },
+                    scanOperationId,
+                )
+                : await this.trivyScanService.scanUploadedFile(
+                    file.path,
+                    parseTrivyScanOptions(body),
+                    scanOperationId,
+                );
 
         if (scanner === 'trivy' && this.trivyScanService.isCancellationRequested(scanOperationId)) {
             throw new BadRequestException('Trivy scan was cancelled by the user');
         }
         const dto: UploadScanDto = {
-            sourceType: scanner === 'checkov' ? SourceType.CHECKOV_JSON : SourceType.TRIVY_JSON,
+            sourceType: scanner === 'checkov'
+                ? SourceType.CHECKOV_JSON
+                : scanner === 'semgrep'
+                    ? SourceType.SARIF
+                    : SourceType.TRIVY_JSON,
             projectName: body.projectName,
             organizationId: body.organizationId || user?.organizationId,
             imageRef: body.imageRef || file.originalname,

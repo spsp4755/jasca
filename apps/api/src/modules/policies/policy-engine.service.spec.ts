@@ -106,6 +106,41 @@ describe('PolicyEngineService.verdict', () => {
         expect(result.violations).toHaveLength(1);
     });
 
+    it('applies gracePeriodDays: only vulns detected before the cutoff count', () => {
+        const service = new PolicyEngineService({} as any);
+        const rule = {
+            id: 'r1',
+            ruleType: 'SEVERITY_THRESHOLD',
+            conditions: { severity: ['CRITICAL'], gracePeriodDays: 7 },
+            action: 'BLOCK',
+            message: null,
+        };
+        const vuln = (cveId: string, vulnHash: string) => ({
+            pkgName: 'pkg',
+            pkgVersion: '1.0.0',
+            vulnHash,
+            vulnerability: { cveId, severity: 'CRITICAL' as const },
+        });
+        const daysAgo = (n: number) => {
+            const d = new Date();
+            d.setDate(d.getDate() - n);
+            return d;
+        };
+        const firstDetectedAt = new Map<string, Date>([
+            ['hash-new', daysAgo(2)], // within grace
+            ['hash-old', daysAgo(30)], // overdue
+        ]);
+
+        const matched = (service as any).evaluateRule(
+            rule,
+            [vuln('CVE-NEW', 'hash-new'), vuln('CVE-OLD', 'hash-old')],
+            [],
+            firstDetectedAt,
+        );
+
+        expect(matched.map((v: any) => v.vulnerability.cveId)).toEqual(['CVE-OLD']);
+    });
+
     it('throws when the project has no scans', async () => {
         const { service } = buildService(passingEvaluation, {
             findFirst: jest.fn().mockResolvedValue(null),

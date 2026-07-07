@@ -11,6 +11,7 @@ import { CheckovScanService } from './services/checkov-scan.service';
 import { ZapPolicyService } from './services/zap-policy.service';
 import { ZapClientService } from './services/zap-client.service';
 import { ZapScanService } from './services/zap-scan.service';
+import { SemgrepScanService } from './services/semgrep-scan.service';
 import { LicensesModule } from '../licenses/licenses.module';
 import { PoliciesModule } from '../policies/policies.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -32,6 +33,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
         ZapPolicyService,
         ZapClientService,
         ZapScanService,
+        SemgrepScanService,
     ],
     exports: [ScansService],
 })

@@ -28,7 +28,9 @@ import {
     ArrowUp,
     ArrowDown,
     Sparkles,
+    ShieldCheck,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useReports, useCreateReport, useDeleteReport, useUpdateReport, type Report, type ReportFilters as FiltersType } from '@/lib/api-hooks';
 import { AiButton, AiResultPanel } from '@/components/ai';
 import { useAiExecution } from '@/hooks/use-ai-execution';
@@ -432,6 +434,13 @@ export default function ReportsPage() {
                         onExecute={handleAiReportGenerate}
                         onCancel={cancelAi}
                     />
+                    <Link
+                        href="/dashboard/reports/compliance"
+                        className="flex items-center gap-2 px-4 py-2 text-sm border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/20 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
+                    >
+                        <ShieldCheck className="h-4 w-4" />
+                        컴플라이언스
+                    </Link>
                     <button
                         onClick={() => setShowCreateForm(true)}
                         className="flex items-center gap-2 px-4 py-2 text-sm bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
