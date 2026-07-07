@@ -24,7 +24,7 @@ import {
     UserPlus,
     FileWarning,
 } from 'lucide-react';
-import { useVulnerability, useVulnerabilityHistory, useUpdateVulnerabilityStatus, useAssignVulnerability, useUsers, useCreateException, useExceptions } from '@/lib/api-hooks';
+import { useVulnerability, useVulnerabilityHistory, useUpdateVulnerabilityStatus, useAssignVulnerability, useUsers, useCreateException, useExceptions, useRemediationGuidance } from '@/lib/api-hooks';
 import { AiButton, AiButtonGroup, AiResultPanel } from '@/components/ai';
 import { useAiExecution, useVulnerabilityAiContext } from '@/hooks/use-ai-execution';
 import { useAiStore } from '@/stores/ai-store';
@@ -81,6 +81,7 @@ export default function VulnerabilityDetailPage() {
     const { data: historyData, isLoading: historyLoading } = useVulnerabilityHistory(vulnId);
     const { data: users } = useUsers();
     const { data: exceptionsData } = useExceptions('approved');
+    const { data: remediationGuidance } = useRemediationGuidance(vuln?.cweIds);
     const updateStatus = useUpdateVulnerabilityStatus();
     const assignVuln = useAssignVulnerability();
     const createException = useCreateException();
@@ -254,7 +255,33 @@ export default function VulnerabilityDetailPage() {
                         <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
                             {vuln.description || "이 취약점은 특정 조건에서 원격 공격자가 시스템에 접근할 수 있게 합니다. 영향을 받는 패키지를 최신 버전으로 업데이트하는 것이 권장됩니다."}
                         </p>
+                        {(vuln.cweIds?.length ?? 0) > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-4">
+                                {vuln.cweIds!.map((cweId) => (
+                                    <span key={cweId} className="px-2 py-1 text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 rounded dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600">
+                                        {cweId}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
+
+                    {/* Remediation Guidance (offline, CWE-based) */}
+                    {remediationGuidance && remediationGuidance.length > 0 && (
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">수정 가이드</h3>
+                            <div className="space-y-3">
+                                {remediationGuidance.map((item) => (
+                                    <div key={item.cweId} className="flex gap-3">
+                                        <span className="shrink-0 px-2 py-1 h-fit text-xs font-medium bg-violet-100 text-violet-700 border border-violet-200 rounded dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800">
+                                            {item.cweId}
+                                        </span>
+                                        <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{item.guidance}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Affected Package */}
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">

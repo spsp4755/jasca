@@ -76,6 +76,16 @@ RUN apt-get update && apt-get install -y python3-pip \
     && pip3 install --no-cache-dir checkov \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Semgrep for offline source-code SAST scans, and snapshot the
+# community rules at build time so the closed network never needs the
+# semgrep registry (SEMGREP_RULES_PATH points here).
+RUN pip3 install --no-cache-dir semgrep \
+    && mkdir -p /app/semgrep-rules \
+    && curl -fsSL https://github.com/semgrep/semgrep-rules/tarball/HEAD | tar -xz -C /app/semgrep-rules --strip-components=1 \
+    && rm -rf /app/semgrep-rules/.github \
+    && find /app/semgrep-rules -name "*.test.yaml" -delete
+ENV SEMGREP_RULES_PATH=/app/semgrep-rules
+
 # Checkov's helm and kustomize frameworks require their CLIs at runtime.
 # They are bundled into the offline image during build, not downloaded in the closed network.
 ARG HELM_VERSION=v3.15.4

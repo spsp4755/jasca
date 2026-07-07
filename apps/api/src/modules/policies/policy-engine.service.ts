@@ -51,9 +51,81 @@ export interface PolicyEvaluation {
     appliedExceptions: PolicyExceptionType[];
 }
 
+export interface PolicyVerdict extends PolicyEvaluation {
+    verdict: 'PASS' | 'FAIL';
+    projectId: string;
+    scanResultId: string;
+    scannedAt: Date | null;
+}
+
 @Injectable()
 export class PolicyEngineService {
     constructor(private readonly prisma: PrismaService) { }
+
+    /**
+     * CI/CD deployment-gate verdict. Evaluates policies against a specific
+     * scan (or the project's latest one) and returns a machine-friendly
+     * PASS/FAIL so pipelines can block non-compliant builds.
+     */
+    async verdict(
+        projectId: string,
+        scanResultId?: string,
+        environment?: PolicyEnvironment,
+        currentUser?: RequestUser,
+        newOnly = false,
+    ): Promise<PolicyVerdict> {
+        let scan: { id: string; scannedAt: Date | null; sourceType: string; createdAt: Date } | null = null;
+
+        if (!scanResultId) {
+            scan = await this.prisma.scanResult.findFirst({
+                where: { projectId },
+                orderBy: { createdAt: 'desc' },
+                select: { id: true, scannedAt: true, sourceType: true, createdAt: true },
+            });
+            if (!scan) {
+                throw new NotFoundException('No scan results found for this project');
+            }
+            scanResultId = scan.id;
+        } else {
+            scan = await this.prisma.scanResult.findUnique({
+                where: { id: scanResultId },
+                select: { id: true, scannedAt: true, sourceType: true, createdAt: true },
+            });
+        }
+
+        // newOnly: gate only on vulnerabilities introduced since the previous
+        // scan of the same scanner, so long-standing backlog doesn't block
+        // every pipeline run (Veracode pipeline-scan style).
+        let excludeVulnHashes: Set<string> | undefined;
+        if (newOnly && scan) {
+            const baseline = await this.prisma.scanResult.findFirst({
+                where: {
+                    projectId,
+                    sourceType: scan.sourceType as any,
+                    createdAt: { lt: scan.createdAt },
+                },
+                orderBy: { createdAt: 'desc' },
+                select: { id: true },
+            });
+            if (baseline) {
+                const baselineVulns = await this.prisma.scanVulnerability.findMany({
+                    where: { scanResultId: baseline.id },
+                    select: { vulnHash: true },
+                });
+                excludeVulnHashes = new Set(baselineVulns.map((v) => v.vulnHash));
+            }
+        }
+
+        const evaluation = await this.evaluate(projectId, scanResultId, environment, currentUser, excludeVulnHashes);
+
+        return {
+            verdict: evaluation.allowed ? 'PASS' : 'FAIL',
+            projectId,
+            scanResultId,
+            scannedAt: scan?.scannedAt ?? null,
+            ...evaluation,
+        };
+    }
 
     /**
      * Evaluate policies against a scan result
@@ -66,6 +138,7 @@ export class PolicyEngineService {
         scanResultId: string,
         environment?: PolicyEnvironment,
         currentUser?: RequestUser,
+        excludeVulnHashes?: Set<string>,
     ): Promise<PolicyEvaluation> {
         // Get project and organization
         const project = await this.prisma.project.findUnique({
@@ -128,10 +201,37 @@ export class PolicyEngineService {
         });
 
         // Get scan vulnerabilities
-        const scanVulns = await this.prisma.scanVulnerability.findMany({
+        let scanVulns = await this.prisma.scanVulnerability.findMany({
             where: { scanResultId },
             include: { vulnerability: true },
         });
+
+        if (excludeVulnHashes?.size) {
+            scanVulns = scanVulns.filter((v) => !excludeVulnHashes.has(v.vulnHash));
+        }
+
+        // Grace period: a rule with conditions.gracePeriodDays only counts
+        // vulnerabilities first detected in this project more than N days ago
+        // (Veracode-style remediation grace period).
+        const needsFirstDetected = policies.some((p) =>
+            p.rules.some((r) => (r.conditions as any)?.gracePeriodDays !== undefined),
+        );
+        let firstDetectedAt: Map<string, Date> | undefined;
+        if (needsFirstDetected && scanVulns.length > 0) {
+            const grouped = await this.prisma.scanVulnerability.groupBy({
+                by: ['vulnHash'],
+                where: {
+                    vulnHash: { in: scanVulns.map((v) => v.vulnHash) },
+                    scanResult: { projectId },
+                },
+                _min: { createdAt: true },
+            });
+            firstDetectedAt = new Map(
+                grouped
+                    .filter((g) => g._min.createdAt)
+                    .map((g) => [g.vulnHash, g._min.createdAt as Date]),
+            );
+        }
 
         const result: PolicyEvaluation = {
             allowed: true,
@@ -143,7 +243,7 @@ export class PolicyEngineService {
         // Evaluate each policy
         for (const policy of policies) {
             for (const rule of policy.rules) {
-                const matchedVulns = this.evaluateRule(rule, scanVulns, policy.exceptions);
+                const matchedVulns = this.evaluateRule(rule, scanVulns, policy.exceptions, firstDetectedAt);
 
                 if (matchedVulns.length > 0) {
                     const violation: PolicyViolation = {
@@ -188,6 +288,7 @@ export class PolicyEngineService {
             pkgName: string;
             pkgVersion: string;
             fixedVersion?: string | null;
+            vulnHash?: string;
             vulnerability: {
                 cveId: string;
                 severity: Severity;
@@ -196,10 +297,21 @@ export class PolicyEngineService {
             };
         }>,
         exceptions: PolicyExceptionType[],
+        firstDetectedAt?: Map<string, Date>,
     ) {
         const conditions = rule.conditions as any;
 
         let filtered = vulns.filter((v) => !this.isExcepted(v, exceptions));
+
+        if (conditions.gracePeriodDays !== undefined && firstDetectedAt) {
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - Number(conditions.gracePeriodDays));
+            filtered = filtered.filter((v) => {
+                const detected = v.vulnHash ? firstDetectedAt.get(v.vulnHash) : undefined;
+                // unknown first-detection dates are treated as overdue (fail-safe)
+                return !detected || detected <= cutoff;
+            });
+        }
 
         switch (rule.ruleType) {
             case 'SEVERITY_THRESHOLD':
