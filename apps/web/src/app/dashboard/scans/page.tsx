@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
     FileSearch,
     Calendar,
@@ -44,6 +44,7 @@ import { useAiStore } from '@/stores/ai-store';
 import { downloadPostWithAuth, fetchWithAuth } from '@/lib/api/fetch-utils';
 import { CheckSquare, FileJson } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
+import { getScanScanner, SCANNER_META, SecurityScanner } from '@/lib/scanner-summary';
 
 // ============ Helper Functions ============
 
@@ -206,6 +207,7 @@ function VulnerabilityBar({
 
 export default function ScansPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { data, isLoading, error, refetch } = useScans();
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     
@@ -213,6 +215,7 @@ export default function ScansPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('');
     const [sourceFilter, setSourceFilter] = useState<string>('');
+    const [scannerFilter, setScannerFilter] = useState<'' | SecurityScanner>('');
     const [severityFilter, setSeverityFilter] = useState<string>('');
     const [dateFilter, setDateFilter] = useState<string>('');
     const [showFilters, setShowFilters] = useState(false);
@@ -256,6 +259,14 @@ export default function ScansPage() {
 
     const { activePanel, closePanel } = useAiStore();
 
+    useEffect(() => {
+        const scanner = searchParams.get('scanner');
+        if (scanner === 'trivy' || scanner === 'checkov' || scanner === 'zap') {
+            setScannerFilter(scanner);
+            setCurrentPage(1);
+        }
+    }, [searchParams]);
+
     // Auto-refresh effect
     useEffect(() => {
         if (!autoRefresh) return;
@@ -288,6 +299,10 @@ export default function ScansPage() {
         // Source filter
         if (sourceFilter) {
             scans = scans.filter((scan: any) => scan.sourceType === sourceFilter);
+        }
+
+        if (scannerFilter) {
+            scans = scans.filter((scan: Scan) => getScanScanner(scan) === scannerFilter);
         }
         
         // Severity filter - filter scans that have vulnerabilities of that severity
@@ -351,7 +366,7 @@ export default function ScansPage() {
         });
         
         return scans;
-    }, [data?.results, searchQuery, statusFilter, sourceFilter, severityFilter, dateFilter, sortField, sortDirection]);
+    }, [data?.results, searchQuery, statusFilter, sourceFilter, scannerFilter, severityFilter, dateFilter, sortField, sortDirection]);
 
     // Paginated data
     const paginatedScans = useMemo(() => {
@@ -362,7 +377,7 @@ export default function ScansPage() {
     const totalPages = Math.ceil(filteredScans.length / pageSize);
     const aiContextFingerprint = useMemo(() => JSON.stringify({
         total: data?.total || 0,
-        filters: { searchQuery, statusFilter, sourceFilter, severityFilter, dateFilter },
+        filters: { searchQuery, statusFilter, sourceFilter, scannerFilter, severityFilter, dateFilter },
         sort: { sortField, sortDirection },
         scans: filteredScans.slice(0, 25).map((scan: any) => ({
             id: scan.id,
@@ -375,7 +390,7 @@ export default function ScansPage() {
             medium: scan.summary?.medium || 0,
             low: scan.summary?.low || 0,
         })),
-    }), [data?.total, dateFilter, filteredScans, searchQuery, severityFilter, sortDirection, sortField, sourceFilter, statusFilter]);
+    }), [data?.total, dateFilter, filteredScans, scannerFilter, searchQuery, severityFilter, sortDirection, sortField, sourceFilter, statusFilter]);
     const paginatedScanIds = useMemo(
         () => paginatedScans.map((scan: any) => scan.id),
         [paginatedScans],
@@ -452,7 +467,7 @@ export default function ScansPage() {
             screen: 'scans',
             scans: filteredScans.slice(0, 10),
             total: filteredScans.length,
-            filters: { searchQuery, statusFilter, sourceFilter, severityFilter, dateFilter },
+            filters: { searchQuery, statusFilter, sourceFilter, scannerFilter, severityFilter, dateFilter },
             __fingerprint: aiContextFingerprint,
         };
         executeScanDiff(context);
@@ -464,18 +479,19 @@ export default function ScansPage() {
 
     const estimatedTokens = estimateTokens({
         scans: filteredScans.slice(0, 5),
-        filters: { searchQuery, statusFilter, sourceFilter, severityFilter, dateFilter },
+        filters: { searchQuery, statusFilter, sourceFilter, scannerFilter, severityFilter, dateFilter },
     });
 
     const clearFilters = () => {
         setSearchQuery('');
         setStatusFilter('');
         setSourceFilter('');
+        setScannerFilter('');
         setSeverityFilter('');
         setDateFilter('');
     };
 
-    const hasActiveFilters = searchQuery || statusFilter || sourceFilter || severityFilter || dateFilter;
+    const hasActiveFilters = searchQuery || statusFilter || sourceFilter || scannerFilter || severityFilter || dateFilter;
 
     // Export function
     const handleExport = useCallback((format: 'csv' | 'json') => {
@@ -828,6 +844,21 @@ export default function ScansPage() {
                         <option value="COMPLETED">완료</option>
                         <option value="RUNNING">진행중</option>
                         <option value="FAILED">실패</option>
+                    </select>
+
+                    {/* Scanner Filter */}
+                    <select
+                        value={scannerFilter}
+                        onChange={(e) => {
+                            setScannerFilter(e.target.value as '' | SecurityScanner);
+                            setCurrentPage(1);
+                        }}
+                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">모든 스캐너</option>
+                        {(['trivy', 'checkov', 'zap'] as SecurityScanner[]).map((scanner) => (
+                            <option key={scanner} value={scanner}>{SCANNER_META[scanner].label}</option>
+                        ))}
                     </select>
 
                     {/* Source Filter */}
