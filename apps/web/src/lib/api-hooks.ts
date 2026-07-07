@@ -2714,3 +2714,52 @@ export function useDeleteSemgrepRule() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['semgrep-rules'] }),
     });
 }
+
+// ============================================
+// Best Fix suggestions (Best Fix Location approximation)
+// ============================================
+
+export interface PackageBestFix {
+    type: 'package';
+    pkgName: string;
+    currentVersion: string;
+    recommendedVersion: string;
+    resolves: number;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    unknown: number;
+    topSeverity: string;
+    cveIds: string[];
+}
+
+export interface CodeBestFix {
+    type: 'code';
+    ruleId: string;
+    file: string;
+    title?: string | null;
+    locations: string[];
+    resolves: number;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    unknown: number;
+    topSeverity: string;
+}
+
+export interface BestFixesResponse {
+    scanResultId: string;
+    totalOpenFindings: number;
+    packageFixes: PackageBestFix[];
+    codeFixes: CodeBestFix[];
+}
+
+export function useScanBestFixes(scanId?: string) {
+    return useQuery<BestFixesResponse>({
+        queryKey: ['scan-best-fixes', scanId],
+        queryFn: () => authFetch(`${API_BASE}/scans/${scanId}/best-fixes`),
+        enabled: !!scanId,
+    });
+}
