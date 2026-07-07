@@ -17,9 +17,10 @@ import { PoliciesModule } from '../policies/policies.module';
 import { SettingsModule } from '../settings/settings.module';
 import { ManualAdvisoriesModule } from '../manual-advisories/manual-advisories.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SemgrepRulesModule } from '../semgrep-rules/semgrep-rules.module';
 
 @Module({
-    imports: [LicensesModule, PoliciesModule, SettingsModule, ManualAdvisoriesModule, NotificationsModule],
+    imports: [LicensesModule, PoliciesModule, SettingsModule, ManualAdvisoriesModule, NotificationsModule, SemgrepRulesModule],
     controllers: [ScansController],
     providers: [
         ScansService,

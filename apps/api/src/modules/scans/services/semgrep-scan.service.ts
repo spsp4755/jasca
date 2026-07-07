@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, Logger, RequestTimeoutException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional, RequestTimeoutException, ServiceUnavailableException } from '@nestjs/common';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { SemgrepRulesService } from '../../semgrep-rules/semgrep-rules.service';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_ARCHIVE_MAX_ENTRIES = 20000;
@@ -34,6 +35,8 @@ export class SemgrepScanService {
     private readonly archiveMaxEntries = Number(process.env.SEMGREP_ARCHIVE_MAX_ENTRIES || DEFAULT_ARCHIVE_MAX_ENTRIES);
     private readonly activeScans = new Map<string, { cancel: () => void; startedAt: number }>();
 
+    constructor(@Optional() private readonly semgrepRulesService?: SemgrepRulesService) { }
+
     async scanUploadedFile(filePath: string, options: SemgrepScanOptions = {}, operationId?: string): Promise<any> {
         const uploadDir = path.dirname(filePath);
 
@@ -50,6 +53,7 @@ export class SemgrepScanService {
             const startedAt = Date.now();
             const prepared = await this.prepareTarget(filePath);
             const timeoutMs = this.parseTimeoutMs(options.timeout || '10m');
+            const customRulesDir = await this.writeCustomRules(uploadDir);
             const args = [
                 'scan',
                 '--sarif',
@@ -57,6 +61,7 @@ export class SemgrepScanService {
                 '--disable-version-check',
                 '--quiet',
                 '--config', this.rulesPath,
+                ...(customRulesDir ? ['--config', customRulesDir] : []),
                 prepared.targetPath,
             ];
             this.logger.log(`Semgrep scan prepared. operationId=${operationId || 'n/a'} input=${prepared.inputKind} file=${path.basename(filePath)}`);
@@ -103,6 +108,32 @@ export class SemgrepScanService {
         }
         activeScan.cancel();
         return true;
+    }
+
+    /**
+     * Write the admin-managed custom rules (CxQL-style) next to the upload so
+     * semgrep merges them with the bundled ruleset for this scan.
+     */
+    private async writeCustomRules(uploadDir: string): Promise<string | null> {
+        if (!this.semgrepRulesService) return null;
+
+        let rules: Array<{ id: string; name: string; yaml: string }>;
+        try {
+            rules = await this.semgrepRulesService.getActiveRuleYamls();
+        } catch (error) {
+            this.logger.warn(`Failed to load custom semgrep rules, scanning with bundled rules only: ${(error as Error).message}`);
+            return null;
+        }
+        if (rules.length === 0) return null;
+
+        const dir = path.join(uploadDir, 'custom-rules');
+        fs.mkdirSync(dir, { recursive: true });
+        for (const rule of rules) {
+            const safeName = rule.name.replace(/[^A-Za-z0-9._-]+/g, '-') || rule.id;
+            fs.writeFileSync(path.join(dir, `${safeName}.yaml`), rule.yaml, 'utf-8');
+        }
+        this.logger.log(`Merged ${rules.length} custom semgrep rule file(s) into the scan`);
+        return dir;
     }
 
     private async prepareTarget(filePath: string): Promise<PreparedTarget> {

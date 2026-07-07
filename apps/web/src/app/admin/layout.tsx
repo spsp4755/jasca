@@ -45,6 +45,7 @@ const adminNavigation = [
     { name: '수동 취약점', href: '/admin/manual-advisories', icon: ShieldAlert },
     { name: '라이선스 관리', href: '/admin/licenses', icon: Scale },
     { name: '정책 관리', href: '/admin/policies', icon: FileText },
+    { name: 'Semgrep 룰', href: '/admin/semgrep-rules', icon: Code2 },
     { name: '예외 승인', href: '/admin/exceptions', icon: ShieldCheck },
     { name: '워크플로우', href: '/admin/workflows', icon: Settings },
 ];
