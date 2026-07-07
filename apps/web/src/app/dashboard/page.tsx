@@ -42,7 +42,7 @@ import {
 import { StatCard, Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { StatCardSkeleton, ChartSkeleton } from '@/components/ui/skeleton';
 import { SeverityBadge } from '@/components/ui/badge';
-import { useStatsOverview, useStatsByProject, useStatsTrend, useNotifications, useLicenseStats } from '@/lib/api-hooks';
+import { useStatsOverview, useStatsByProject, useStatsTrend, useNotifications, useLicenseStats, useScans } from '@/lib/api-hooks';
 import { AiButton, AiResultPanel } from '@/components/ai';
 import { useAiExecution, useDashboardAiContext } from '@/hooks/use-ai-execution';
 import { useAiStore } from '@/stores/ai-store';
@@ -50,6 +50,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { QuickActions, QuickActionsFAB } from '@/components/quick-actions';
 import { DashboardSettingsButton } from '@/components/dashboard-settings';
 import { useChartView, useTrendPeriod, useWidgetVisibility } from '@/stores/preferences-store';
+import { SCANNER_META, scannerSummariesToList } from '@/lib/scanner-summary';
 
 const SEVERITY_COLORS = {
     Critical: '#dc2626',
@@ -79,9 +80,19 @@ export default function DashboardPage() {
     const { data: trendData, isLoading: trendLoading } = useStatsTrend(undefined, trendPeriod);
     const { data: notifications = [] } = useNotifications();
     const { data: licenseStats } = useLicenseStats();
+    const { data: scansData } = useScans();
 
     const isLoading = overviewLoading || projectLoading || trendLoading;
     const unreadNotifications = notifications.filter(n => !n.isRead).length;
+    const scannerSummaries = scannerSummariesToList(scansData?.results || []);
+    const scannerTotals = scannerSummaries.reduce(
+        (acc, summary) => ({
+            scans: acc.scans + summary.totalScans,
+            findings: acc.findings + summary.findings,
+            failed: acc.failed + summary.failedScans,
+        }),
+        { scans: 0, findings: 0, failed: 0 },
+    );
 
     // Calculate totals
     const totalVulns = overview ? 
@@ -419,6 +430,70 @@ export default function DashboardPage() {
                 </Card>
             </div>
             )}
+
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5">
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                    <h2 className="text-lg font-semibold text-slate-900 dark:text-white">최근 스캐너 결과 현황</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                        상단 취약점 카드는 취약점 관리 기준이고, 이 영역은 최근 스캔에서 나온 취약점·정책 위반·웹 보안 알림을 스캐너별로 분리해 보여줍니다.
+                    </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-900/60">
+                        <div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">최근 스캔</p>
+                            <p className="text-lg font-bold text-slate-900 dark:text-white">{scannerTotals.scans}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">보안 이벤트</p>
+                            <p className="text-lg font-bold text-slate-900 dark:text-white">{scannerTotals.findings}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">실패</p>
+                            <p className="text-lg font-bold text-red-600">{scannerTotals.failed}</p>
+                        </div>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {scannerSummaries.map((summary) => {
+                        const meta = SCANNER_META[summary.scanner];
+                        return (
+                            <button
+                                key={summary.scanner}
+                                onClick={() => router.push(`/dashboard/scans?scanner=${summary.scanner}`)}
+                                className="text-left rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`h-2.5 w-2.5 rounded-full ${meta.accentClass}`} />
+                                            <span className="font-semibold text-slate-900 dark:text-white">{meta.label}</span>
+                                        </div>
+                                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{meta.description}</p>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded-md border text-xs font-semibold ${meta.badgeClass}`}>
+                                        {summary.totalScans}회
+                                    </span>
+                                </div>
+                                <div className="mt-4 grid grid-cols-3 gap-3">
+                                    <div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">{meta.shortLabel}</p>
+                                        <p className="text-xl font-bold text-slate-900 dark:text-white">{summary.findings}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">High 이상</p>
+                                        <p className="text-xl font-bold text-orange-600">{summary.critical + summary.high}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">실패</p>
+                                        <p className="text-xl font-bold text-red-600">{summary.failedScans}</p>
+                                    </div>
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
 
             {/* Charts Row */}
             {(widgetVisibility.distributionChart || widgetVisibility.trendChart) && (

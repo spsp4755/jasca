@@ -41,6 +41,7 @@ import { useProject, useProjectScans, useProjectVulnerabilityTrend, Scan, useUpd
 import { AiButton, AiResultPanel } from '@/components/ai';
 import { useAiExecution, useProjectAiContext } from '@/hooks/use-ai-execution';
 import { useAiStore } from '@/stores/ai-store';
+import { getScanFindingTotal, getScanScanner, SCANNER_META, scannerSummariesToList, SecurityScanner } from '@/lib/scanner-summary';
 
 function getRiskBadge(riskLevel?: string) {
     const colors: Record<string, string> = {
@@ -105,6 +106,7 @@ export default function ProjectDetailPage() {
 
     const [selectedTimeRange, setSelectedTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
     const [showLicenses, setShowLicenses] = useState(true);
+    const [selectedScanner, setSelectedScanner] = useState<'all' | SecurityScanner>('all');
 
     // AI Execution
     const collectProjectContext = useProjectAiContext();
@@ -157,6 +159,16 @@ export default function ProjectDetailPage() {
     }
 
     const scans = scansData?.results || [];
+    const scannerSummaries = scannerSummariesToList(scans);
+    const scannerTotals = scannerSummaries.reduce(
+        (acc, summary) => ({
+            scans: acc.scans + summary.totalScans,
+            findings: acc.findings + summary.findings,
+            failed: acc.failed + summary.failedScans,
+        }),
+        { scans: 0, findings: 0, failed: 0 },
+    );
+    const filteredScans = selectedScanner === 'all' ? scans : scans.filter((scan) => getScanScanner(scan) === selectedScanner);
     const chartData = trendData || mockTrendData;
 
     return (
@@ -319,6 +331,73 @@ export default function ProjectDetailPage() {
                 </div>
             </div>
 
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5">
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">스캐너별 프로젝트 현황</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                        이 프로젝트의 최근 스캔에서 나온 취약점, 정책 위반, 웹 보안 알림을 스캐너별로 분리해서 확인합니다.
+                    </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-900/60">
+                        <div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">스캔</p>
+                            <p className="text-lg font-bold text-slate-900 dark:text-white">{scannerTotals.scans}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">이벤트</p>
+                            <p className="text-lg font-bold text-slate-900 dark:text-white">{scannerTotals.findings}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">실패</p>
+                            <p className="text-lg font-bold text-red-600">{scannerTotals.failed}</p>
+                        </div>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {scannerSummaries.map((summary) => {
+                        const meta = SCANNER_META[summary.scanner];
+                        const isSelected = selectedScanner === summary.scanner;
+                        return (
+                            <button
+                                key={summary.scanner}
+                                onClick={() => setSelectedScanner(isSelected ? 'all' : summary.scanner)}
+                                className={`text-left rounded-xl border p-4 transition-all ${
+                                    isSelected
+                                        ? 'border-blue-500 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/30'
+                                        : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className={`h-2.5 w-2.5 rounded-full ${meta.accentClass}`} />
+                                        <span className="font-semibold text-slate-900 dark:text-white">{meta.label}</span>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded-md border text-xs font-semibold ${meta.badgeClass}`}>
+                                        {summary.totalScans}회
+                                    </span>
+                                </div>
+                                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{meta.description}</p>
+                                <div className="mt-4 grid grid-cols-3 gap-3">
+                                    <div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">{meta.shortLabel}</p>
+                                        <p className="text-xl font-bold text-slate-900 dark:text-white">{summary.findings}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">High 이상</p>
+                                        <p className="text-xl font-bold text-orange-600">{summary.critical + summary.high}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">실패</p>
+                                        <p className="text-xl font-bold text-red-600">{summary.failedScans}</p>
+                                    </div>
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
             {/* License Summary Section */}
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <button
@@ -473,7 +552,36 @@ export default function ProjectDetailPage() {
             {/* Scan History */}
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">이미지 태그별 스캔 이력</h3>
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">스캐너별 스캔 이력</h3>
+                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                결과는 한 목록에서 보되 Trivy, Checkov, ZAP 의미를 분리해서 표시합니다.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {[
+                                { value: 'all' as const, label: '전체', count: scans.length },
+                                ...scannerSummaries.map((summary) => ({
+                                    value: summary.scanner,
+                                    label: SCANNER_META[summary.scanner].label,
+                                    count: summary.totalScans,
+                                })),
+                            ].map((item) => (
+                                <button
+                                    key={item.value}
+                                    onClick={() => setSelectedScanner(item.value)}
+                                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                                        selectedScanner === item.value
+                                            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                                            : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'
+                                    }`}
+                                >
+                                    {item.label} <span className="text-xs opacity-70">{item.count}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
                 {scansLoading ? (
                     <div className="flex items-center justify-center h-32">
@@ -496,6 +604,10 @@ export default function ProjectDetailPage() {
                             첫 스캔 시작하기
                         </Link>
                     </div>
+                ) : filteredScans.length === 0 ? (
+                    <div className="p-10 text-center text-slate-500 dark:text-slate-400">
+                        선택한 스캐너의 스캔 이력이 없습니다.
+                    </div>
                 ) : (
                     <table className="w-full">
                         <thead className="bg-slate-50 dark:bg-slate-700/50">
@@ -516,13 +628,20 @@ export default function ProjectDetailPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                            {scans.map((scan: Scan) => (
+                            {filteredScans.map((scan: Scan) => {
+                                const scanner = getScanScanner(scan);
+                                const meta = SCANNER_META[scanner];
+                                return (
                                 <tr key={scan.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <Tag className="h-4 w-4 text-slate-400" />
                                             <div>
                                                 <p className="font-medium text-slate-900 dark:text-white">{scan.targetName}</p>
+                                                <span className={`mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-xs font-semibold ${meta.badgeClass}`}>
+                                                    <span className={`h-1.5 w-1.5 rounded-full ${meta.accentClass}`} />
+                                                    {meta.label}
+                                                </span>
                                                 <p className="text-sm text-slate-500">{scan.scanType}</p>
                                             </div>
                                         </div>
@@ -535,16 +654,21 @@ export default function ProjectDetailPage() {
                                     </td>
                                     <td className="px-6 py-4">
                                         {scan.summary ? (
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <span className="px-1.5 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded text-xs">
-                                                    C:{scan.summary.critical}
-                                                </span>
-                                                <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 rounded text-xs">
-                                                    H:{scan.summary.high}
-                                                </span>
-                                                <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 rounded text-xs">
-                                                    M:{scan.summary.medium}
-                                                </span>
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2 text-sm">
+                                                    <span className="px-1.5 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded text-xs">
+                                                        C:{scan.summary.critical}
+                                                    </span>
+                                                    <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 rounded text-xs">
+                                                        H:{scan.summary.high}
+                                                    </span>
+                                                    <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 rounded text-xs">
+                                                        M:{scan.summary.medium}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                    총 {getScanFindingTotal(scan)}개 {meta.resultLabel}
+                                                </p>
                                             </div>
                                         ) : (
                                             <span className="text-slate-400 text-sm">-</span>
@@ -566,7 +690,8 @@ export default function ProjectDetailPage() {
                                         </Link>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 )}
