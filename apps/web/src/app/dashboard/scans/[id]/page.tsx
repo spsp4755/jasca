@@ -154,7 +154,8 @@ export default function ScanDetailPage() {
     const sourceType = (scan as any).sourceType || '';
     const isCheckovScan = sourceType === 'CHECKOV_JSON' || evidence?.scanner === 'checkov' || (scan as any).artifactType === 'checkov';
     const isZapScan = sourceType === 'ZAP_JSON' || evidence?.scanner === 'zap' || (scan as any).artifactType === 'zap';
-    const scannerLabel = isZapScan ? 'ZAP' : isCheckovScan ? 'Checkov' : 'Trivy';
+    const isSarifScan = sourceType === 'SARIF';
+    const scannerLabel = isZapScan ? 'ZAP' : isCheckovScan ? 'Checkov' : isSarifScan ? (evidence?.scanner ? String(evidence.scanner).toUpperCase() : 'SAST (SARIF)') : 'Trivy';
     const evidenceCommands = [
         ...(Array.isArray(evidence?.commands) ? evidence.commands : []),
         ...(evidence?.command ? [{ phase: `${scannerLabel.toLowerCase()}-scan`, command: evidence.command }] : []),
@@ -489,6 +490,8 @@ export default function ScanDetailPage() {
                                 ? 'ZAP 결과는 웹 URL에서 수집된 alert 수를 기준으로 판단합니다.'
                                 : isCheckovScan
                                 ? '정책 실패가 0건이어도 아래 값이 있으면 Checkov 실행과 결과 파싱이 완료된 것입니다.'
+                                : isSarifScan
+                                ? 'SARIF 결과는 도구 정보(tool.driver)를 기준으로 스캐너를 판별합니다. 업로드된 SARIF는 JASCA가 직접 실행한 검사가 아닐 수 있습니다.'
                                 : '취약점이 0건이어도 아래 값이 있으면 Trivy 실행과 결과 파싱이 완료된 것입니다.'}
                         </p>
                     </div>

@@ -856,7 +856,7 @@ export default function ScansPage() {
                         className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                     >
                         <option value="">모든 스캐너</option>
-                        {(['trivy', 'checkov', 'zap'] as SecurityScanner[]).map((scanner) => (
+                        {(Object.keys(SCANNER_META) as SecurityScanner[]).map((scanner) => (
                             <option key={scanner} value={scanner}>{SCANNER_META[scanner].label}</option>
                         ))}
                     </select>
