@@ -56,10 +56,12 @@ export class PoliciesController {
     @ApiQuery({ name: 'projectId', required: true })
     @ApiQuery({ name: 'scanResultId', required: false })
     @ApiQuery({ name: 'environment', required: false, enum: Environment })
+    @ApiQuery({ name: 'newOnly', required: false, description: 'Gate only on vulnerabilities new since the previous scan' })
     async verdict(
         @Query('projectId') projectId: string,
         @Query('scanResultId') scanResultId?: string,
         @Query('environment') environment?: Environment,
+        @Query('newOnly') newOnly?: string,
         @CurrentUser() user?: any,
     ) {
         if (!projectId) {
@@ -68,7 +70,7 @@ export class PoliciesController {
         if (environment && !Object.values(Environment).includes(environment)) {
             throw new BadRequestException(`Invalid environment: ${environment}`);
         }
-        return this.policyEngine.verdict(projectId, scanResultId, environment, user);
+        return this.policyEngine.verdict(projectId, scanResultId, environment, user, newOnly === 'true');
     }
 
     @Get(':id')
