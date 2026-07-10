@@ -292,6 +292,7 @@ export interface Scan {
     targetName: string;
     scanLocation?: string;
     imageRef?: string;
+    imageDigest?: string;
     artifactName?: string;
     artifactType?: string;
     sourceType?: string;
@@ -360,6 +361,14 @@ export interface Scan {
     project?: {
         name: string;
     };
+    artifacts?: Array<{
+        id: string;
+        type: 'CYCLONEDX_JSON';
+        sha256: string;
+        generator: string;
+        generatorVersion?: string | null;
+        createdAt: string;
+    }>;
 }
 
 export function useScans(projectId?: string) {
@@ -2198,6 +2207,129 @@ export function useUpdateSettings() {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['settings', variables.key] });
             queryClient.invalidateQueries({ queryKey: ['settings'] });
+        },
+    });
+}
+
+export type ClustaraAuthType = 'NONE' | 'X_API_KEY' | 'BEARER';
+export type ClustaraDeliveryType = 'TRIVY' | 'SBOM';
+export type ClustaraDeliveryStatus = 'PENDING' | 'SENDING' | 'SUCCESS' | 'FAILED';
+
+export interface ClustaraSettings {
+    enabled: boolean;
+    autoSend: boolean;
+    baseUrl: string;
+    scanPath: string;
+    sbomPath: string;
+    authType: ClustaraAuthType;
+    credential?: string;
+    credentialConfigured: boolean;
+    defaultClusterId: string;
+    scanner: string;
+    generator: string;
+    timeoutSeconds: number;
+    maxAttempts: number;
+    verifyTls: boolean;
+}
+
+export interface ClustaraDelivery {
+    id: string;
+    scanResultId: string;
+    type: ClustaraDeliveryType;
+    status: ClustaraDeliveryStatus;
+    clusterId: string;
+    scanner?: string | null;
+    generator?: string | null;
+    imageDigest: string;
+    attempts: number;
+    maxAttempts: number;
+    httpStatus?: number | null;
+    responseSummary?: string | null;
+    lastError?: string | null;
+    nextAttemptAt: string;
+    succeededAt?: string | null;
+    createdAt: string;
+    scanResult?: { id: string; imageRef: string; artifactName?: string | null; projectId: string };
+}
+
+export function useClustaraSettings() {
+    return useQuery<ClustaraSettings>({
+        queryKey: ['clustara-settings'],
+        queryFn: () => authFetch(`${API_BASE}/clustara/settings`),
+    });
+}
+
+export function useClustaraOptions() {
+    return useQuery<{ enabled: boolean; defaultClusterId: string; scanner: string; generator: string }>({
+        queryKey: ['clustara-options'],
+        queryFn: () => authFetch(`${API_BASE}/clustara/options`),
+    });
+}
+
+export function useUpdateClustaraSettings() {
+    const queryClient = useQueryClient();
+    return useMutation<ClustaraSettings, Error, Partial<ClustaraSettings>>({
+        mutationFn: (settings) => authFetch(`${API_BASE}/clustara/settings`, {
+            method: 'PUT',
+            body: JSON.stringify(settings),
+        }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clustara-settings'] }),
+    });
+}
+
+export function useTestClustaraConnection() {
+    return useMutation<{ success: boolean; status: number; durationMs: number; message: string }, Error, Partial<ClustaraSettings>>({
+        mutationFn: (settings) => authFetch(`${API_BASE}/clustara/test`, {
+            method: 'POST',
+            body: JSON.stringify(settings),
+        }),
+    });
+}
+
+export function useClustaraDeliveries(limit = 50) {
+    return useQuery<ClustaraDelivery[]>({
+        queryKey: ['clustara-deliveries', limit],
+        queryFn: () => authFetch(`${API_BASE}/clustara/deliveries?limit=${limit}`),
+        refetchInterval: 10000,
+    });
+}
+
+export function useScanClustaraDeliveries(scanId?: string) {
+    return useQuery<ClustaraDelivery[]>({
+        queryKey: ['clustara-scan-deliveries', scanId],
+        queryFn: () => authFetch(`${API_BASE}/clustara/scans/${scanId}/deliveries`),
+        enabled: Boolean(scanId),
+        refetchInterval: 10000,
+    });
+}
+
+export function useQueueClustaraDelivery(scanId: string) {
+    const queryClient = useQueryClient();
+    return useMutation<ClustaraDelivery, Error, {
+        type: ClustaraDeliveryType;
+        clusterId: string;
+        imageDigest: string;
+        scanner?: string;
+        generator?: string;
+    }>({
+        mutationFn: (input) => authFetch(`${API_BASE}/clustara/scans/${scanId}/deliveries`, {
+            method: 'POST',
+            body: JSON.stringify(input),
+        }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['clustara-scan-deliveries', scanId] });
+            queryClient.invalidateQueries({ queryKey: ['clustara-deliveries'] });
+        },
+    });
+}
+
+export function useRetryClustaraDelivery(scanId?: string) {
+    const queryClient = useQueryClient();
+    return useMutation<ClustaraDelivery, Error, string>({
+        mutationFn: (id) => authFetch(`${API_BASE}/clustara/deliveries/${id}/retry`, { method: 'POST' }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['clustara-deliveries'] });
+            if (scanId) queryClient.invalidateQueries({ queryKey: ['clustara-scan-deliveries', scanId] });
         },
     });
 }

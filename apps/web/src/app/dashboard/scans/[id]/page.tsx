@@ -26,6 +26,7 @@ import { useScan, useLicensesByScan, useScanBestFixes, LicenseClassification } f
 import { AiButton, AiResultPanel } from '@/components/ai';
 import { useAiExecution } from '@/hooks/use-ai-execution';
 import { downloadWithAuth } from '@/lib/api/fetch-utils';
+import { ClustaraDeliveryPanel } from '@/components/clustara-delivery-panel';
 
 // License classification config
 const CLASSIFICATION_CONFIG: Record<LicenseClassification, { label: string; color: string; bgColor: string }> = {
@@ -486,6 +487,8 @@ export default function ScanDetailPage() {
                     </div>
                 </div>
             </div>
+
+            {!isCheckovScan && !isZapScan && !isSarifScan ? <ClustaraDeliveryPanel scan={scan} /> : null}
 
             {/* Scanner Execution Evidence */}
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">

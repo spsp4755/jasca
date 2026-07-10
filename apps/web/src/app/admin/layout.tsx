@@ -31,6 +31,7 @@ import {
     Code2,
     KeyRound,
     Globe2,
+    Cable,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useHasMounted } from '@/hooks/use-has-mounted';
@@ -51,6 +52,7 @@ const adminNavigation = [
 ];
 
 const systemNavigation = [
+    { name: 'Clustara 연동', href: '/admin/clustara', icon: Cable },
     { name: 'Vuln Portal 연동', href: '/admin/vuln-portal', icon: Globe2 },
     { name: 'SSO 설정', href: '/admin/sso-settings', icon: KeyRound },
     { name: 'API 토큰', href: '/admin/api-tokens', icon: Key },
