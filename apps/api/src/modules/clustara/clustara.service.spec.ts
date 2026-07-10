@@ -222,4 +222,30 @@ describe('ClustaraService', () => {
         })).rejects.toThrow('access');
         expect(prisma.clustaraDelivery.update).not.toHaveBeenCalled();
     });
+
+    it('allows a global security administrator to queue a project delivery', async () => {
+        const digest = `sha256:${'e'.repeat(64)}`;
+        const existing = { id: 'delivery-1', imageDigest: digest };
+        const prisma = {
+            scanResult: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'scan-1',
+                    imageDigest: digest,
+                    project: { id: 'project-1', organizationId: 'org-1' },
+                    rawResult: {},
+                    artifacts: [],
+                }),
+            },
+            clustaraDelivery: { findUnique: jest.fn().mockResolvedValue(existing) },
+        } as any;
+        const settingsStore = {
+            getRaw: jest.fn().mockResolvedValue({ defaultClusterId: 'prod' }),
+        } as any;
+        const service = new ClustaraService(prisma, settingsStore);
+
+        await expect(service.queueDelivery('scan-1', 'TRIVY', {}, {
+            id: 'security-1',
+            roles: [{ role: 'SECURITY_ADMIN', scope: 'GLOBAL' }],
+        })).resolves.toBe(existing);
+    });
 });

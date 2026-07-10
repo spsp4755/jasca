@@ -45,6 +45,12 @@ interface PreparedScanTarget {
 interface TrivyScanExecution {
     stdout: string;
     target: PreparedScanTarget;
+    generatedSbom?: string;
+}
+
+export interface TrivyScanOutput {
+    rawResult: any;
+    generatedSbom?: string;
 }
 
 interface TrivyExecutionEvidence {
@@ -110,7 +116,7 @@ export class TrivyScanService {
 
     constructor(private readonly settingsService: SettingsService) { }
 
-    async scanUploadedFile(filePath: string, options: TrivyScanOptions = {}, operationId?: string): Promise<any> {
+    async scanUploadedFile(filePath: string, options: TrivyScanOptions = {}, operationId?: string): Promise<TrivyScanOutput> {
         const uploadDir = path.dirname(filePath);
 
         try {
@@ -170,12 +176,12 @@ export class TrivyScanService {
                 resultSummary: this.summarizeTrivyResult(result),
             });
 
-            return result;
+            return { rawResult: result, generatedSbom: execution.generatedSbom };
         } catch (error) {
             const stdout = (error as any)?.stdout;
             if (stdout) {
                 try {
-                    return JSON.parse(stdout);
+                    return { rawResult: JSON.parse(stdout) };
                 } catch {
                     // Fall through to a readable error below.
                 }
@@ -378,10 +384,7 @@ export class TrivyScanService {
             if (!supportsSyft) {
                 throw new BadRequestException('Syft SBOM strategy supports fs, rootfs, and repo scan modes only.');
             }
-            return {
-                stdout: await this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands),
-                target,
-            };
+            return { ...await this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands), target };
         }
 
         let directOutput: string;
@@ -405,10 +408,7 @@ export class TrivyScanService {
         }
 
         this.logger.warn(`Trivy direct scan produced weak inventory. Falling back to Syft SBOM. mode=${target.mode} target=${path.basename(target.targetPath)}`);
-        return {
-            stdout: await this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands),
-            target,
-        };
+        return { ...await this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands), target };
     }
 
     private async runExtractedArchiveFallback(
@@ -481,7 +481,7 @@ export class TrivyScanService {
         timeoutMs: number,
         operationId: string | undefined,
         commands: TrivyExecutionEvidence['commands'],
-    ): Promise<string> {
+    ): Promise<{ stdout: string; generatedSbom: string }> {
         const sbomPath = path.join(path.dirname(target.targetPath), `syft-${Date.now()}.cdx.json`);
         const syftArgs = [target.targetPath, '-o', 'cyclonedx-json'];
         const sbom = await this.runSyft(this.trackSyftCommand(commands, 'syft-sbom', syftArgs, target), timeoutMs, operationId);
@@ -494,11 +494,12 @@ export class TrivyScanService {
             scanners: options.scanners?.filter((scanner) => ['vuln', 'license'].includes(scanner)),
         };
         const sbomArgs = this.buildTrivyArgs(settings, { ...target, mode: 'sbom', targetPath: sbomPath }, sbomScanOptions);
-        return this.runTrivy(
+        const stdout = await this.runTrivy(
             this.trackCommand(commands, 'trivy-syft-sbom-scan', sbomArgs, { ...target, mode: 'sbom', targetPath: sbomPath }),
             timeoutMs,
             operationId,
         );
+        return { stdout, generatedSbom: sbom };
     }
 
     private runSyft(args: string[], timeoutMs: number, operationId?: string): Promise<string> {
@@ -705,10 +706,7 @@ export class TrivyScanService {
         // that trivy sbom can then match against the vulnerability DB.
         if (options.analysisStrategy !== 'direct' && this.shouldFallbackToSyft(fsOutput)) {
             this.logger.warn(`RPM fs scan returned no packages. Falling back to Syft SBOM on original RPM. operationId=${operationId || 'n/a'} file=${path.basename(target.targetPath)}`);
-            return {
-                stdout: await this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands),
-                target,
-            };
+            return { ...await this.runSyftThenTrivySbom(settings, target, options, timeoutMs, operationId, commands), target };
         }
 
         return { stdout: fsOutput, target };
