@@ -45,6 +45,21 @@ const defaultSettings: Record<string, unknown> = {
         blockedTargetPatterns: [],
         defaultRiskThresholdForNotification: 'HIGH',
     },
+    clustara: {
+        enabled: false,
+        autoSend: false,
+        baseUrl: '',
+        scanPath: '/admin/k8s/security/scans/import',
+        sbomPath: '/admin/k8s/security/sboms',
+        authType: 'NONE',
+        credential: '',
+        defaultClusterId: '',
+        scanner: 'trivy',
+        generator: 'syft',
+        timeoutSeconds: 30,
+        maxAttempts: 3,
+        verifyTls: true,
+    },
     ai: {
         provider: 'openai',
         apiUrl: 'https://api.openai.com/v1',
@@ -122,16 +137,27 @@ export class SettingsService {
     constructor(private readonly prisma: PrismaService) { }
 
     private sanitize(key: string, value: unknown) {
-        if (key !== 'zap' || !isRecord(value)) {
+        if (!isRecord(value)) {
             return value;
         }
 
-        const { apiKey, ...safeValue } = value;
+        if (key === 'zap') {
+            const { apiKey, ...safeValue } = value;
+            return {
+                ...safeValue,
+                apiKeyConfigured: typeof apiKey === 'string' && apiKey.trim().length > 0,
+            };
+        }
 
-        return {
-            ...safeValue,
-            apiKeyConfigured: typeof apiKey === 'string' && apiKey.trim().length > 0,
-        };
+        if (key === 'clustara') {
+            const { credential, ...safeValue } = value;
+            return {
+                ...safeValue,
+                credentialConfigured: typeof credential === 'string' && credential.trim().length > 0,
+            };
+        }
+
+        return value;
     }
 
     async getRaw(key: string) {
@@ -173,6 +199,24 @@ export class SettingsService {
             };
         }
 
+        if (key === 'clustara') {
+            const currentValue = await this.getRaw(key);
+            const currentSettings = isRecord(currentValue) ? currentValue : {};
+            const submittedSettings = isRecord(value) ? value : {};
+            const submittedCredential = submittedSettings.credential;
+            const currentCredential = typeof currentSettings.credential === 'string' ? currentSettings.credential : '';
+            const shouldReplaceCredential = typeof submittedCredential === 'string'
+                && submittedCredential.trim().length > 0
+                && !isMaskLikeSecret(submittedCredential);
+
+            nextValue = {
+                ...(defaultSettings.clustara as Record<string, unknown>),
+                ...currentSettings,
+                ...submittedSettings,
+                credential: shouldReplaceCredential ? submittedCredential : currentCredential,
+            };
+        }
+
         const setting = await this.prisma.systemSettings.upsert({
             where: { key },
             update: { value: nextValue as any },
@@ -197,6 +241,7 @@ export class SettingsService {
         }
 
         result.zap = this.sanitize('zap', result.zap);
+        result.clustara = this.sanitize('clustara', result.clustara);
 
         return result;
     }
