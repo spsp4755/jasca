@@ -30,6 +30,7 @@ import { DatabaseModule } from './modules/database/database.module';
 import { ManualAdvisoriesModule } from './modules/manual-advisories/manual-advisories.module';
 import { SemgrepRulesModule } from './modules/semgrep-rules/semgrep-rules.module';
 import { VulnPortalModule } from './modules/vuln-portal/vuln-portal.module';
+import { ClustaraModule } from './modules/clustara/clustara.module';
 
 @Module({
     imports: [
@@ -66,6 +67,7 @@ import { VulnPortalModule } from './modules/vuln-portal/vuln-portal.module';
         ManualAdvisoriesModule,
         SemgrepRulesModule,
         VulnPortalModule,
+        ClustaraModule,
         DatabaseModule,
     ],
 })
