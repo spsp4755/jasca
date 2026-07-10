@@ -225,6 +225,8 @@ model ScanResult {
   summary         ScanSummary?
   vulnerabilities ScanVulnerability[]
   packageLicenses PackageLicense[]
+  clustaraDeliveries ClustaraDelivery[]
+  artifacts       ScanArtifact[]
   
   scannedAt       DateTime  @default(now())
   createdAt       DateTime  @default(now())
@@ -245,6 +247,64 @@ model ScanSummary {
   medium       Int        @default(0)
   low          Int        @default(0)
   unknown      Int        @default(0)
+}
+
+enum ClustaraDeliveryType {
+  TRIVY
+  SBOM
+}
+
+enum ClustaraDeliveryStatus {
+  PENDING
+  SENDING
+  SUCCESS
+  FAILED
+}
+
+model ClustaraDelivery {
+  id              String                  @id @default(uuid())
+  scanResultId    String
+  scanResult      ScanResult              @relation(fields: [scanResultId], references: [id], onDelete: Cascade)
+  type            ClustaraDeliveryType
+  status          ClustaraDeliveryStatus  @default(PENDING)
+  clusterId       String
+  scanner         String?
+  generator       String?
+  imageDigest     String
+  attempts        Int                     @default(0)
+  maxAttempts     Int                     @default(3)
+  httpStatus      Int?
+  responseSummary String?
+  lastError       String?
+  nextAttemptAt   DateTime                @default(now())
+  startedAt       DateTime?
+  succeededAt     DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@unique([scanResultId, type, clusterId, imageDigest])
+  @@index([status, nextAttemptAt])
+  @@index([scanResultId, createdAt])
+}
+
+enum ScanArtifactType {
+  CYCLONEDX_JSON
+}
+
+model ScanArtifact {
+  id               String            @id @default(uuid())
+  scanResultId     String
+  scanResult       ScanResult        @relation(fields: [scanResultId], references: [id], onDelete: Cascade)
+  type             ScanArtifactType
+  filePath         String
+  sha256           String
+  generator        String
+  generatorVersion String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([scanResultId, type])
+  @@index([scanResultId, createdAt])
 }
 
 enum SourceType {
