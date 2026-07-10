@@ -109,6 +109,27 @@ describe('Clustara integration contract', () => {
 });
 
 describe('ClustaraService', () => {
+    it('exposes only non-secret scan options to project users', async () => {
+        const settingsStore = {
+            getRaw: jest.fn().mockResolvedValue({
+                enabled: true,
+                baseUrl: 'https://private.internal',
+                credential: 'secret',
+                defaultClusterId: 'prod',
+                scanner: 'internal-trivy',
+                generator: 'internal-syft',
+            }),
+        } as any;
+        const service = new ClustaraService({} as any, settingsStore);
+
+        await expect(service.getPublicOptions()).resolves.toEqual({
+            enabled: true,
+            defaultClusterId: 'prod',
+            scanner: 'internal-trivy',
+            generator: 'internal-syft',
+        });
+    });
+
     it('preserves a stored credential when an update leaves it blank', async () => {
         const settingsStore = {
             getRaw: jest.fn().mockResolvedValue({

@@ -177,6 +177,16 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
         return maskSecret ? sanitizeClustaraSettings(settings) : settings;
     }
 
+    async getPublicOptions() {
+        const settings = await this.getSettings(false) as ClustaraSettings;
+        return {
+            enabled: settings.enabled,
+            defaultClusterId: settings.defaultClusterId,
+            scanner: settings.scanner,
+            generator: settings.generator,
+        };
+    }
+
     async updateSettings(input: Partial<ClustaraSettings>): Promise<SafeClustaraSettings> {
         const current = await this.getSettings(false) as ClustaraSettings;
         const submittedCredential = String(input.credential || '').trim();
@@ -187,7 +197,7 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
                 ? submittedCredential
                 : current.credential,
         });
-        this.validateSettings(settings);
+        if (settings.enabled || settings.baseUrl) this.validateSettings(settings);
         await this.settingsService.set('clustara', settings);
         return sanitizeClustaraSettings(settings);
     }

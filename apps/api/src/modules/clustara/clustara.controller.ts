@@ -29,6 +29,13 @@ import {
 export class ClustaraController {
     constructor(private readonly clustaraService: ClustaraService) { }
 
+    @Get('options')
+    @Roles('VIEWER', 'DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN', 'SYSTEM_ADMIN')
+    @ApiOperation({ summary: 'Get non-secret Clustara scan delivery options' })
+    getPublicOptions() {
+        return this.clustaraService.getPublicOptions();
+    }
+
     @Get('settings')
     @Roles('SYSTEM_ADMIN', 'SECURITY_ADMIN')
     @ApiOperation({ summary: 'Get masked Clustara integration settings' })
