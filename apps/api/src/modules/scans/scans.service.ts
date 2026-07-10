@@ -14,7 +14,7 @@ import * as path from 'path';
 import { PolicyEngineService } from '../policies/policy-engine.service';
 import { ManualAdvisoriesService } from '../manual-advisories/manual-advisories.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ClustaraService } from '../clustara/clustara.service';
+import { ClustaraService, deriveImageDigest } from '../clustara/clustara.service';
 import { ScanArtifactService } from './services/scan-artifact.service';
 import {
     RequestUser,
@@ -327,7 +327,7 @@ export class ScansService {
             completedAt: scan.summary ? scan.createdAt.toISOString() : undefined,
             createdAt: scan.createdAt.toISOString(),
             imageRef: scan.imageRef,
-            imageDigest: scan.imageDigest,
+            imageDigest: deriveImageDigest(scan.imageDigest, scan.rawResult),
             tag: scan.tag,
             artifactName: scan.artifactName,
             artifactType: scan.artifactType,
@@ -493,7 +493,7 @@ export class ScansService {
             completedAt: scan.summary ? scan.createdAt.toISOString() : undefined,
             createdAt: scan.createdAt.toISOString(),
             imageRef: scan.imageRef,
-            imageDigest: scan.imageDigest,
+            imageDigest: deriveImageDigest(scan.imageDigest, scan.rawResult),
             tag: scan.tag,
             artifactName: scan.artifactName,
             artifactType: scan.artifactType,
@@ -573,7 +573,7 @@ export class ScansService {
             data: {
                 projectId: resolvedProjectId,
                 imageRef: dto.imageRef || parsed.artifactName || 'unknown',
-                imageDigest: dto.imageDigest,
+                imageDigest: deriveImageDigest(dto.imageDigest, rawResult),
                 tag: dto.tag,
                 commitHash: dto.commitHash,
                 branch: dto.branch,
