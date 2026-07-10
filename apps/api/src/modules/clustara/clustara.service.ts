@@ -239,6 +239,7 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
         }
 
         const settings = await this.getSettings(false) as ClustaraSettings;
+        if (!settings.enabled) throw new BadRequestException('Clustara 연동이 비활성화되어 있습니다.');
         const clusterId = String(input.clusterId || settings.defaultClusterId).trim();
         const imageDigest = deriveImageDigest(input.imageDigest || scan.imageDigest, scan.rawResult);
         if (!clusterId) throw new BadRequestException('Clustara cluster_id가 필요합니다.');
@@ -348,6 +349,8 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
     }
 
     private async processNextDelivery() {
+        const settings = await this.getSettings(false) as ClustaraSettings;
+        if (!settings.enabled) return;
         const due = await this.prisma.clustaraDelivery.findFirst({
             where: { status: ClustaraDeliveryStatus.PENDING, nextAttemptAt: { lte: new Date() } },
             orderBy: { nextAttemptAt: 'asc' },

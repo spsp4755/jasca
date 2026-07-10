@@ -213,7 +213,7 @@ describe('ClustaraService', () => {
             clustaraDelivery: { findUnique: jest.fn(), create: jest.fn() },
         } as any;
         const settingsStore = {
-            getRaw: jest.fn().mockResolvedValue({ defaultClusterId: 'prod' }),
+            getRaw: jest.fn().mockResolvedValue({ enabled: true, defaultClusterId: 'prod' }),
         } as any;
         const service = new ClustaraService(prisma, settingsStore);
 
@@ -221,6 +221,28 @@ describe('ClustaraService', () => {
             clusterId: 'prod',
             imageDigest: 'sha256:short',
         })).rejects.toThrow('sha256');
+        expect(prisma.clustaraDelivery.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects manual queue requests while the integration is disabled', async () => {
+        const digest = `sha256:${'a'.repeat(64)}`;
+        const prisma = {
+            scanResult: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'scan-1',
+                    imageDigest: digest,
+                    project: { id: 'project-1', organizationId: 'org-1' },
+                    rawResult: {},
+                    artifacts: [],
+                }),
+            },
+            clustaraDelivery: { create: jest.fn() },
+        } as any;
+        const service = new ClustaraService(prisma, {
+            getRaw: jest.fn().mockResolvedValue({ enabled: false, defaultClusterId: 'prod' }),
+        } as any);
+
+        await expect(service.queueDelivery('scan-1', 'TRIVY', {})).rejects.toThrow('비활성화');
         expect(prisma.clustaraDelivery.create).not.toHaveBeenCalled();
     });
 
@@ -260,7 +282,7 @@ describe('ClustaraService', () => {
             clustaraDelivery: { findUnique: jest.fn().mockResolvedValue(existing) },
         } as any;
         const settingsStore = {
-            getRaw: jest.fn().mockResolvedValue({ defaultClusterId: 'prod' }),
+            getRaw: jest.fn().mockResolvedValue({ enabled: true, defaultClusterId: 'prod' }),
         } as any;
         const service = new ClustaraService(prisma, settingsStore);
 
