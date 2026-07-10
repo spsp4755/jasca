@@ -15,6 +15,7 @@ import { PolicyEngineService } from '../policies/policy-engine.service';
 import { ManualAdvisoriesService } from '../manual-advisories/manual-advisories.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClustaraService } from '../clustara/clustara.service';
+import { ScanArtifactService } from './services/scan-artifact.service';
 import {
     RequestUser,
     assertOrganizationAccess,
@@ -42,6 +43,7 @@ export class ScansService {
         private readonly manualAdvisoriesService: ManualAdvisoriesService,
         private readonly notificationsService: NotificationsService,
         private readonly clustaraService: ClustaraService,
+        private readonly scanArtifactService: ScanArtifactService,
     ) { }
 
     private getDisplayTargetName(scan: { imageRef?: string | null; artifactName?: string | null }) {
@@ -956,6 +958,7 @@ export class ScansService {
         if (scan?.resultFilePath) {
             await fs.promises.rm(scan.resultFilePath, { force: true }).catch(() => undefined);
         }
+        await this.scanArtifactService.deleteForScan(id);
         return this.prisma.scanResult.delete({ where: { id } });
     }
 

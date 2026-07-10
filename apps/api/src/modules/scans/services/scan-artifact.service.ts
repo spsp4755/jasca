@@ -53,6 +53,16 @@ export class ScanArtifactService {
         return artifact;
     }
 
+    async deleteForScan(scanResultId: string) {
+        const artifacts = await this.prisma.scanArtifact.findMany({
+            where: { scanResultId },
+            select: { filePath: true },
+        });
+        await Promise.all(artifacts.map((artifact) =>
+            fs.promises.rm(artifact.filePath, { force: true }).catch(() => undefined),
+        ));
+    }
+
     private getSyftVersion(sbom: string): string | null {
         try {
             const parsed = JSON.parse(sbom);

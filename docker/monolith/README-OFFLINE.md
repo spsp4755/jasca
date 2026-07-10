@@ -119,6 +119,27 @@ JASCA는 폐쇄망에서 업로드 파일을 먼저 Trivy로 직접 검사하고
 - `Trivy 직접 검사만`: 기존 Trivy 명령 결과만 확인하고 싶을 때 사용합니다.
 - `Syft SBOM 우선`: Alloy 같은 소스/릴리즈 압축본에서 직접 검사 누락이 의심될 때 사용합니다.
 
+## Clustara 폐쇄망 연동
+
+관리자 화면의 `Clustara 연동`에서 제공받은 curl 값에 맞춰 Base URL, Scan API 경로, SBOM API 경로, 인증 방식(`없음`, `X-API-Key`, `Bearer`), 기본 `cluster_id`, `scanner`, `generator`를 설정할 수 있습니다. 인증 비밀값은 저장 후 화면과 API 응답에 다시 표시되지 않습니다.
+
+Clustara HTTPS 인증서가 사내 CA로 발급됐다면 `deploy-existing-layout.env`에 호스트 인증서 파일을 지정합니다.
+
+```bash
+INTERNAL_CA_CERT=/app/jasca/certs/internal-ca.crt
+```
+
+배포 스크립트는 이 파일을 읽기 전용으로 마운트하고 컨테이너에 `NODE_EXTRA_CA_CERTS=/app/jasca-ca/internal-ca.crt`를 설정합니다. 가능하면 관리자 UI의 TLS 검증을 계속 활성화하세요.
+
+방화벽 적용 후 컨테이너에서 먼저 확인합니다.
+
+```bash
+docker exec jasca getent hosts clustara.internal
+docker exec jasca node -e "fetch('https://clustara.internal').then(r=>console.log(r.status)).catch(e=>{console.error(e.message);process.exit(1)})"
+```
+
+Clustara 장애나 방화벽 차단은 JASCA 스캔 저장을 실패시키지 않습니다. 관리자 화면의 최근 전송 이력에서 실패 사유를 확인하고 `재전송`을 실행합니다. 인증 비밀값은 JASCA PostgreSQL 설정 데이터에 저장되므로 `pgdata`와 백업 파일의 접근 권한을 제한해야 합니다.
+
 ## Standalone RPM 검사
 
 Standalone RPM 파일을 업로드해서 스캔할 때는 취약점 DB 매칭을 위해 RPM이 어느 배포판/버전 기준인지 알아야 합니다. 업로드 화면에서 직접 입력할 수 있고, 운영 기본값은 `deploy-existing-layout.env`에서 지정할 수 있습니다.
