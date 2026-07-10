@@ -21,3 +21,4 @@ apps/web/tsc-errors.txt
 apps/web/build-errors.txt
 apps/api/prisma/seed.js
 .pnpm-store/
+.worktrees/
