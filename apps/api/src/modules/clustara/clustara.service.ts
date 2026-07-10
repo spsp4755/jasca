@@ -12,7 +12,7 @@ import { request as httpsRequest } from 'https';
 import * as fs from 'fs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
-import { assertProjectAccess, RequestUser } from '../../common/authz/access-control';
+import { assertProjectAccess, hasAnyRole, RequestUser } from '../../common/authz/access-control';
 
 export type ClustaraAuthType = 'NONE' | 'X_API_KEY' | 'BEARER';
 export type ClustaraPayloadType = 'TRIVY' | 'SBOM';
@@ -224,7 +224,9 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
             include: { project: true, artifacts: true },
         });
         if (!scan) throw new NotFoundException('스캔 결과를 찾을 수 없습니다.');
-        if (currentUser) assertProjectAccess(currentUser, scan.project);
+        if (currentUser && !hasAnyRole(currentUser, ['SECURITY_ADMIN'])) {
+            assertProjectAccess(currentUser, scan.project);
+        }
 
         const settings = await this.getSettings(false) as ClustaraSettings;
         const clusterId = String(input.clusterId || settings.defaultClusterId).trim();
@@ -295,7 +297,9 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
             include: { project: true },
         });
         if (!scan) throw new NotFoundException('스캔 결과를 찾을 수 없습니다.');
-        if (currentUser) assertProjectAccess(currentUser, scan.project);
+        if (currentUser && !hasAnyRole(currentUser, ['SECURITY_ADMIN'])) {
+            assertProjectAccess(currentUser, scan.project);
+        }
         return this.prisma.clustaraDelivery.findMany({
             where: { scanResultId },
             orderBy: { createdAt: 'desc' },
@@ -308,7 +312,9 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
             include: { scanResult: { include: { project: true } } },
         });
         if (!delivery) throw new NotFoundException('Clustara 전송 이력을 찾을 수 없습니다.');
-        if (currentUser) assertProjectAccess(currentUser, delivery.scanResult.project);
+        if (currentUser && !hasAnyRole(currentUser, ['SECURITY_ADMIN'])) {
+            assertProjectAccess(currentUser, delivery.scanResult.project);
+        }
         return this.prisma.clustaraDelivery.update({
             where: { id },
             data: {

@@ -10,6 +10,7 @@ import {
     UseInterceptors,
     UploadedFile,
     BadRequestException,
+    Logger,
     Req,
     Res,
 } from '@nestjs/common';
@@ -39,6 +40,7 @@ import { TrivyScanOptions, TrivyScanService } from './services/trivy-scan.servic
 import { CheckovScanOptions, CheckovScanService } from './services/checkov-scan.service';
 import { ZapScanOptions, ZapScanService } from './services/zap-scan.service';
 import { SemgrepScanOptions, SemgrepScanService } from './services/semgrep-scan.service';
+import { ScanArtifactService } from './services/scan-artifact.service';
 
 const TRIVY_UPLOAD_ROOT = path.join(os.tmpdir(), 'jasca-trivy-uploads');
 const MAX_TRIVY_UPLOAD_BYTES = parseSizeBytes(process.env.TRIVY_UPLOAD_MAX_BYTES, 200 * 1024 * 1024);
@@ -156,12 +158,15 @@ const trivyUploadStorage = diskStorage({
 @ApiTags('Scans')
 @Controller('scans')
 export class ScansController {
+    private readonly logger = new Logger(ScansController.name);
+
     constructor(
         private readonly scansService: ScansService,
         private readonly trivyScanService: TrivyScanService,
         private readonly checkovScanService: CheckovScanService,
         private readonly zapScanService: ZapScanService,
         private readonly semgrepScanService: SemgrepScanService,
+        private readonly scanArtifactService: ScanArtifactService,
     ) { }
 
     @Get()
@@ -361,23 +366,29 @@ export class ScansController {
             });
         }
 
-        const rawResult = scanner === 'checkov'
-            ? await this.checkovScanService.scanUploadedFile(
+        let generatedSbom: string | undefined;
+        let rawResult: any;
+        if (scanner === 'checkov') {
+            rawResult = await this.checkovScanService.scanUploadedFile(
                 file.path,
                 parseCheckovScanOptions(body),
                 scanOperationId,
-            )
-            : scanner === 'semgrep'
-                ? await this.semgrepScanService.scanUploadedFile(
+            );
+        } else if (scanner === 'semgrep') {
+            rawResult = await this.semgrepScanService.scanUploadedFile(
                     file.path,
                     { ...parseSemgrepScanOptions(body), projectId },
                     scanOperationId,
-                )
-                : await this.trivyScanService.scanUploadedFile(
+                );
+        } else {
+            const trivyOutput = await this.trivyScanService.scanUploadedFile(
                     file.path,
                     parseTrivyScanOptions(body),
                     scanOperationId,
                 );
+            rawResult = trivyOutput.rawResult;
+            generatedSbom = trivyOutput.generatedSbom;
+        }
 
         if (scanner === 'trivy' && this.trivyScanService.isCancellationRequested(scanOperationId)) {
             throw new BadRequestException('Trivy scan was cancelled by the user');
@@ -419,6 +430,14 @@ export class ScansController {
             if (scanOperationId) this.trivyScanService.consumeSavedScan(scanOperationId);
             await this.scansService.delete(savedScan.id, user).catch(() => undefined);
             throw new BadRequestException('Trivy scan was cancelled by the user');
+        }
+
+        if (generatedSbom) {
+            try {
+                await this.scanArtifactService.persistCycloneDx(savedScan.id, generatedSbom);
+            } catch (error) {
+                this.logger.warn(`Failed to persist generated SBOM for ${savedScan.id}: ${(error as Error).message}`);
+            }
         }
 
         responseReady = true;

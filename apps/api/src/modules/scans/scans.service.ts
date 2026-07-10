@@ -14,6 +14,7 @@ import * as path from 'path';
 import { PolicyEngineService } from '../policies/policy-engine.service';
 import { ManualAdvisoriesService } from '../manual-advisories/manual-advisories.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ClustaraService } from '../clustara/clustara.service';
 import {
     RequestUser,
     assertOrganizationAccess,
@@ -40,6 +41,7 @@ export class ScansService {
         private readonly policyEngine: PolicyEngineService,
         private readonly manualAdvisoriesService: ManualAdvisoriesService,
         private readonly notificationsService: NotificationsService,
+        private readonly clustaraService: ClustaraService,
     ) { }
 
     private getDisplayTargetName(scan: { imageRef?: string | null; artifactName?: string | null }) {
@@ -455,6 +457,16 @@ export class ScansService {
                         { createdAt: 'desc' },
                     ],
                 },
+                artifacts: {
+                    select: {
+                        id: true,
+                        type: true,
+                        sha256: true,
+                        generator: true,
+                        generatorVersion: true,
+                        createdAt: true,
+                    },
+                },
             },
         });
 
@@ -525,6 +537,10 @@ export class ScansService {
                     name: v.assignee.name,
                     email: v.assignee.email,
                 } : undefined,
+            })),
+            artifacts: scan.artifacts.map((artifact) => ({
+                ...artifact,
+                createdAt: artifact.createdAt.toISOString(),
             })),
             scanEvidence: this.getScanEvidence(scan.rawResult),
             rawResult: scan.rawResult,
@@ -642,6 +658,11 @@ export class ScansService {
         }
 
         const savedScan = await this.findById(scanResult.id, currentUser);
+        try {
+            await this.clustaraService.queueAutomatic(scanResult.id);
+        } catch (error) {
+            this.logger.warn(`Failed to queue Clustara delivery for ${scanResult.id}: ${(error as Error).message}`);
+        }
         try {
             await this.emitScanNotifications(resolvedProjectId, savedScan, policyEvaluation, sourceInfo?.uploadedById);
         } catch (error) {

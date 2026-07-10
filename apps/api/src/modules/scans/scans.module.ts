@@ -18,9 +18,11 @@ import { SettingsModule } from '../settings/settings.module';
 import { ManualAdvisoriesModule } from '../manual-advisories/manual-advisories.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SemgrepRulesModule } from '../semgrep-rules/semgrep-rules.module';
+import { ClustaraModule } from '../clustara/clustara.module';
+import { ScanArtifactService } from './services/scan-artifact.service';
 
 @Module({
-    imports: [LicensesModule, PoliciesModule, SettingsModule, ManualAdvisoriesModule, NotificationsModule, SemgrepRulesModule],
+    imports: [LicensesModule, PoliciesModule, SettingsModule, ManualAdvisoriesModule, NotificationsModule, SemgrepRulesModule, ClustaraModule],
     controllers: [ScansController],
     providers: [
         ScansService,
@@ -35,6 +37,7 @@ import { SemgrepRulesModule } from '../semgrep-rules/semgrep-rules.module';
         ZapClientService,
         ZapScanService,
         SemgrepScanService,
+        ScanArtifactService,
     ],
     exports: [ScansService],
 })
