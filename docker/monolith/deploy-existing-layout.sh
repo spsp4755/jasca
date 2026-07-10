@@ -49,6 +49,7 @@ TRIVY_RPM_OS_VERSION="${TRIVY_RPM_OS_VERSION:-}"
 SCAN_RESULT_RETENTION_DAYS="${SCAN_RESULT_RETENTION_DAYS:-0}"
 HOSTS_MOUNT="${HOSTS_MOUNT:-/etc/hosts}"
 EXTRA_HOSTS="${EXTRA_HOSTS:-}"
+INTERNAL_CA_CERT="${INTERNAL_CA_CERT:-}"
 ENABLE_ZAP_CONTAINER="${ENABLE_ZAP_CONTAINER:-0}"
 ZAP_CONTAINER_NAME="${ZAP_CONTAINER_NAME:-zap-scanner}"
 ZAP_IMAGE_NAME="${ZAP_IMAGE_NAME:-ghcr.io/zaproxy/zaproxy:stable}"
@@ -230,6 +231,18 @@ if [ -n "$EXTRA_HOSTS" ]; then
             DOCKER_RUN_ARGS+=(--add-host "$host_entry")
         fi
     done
+fi
+
+if [ -n "$INTERNAL_CA_CERT" ]; then
+    if [ ! -f "$INTERNAL_CA_CERT" ]; then
+        echo "Error: INTERNAL_CA_CERT does not exist or is not a file: $INTERNAL_CA_CERT"
+        exit 1
+    fi
+    echo "Mounting internal CA certificate for Clustara HTTPS: $INTERNAL_CA_CERT"
+    DOCKER_RUN_ARGS+=(
+      -v "${INTERNAL_CA_CERT}:/app/jasca-ca/internal-ca.crt:ro"
+      -e "NODE_EXTRA_CA_CERTS=/app/jasca-ca/internal-ca.crt"
+    )
 fi
 
 if [ -n "$TRIVY_CACHE_MOUNT" ]; then

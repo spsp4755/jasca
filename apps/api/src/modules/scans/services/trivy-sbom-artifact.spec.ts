@@ -70,4 +70,23 @@ describe('Trivy Syft artifact flow', () => {
             await fs.promises.rm(tempDir, { recursive: true, force: true });
         }
     });
+
+    it('deletes persisted artifact files when a scan is removed', async () => {
+        const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'jasca-artifact-delete-'));
+        const filePath = path.join(tempDir, 'scan-1.cdx.json');
+        await fs.promises.writeFile(filePath, '{}');
+        const prisma = {
+            scanArtifact: {
+                findMany: jest.fn().mockResolvedValue([{ filePath }]),
+            },
+        } as any;
+        const service = new ScanArtifactService(prisma, {} as any);
+
+        try {
+            await service.deleteForScan('scan-1');
+            await expect(fs.promises.access(filePath)).rejects.toThrow();
+        } finally {
+            await fs.promises.rm(tempDir, { recursive: true, force: true });
+        }
+    });
 });

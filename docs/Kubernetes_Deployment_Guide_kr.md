@@ -22,3 +22,17 @@ kubectl apply -f ingress.yaml
 ```
 
 상세한 이미지 반입, Trivy DB 반입, 롤백 방법은 `k8s/monolith/README_KO.md`를 참고하세요.
+
+## Clustara 사내 CA 적용
+
+Clustara Ingress가 사내 CA 인증서를 사용하면 CA를 ConfigMap으로 만든 뒤 예제 패치를 적용합니다.
+
+```bash
+kubectl -n jasca create configmap jasca-internal-ca \
+  --from-file=internal-ca.crt=/secure/path/internal-ca.crt
+kubectl -n jasca patch deployment jasca --type strategic \
+  --patch-file internal-ca-patch.example.yaml
+kubectl -n jasca rollout status deployment/jasca
+```
+
+그 후 `관리자 → Clustara 연동`에서 HTTPS URL과 인증 방식을 저장하고 연결 테스트를 실행합니다. API Key 또는 Token은 ConfigMap에 넣지 말고 관리자 UI 또는 별도 Secret 관리 절차를 사용하세요.
