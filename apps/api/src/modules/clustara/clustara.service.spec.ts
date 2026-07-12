@@ -279,7 +279,7 @@ describe('ClustaraService', () => {
                     artifacts: [],
                 }),
             },
-            clustaraDelivery: { findUnique: jest.fn().mockResolvedValue(existing) },
+            clustaraDelivery: { upsert: jest.fn().mockResolvedValue(existing) },
         } as any;
         const settingsStore = {
             getRaw: jest.fn().mockResolvedValue({ enabled: true, defaultClusterId: 'prod' }),
@@ -290,5 +290,14 @@ describe('ClustaraService', () => {
             id: 'security-1',
             roles: [{ role: 'SECURITY_ADMIN', scope: 'GLOBAL' }],
         })).resolves.toBe(existing);
+        expect(prisma.clustaraDelivery.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            where: { scanResultId_type_clusterId_imageDigest: {
+                scanResultId: 'scan-1',
+                type: 'TRIVY',
+                clusterId: 'prod',
+                imageDigest: digest,
+            } },
+            update: {},
+        }));
     });
 });
