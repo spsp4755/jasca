@@ -252,13 +252,11 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
 
         const deliveryType = type as ClustaraDeliveryType;
         const unique = { scanResultId, type: deliveryType, clusterId, imageDigest };
-        const existing = await this.prisma.clustaraDelivery.findUnique({
+        // The unique key makes simultaneous manual and automatic requests idempotent.
+        return this.prisma.clustaraDelivery.upsert({
             where: { scanResultId_type_clusterId_imageDigest: unique },
-        });
-        if (existing) return existing;
-
-        return this.prisma.clustaraDelivery.create({
-            data: {
+            update: {},
+            create: {
                 ...unique,
                 scanner: type === 'TRIVY' ? String(input.scanner || settings.scanner).trim() : null,
                 generator: type === 'SBOM' ? String(input.generator || settings.generator).trim() : null,
