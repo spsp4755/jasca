@@ -577,10 +577,6 @@ export default function ScanDetailPage() {
                                                 <span className="text-slate-500">Max Duration</span>
                                                 <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.maxScanDurationMinutes)} min</span>
                                             </div>
-                                            <div className="flex justify-between gap-4">
-                                                <span className="text-slate-500">Active Allowed</span>
-                                                <span className="font-medium text-slate-900 dark:text-white text-right">{formatOptionValue(evidence.options?.allowActiveScan)}</span>
-                                            </div>
                                         </>
                                     ) : isCheckovScan ? (
                                         <>

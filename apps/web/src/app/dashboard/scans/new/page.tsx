@@ -62,7 +62,6 @@ export default function NewScanPage() {
     const [projectName, setProjectName] = useState<string>('');
     const [sourceType, setSourceType] = useState<SourceType>('TRIVY_JSON');
     const [zapTargetUrl, setZapTargetUrl] = useState('');
-    const [zapScanMode, setZapScanMode] = useState<'baseline' | 'passive' | 'active'>('baseline');
     const [zapAuthType, setZapAuthType] = useState<'none' | 'cookie' | 'authorization'>('none');
     const [zapAuthValue, setZapAuthValue] = useState('');
     const [dragActive, setDragActive] = useState(false);
@@ -242,7 +241,7 @@ export default function NewScanPage() {
                 const scanResult = await zapScanMutation.mutateAsync({
                     projectId: selectedProjectId || undefined,
                     targetUrl: zapTargetUrl.trim(),
-                    scanMode: zapScanMode,
+                    scanMode: 'passive',
                     authentication: zapAuthType === 'none' ? { type: 'none' } : {
                         type: zapAuthType,
                         value: zapAuthValue.trim(),
@@ -470,21 +469,13 @@ export default function NewScanPage() {
                                     placeholder="https://app.internal"
                                     className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                                 />
-                                <div className="mt-4">
-                                    <label className="mb-2 block text-sm font-medium text-orange-100">스캔 모드</label>
-                                    <select
-                                        value={zapScanMode}
-                                        onChange={(e) => setZapScanMode(e.target.value as 'baseline' | 'passive' | 'active')}
-                                        className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                    >
-                                        <option value="baseline">Baseline - Spider 실행 후 Passive Alert 수집</option>
-                                        <option value="passive">Passive - Baseline과 동일한 안전 모드</option>
-                                        <option value="active">Active - 관리자 허용 시에만 사용</option>
-                                    </select>
+                                <div className="mt-4 rounded-lg border border-orange-200/30 bg-slate-950/30 p-3">
+                                    <p className="font-medium text-orange-100">Passive Spider Scan</p>
+                                    <p className="mt-1 text-sm text-orange-100/80">
+                                        허용된 URL을 탐색하고 Passive Alert만 수집합니다. 공격성 Active Scan은 제공하지 않습니다.
+                                    </p>
                                 </div>
-                                <p className="mt-3 text-xs text-orange-100/80">
-                                    관리자 설정의 허용 대상 패턴에 포함된 URL만 스캔할 수 있습니다.
-                                </p>
+                                <p className="mt-3 text-xs text-orange-100/80">관리자 설정의 허용 대상 패턴에 포함된 URL만 스캔할 수 있습니다.</p>
                                 <div className="mt-5 rounded-lg border border-orange-200/30 bg-slate-950/30 p-3">
                                     <label className="mb-2 block text-sm font-medium text-orange-100">인증 방식</label>
                                     <select
@@ -702,16 +693,8 @@ export default function NewScanPage() {
                                 </p>
                                 <div className="mt-4 space-y-3 text-sm text-slate-300">
                                     <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-                                        <p className="font-medium text-white">Baseline</p>
-                                        <p className="mt-1 text-slate-400">대상을 spider로 탐색하고 passive alert를 수집하는 운영 기본 모드입니다.</p>
-                                    </div>
-                                    <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-                                        <p className="font-medium text-white">Passive</p>
-                                        <p className="mt-1 text-slate-400">현재 1차 구현에서는 Baseline과 동일한 안전 스캔 흐름으로 처리됩니다.</p>
-                                    </div>
-                                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
-                                        <p className="font-medium text-red-100">Active</p>
-                                        <p className="mt-1 text-red-100/80">대상 서비스에 부하를 줄 수 있어 관리자 설정에서 허용된 경우에만 실행됩니다.</p>
+                                        <p className="font-medium text-white">Passive Spider Scan</p>
+                                        <p className="mt-1 text-slate-400">허용된 URL만 탐색하고 Passive Alert를 수집합니다. Active 공격 검사는 제공하지 않습니다.</p>
                                     </div>
                                 </div>
                             </div>
@@ -726,11 +709,11 @@ export default function NewScanPage() {
                                 <div className="mt-5 space-y-4">
                                     <div>
                                         <label className="mb-2 block text-sm font-medium text-slate-300">Framework</label>
-                                        <div className="grid grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-1 gap-2">
                                             {CHECKOV_FRAMEWORK_OPTIONS.map((framework) => (
                                                 <label
                                                     key={framework.value}
-                                                    className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-300"
+                                                    className="flex min-w-0 items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-300"
                                                 >
                                                     <input
                                                         type="checkbox"
@@ -738,7 +721,7 @@ export default function NewScanPage() {
                                                         onChange={() => toggleCheckovFramework(framework.value)}
                                                         className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-900"
                                                     />
-                                                    <span>
+                                                    <span className="min-w-0">
                                                         <span className="block font-medium text-slate-100">{framework.label}</span>
                                                         <span className="mt-0.5 block leading-4 text-slate-500">{framework.description}</span>
                                                         <span className="mt-1 block leading-4 text-cyan-100/80">{framework.detail}</span>
