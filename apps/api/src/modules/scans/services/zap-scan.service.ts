@@ -7,6 +7,7 @@ export interface ZapScanOptions {
     targetUrl: string;
     scanMode?: 'baseline' | 'passive' | 'active';
     authentication?: ZapScanAuthentication;
+    targetProfileId?: string;
 }
 
 export interface ZapScanAuthentication {
@@ -33,7 +34,8 @@ export class ZapScanService {
         if (scanMode === 'active') {
             throw new BadRequestException('JASCA currently supports Passive Spider Scan only.');
         }
-        const target = this.policyService.validateTargetUrl(options.targetUrl, settings);
+        const profile = this.policyService.getTargetProfile(settings, options.targetProfileId);
+        const target = this.policyService.validateTargetUrl(options.targetUrl, settings, profile.id);
         const authentication = this.normalizeAuthentication(options.authentication);
 
         if (!settings.allowBaselineScan) {
@@ -49,7 +51,7 @@ export class ZapScanService {
             apiKey: settings.apiKey,
             timeoutMs: settings.connectTimeoutSeconds * 1000,
         };
-        const timeoutMs = settings.maxScanDurationMinutes * 60 * 1000;
+        const timeoutMs = Math.min(settings.maxScanDurationMinutes, profile.maxScanDurationMinutes) * 60 * 1000;
         const authRuleNames: string[] = [];
 
         this.activeScans.set(operationKey, { cancelled: false });
@@ -88,6 +90,7 @@ export class ZapScanService {
                         scanner: 'zap',
                         completed: true,
                         targetUrl: target.href,
+                        targetProfile: { id: profile.id, name: profile.name },
                         scanMode,
                         zapVersion,
                         startedAt: new Date(startedAt).toISOString(),
@@ -98,8 +101,8 @@ export class ZapScanService {
                             requestHeaders: this.buildAuthenticationHeaders(authentication).map((header) => header.name),
                         },
                         options: {
-                            maxScanDurationMinutes: settings.maxScanDurationMinutes,
-                            allowActiveScan: settings.allowActiveScan,
+                            maxScanDurationMinutes: timeoutMs / 60_000,
+                            scanType: 'passive-spider',
                         },
                     },
                 },
@@ -133,6 +136,16 @@ export class ZapScanService {
         }
 
         return true;
+    }
+
+    async testConnection(): Promise<{ connected: true; version: string }> {
+        const settings = await this.getSettings();
+        const version = await this.zapClient.getVersion({
+            baseUrl: settings.zapBaseUrl,
+            apiKey: settings.apiKey,
+            timeoutMs: settings.connectTimeoutSeconds * 1000,
+        });
+        return { connected: true, version };
     }
 
     private async waitForSpider(options: ZapClientOptions, scanId: string, timeoutMs: number, operationId?: string): Promise<void> {
@@ -214,6 +227,7 @@ export class ZapScanService {
             allowedTargetPatterns: [],
             blockedTargetPatterns: [],
             defaultRiskThresholdForNotification: 'HIGH',
+            targetProfiles: [],
         };
 
         const store = this.settingsService as SettingsService & { getRaw?: (key: string) => Promise<unknown> };
@@ -221,6 +235,18 @@ export class ZapScanService {
             ? await store.getRaw('zap') as Partial<ZapSettings> | null
             : await this.settingsService.get('zap') as Partial<ZapSettings> | null;
 
-        return { ...defaults, ...(stored || {}) };
+        const resolved = { ...defaults, ...(stored || {}) };
+        if (resolved.targetProfiles.length === 0 && resolved.allowedTargetPatterns.length > 0) {
+            resolved.targetProfiles = [{
+                id: 'legacy-default',
+                name: '기본 대상 프로필',
+                enabled: true,
+                allowedTargetPatterns: resolved.allowedTargetPatterns,
+                blockedTargetPatterns: resolved.blockedTargetPatterns,
+                maxScanDurationMinutes: resolved.maxScanDurationMinutes,
+                defaultRiskThresholdForNotification: resolved.defaultRiskThresholdForNotification,
+            }];
+        }
+        return resolved;
     }
 }

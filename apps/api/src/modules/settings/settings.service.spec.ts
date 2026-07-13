@@ -38,3 +38,28 @@ describe('SettingsService Clustara secret handling', () => {
         });
     });
 });
+
+describe('SettingsService ZAP profile compatibility', () => {
+    it('exposes a default profile for existing allowlist-only ZAP settings', async () => {
+        const prisma = {
+            systemSettings: {
+                findUnique: jest.fn().mockResolvedValue({ value: {
+                    enabled: true,
+                    allowedTargetPatterns: ['*.internal'],
+                    blockedTargetPatterns: [],
+                    maxScanDurationMinutes: 20,
+                    defaultRiskThresholdForNotification: 'HIGH',
+                } }),
+            },
+        } as any;
+        const service = new SettingsService(prisma);
+
+        await expect(service.get('zap')).resolves.toEqual(expect.objectContaining({
+            targetProfiles: [expect.objectContaining({
+                id: 'legacy-default',
+                allowedTargetPatterns: ['*.internal'],
+                maxScanDurationMinutes: 20,
+            })],
+        }));
+    });
+});

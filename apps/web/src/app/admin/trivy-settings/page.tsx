@@ -21,7 +21,7 @@ import {
     Shield,
     Globe,
 } from 'lucide-react';
-import { useCheckovSettings, useTrivySettings, useUpdateSettings, useZapSettings, type CheckovSettings, type TrivySettings, type ZapSettings } from '@/lib/api-hooks';
+import { useCheckovSettings, useTrivySettings, useUpdateSettings, useZapConnectionTest, useZapSettings, type CheckovSettings, type TrivySettings, type ZapSettings, type ZapTargetProfile } from '@/lib/api-hooks';
 
 interface ValidationResult {
     name: string;
@@ -65,6 +65,7 @@ const defaultZapConfig: ZapSettings = {
     allowedTargetPatterns: [],
     blockedTargetPatterns: [],
     defaultRiskThresholdForNotification: 'HIGH',
+    targetProfiles: [],
 };
 
 const normalizeScanners = (scanners?: string[]) => {
@@ -80,6 +81,7 @@ export default function TrivySettingsPage() {
     const { data: checkovSettings, isLoading: isCheckovLoading, error: checkovError, refetch: refetchCheckov } = useCheckovSettings();
     const { data: zapSettings, isLoading: isZapLoading, error: zapError, refetch: refetchZap } = useZapSettings();
     const updateMutation = useUpdateSettings();
+    const zapConnectionMutation = useZapConnectionTest();
 
     const [config, setConfig] = useState<TrivySettings>(defaultConfig);
     const [checkovConfig, setCheckovConfig] = useState<CheckovSettings>(defaultCheckovConfig);
@@ -111,6 +113,7 @@ export default function TrivySettingsPage() {
                 apiKey: '',
                 allowedTargetPatterns: zapSettings.allowedTargetPatterns || [],
                 blockedTargetPatterns: zapSettings.blockedTargetPatterns || [],
+                targetProfiles: zapSettings.targetProfiles || [],
             });
         }
     }, [zapSettings]);
@@ -159,6 +162,29 @@ export default function TrivySettingsPage() {
     const updateZapPatternList = (key: 'allowedTargetPatterns' | 'blockedTargetPatterns', value: string) => {
         updateZapConfig(key, value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean));
     };
+
+    const addZapProfile = () => {
+        const id = crypto.randomUUID ? crypto.randomUUID() : `zap-profile-${Date.now()}`;
+        updateZapConfig('targetProfiles', [...zapConfig.targetProfiles, {
+            id,
+            name: '새 대상 프로필',
+            enabled: true,
+            allowedTargetPatterns: [],
+            blockedTargetPatterns: [],
+            maxScanDurationMinutes: Math.min(10, zapConfig.maxScanDurationMinutes),
+            defaultRiskThresholdForNotification: zapConfig.defaultRiskThresholdForNotification,
+        }]);
+    };
+
+    const updateZapProfile = (id: string, changes: Partial<ZapTargetProfile>) => {
+        updateZapConfig('targetProfiles', zapConfig.targetProfiles.map((profile) => profile.id === id ? { ...profile, ...changes } : profile));
+    };
+
+    const updateZapProfilePatterns = (id: string, key: 'allowedTargetPatterns' | 'blockedTargetPatterns', value: string) => {
+        updateZapProfile(id, { [key]: value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean) });
+    };
+
+    const testZapConnection = () => zapConnectionMutation.mutate();
 
     const handleTest = async () => {
         setTestResult('testing');
@@ -586,6 +612,21 @@ export default function TrivySettingsPage() {
                     허용 대상 목록에 등록된 내부 URL만 스캔합니다.
                 </div>
 
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={testZapConnection}
+                        disabled={zapConnectionMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-lg border border-blue-300 px-3 py-2 text-sm font-medium text-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-800 dark:text-blue-300"
+                    >
+                        {zapConnectionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+                        ZAP 연결 테스트
+                    </button>
+                    {zapConnectionMutation.data && <span className="text-sm text-green-600">연결됨: ZAP {zapConnectionMutation.data.version}</span>}
+                    {zapConnectionMutation.error && <span className="text-sm text-red-600">연결 실패: {zapConnectionMutation.error.message}</span>}
+                    <span className="text-xs text-slate-500">버전 조회만 수행하며 스캔은 실행하지 않습니다.</span>
+                </div>
+
                 <div className="mt-4 space-y-4">
                     <div className="flex items-center justify-between py-3">
                         <div>
@@ -697,6 +738,56 @@ export default function TrivySettingsPage() {
                                 placeholder={'admin.internal\n*.prod.internal'}
                             />
                             <p className="mt-1 text-xs text-slate-500">허용 목록에 포함되어도 차단 목록에 걸리면 스캔이 거부됩니다.</p>
+                        </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="font-medium text-slate-900 dark:text-white">ZAP 대상 프로필</p>
+                                <p className="text-sm text-slate-500">사용자는 활성 프로필을 선택해야 하며, 전역 및 프로필 URL 정책을 모두 통과해야 합니다.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={addZapProfile}
+                                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white dark:bg-slate-100 dark:text-slate-900"
+                            >
+                                프로필 추가
+                            </button>
+                        </div>
+
+                        <div className="mt-4 space-y-4">
+                            {zapConfig.targetProfiles.map((profile) => (
+                                <div key={profile.id} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                            프로필 이름
+                                            <input value={profile.name} onChange={(e) => updateZapProfile(profile.id, { name: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                                        </label>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                            최대 실행 시간(분)
+                                            <input type="number" min={1} max={zapConfig.maxScanDurationMinutes} value={profile.maxScanDurationMinutes} onChange={(e) => updateZapProfile(profile.id, { maxScanDurationMinutes: Number(e.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                                        </label>
+                                        <div className="flex items-end justify-between gap-3">
+                                            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                                                <input type="checkbox" checked={profile.enabled} onChange={(e) => updateZapProfile(profile.id, { enabled: e.target.checked })} /> 활성화
+                                            </label>
+                                            <button type="button" onClick={() => updateZapConfig('targetProfiles', zapConfig.targetProfiles.filter((item) => item.id !== profile.id))} className="text-sm text-red-600">삭제</button>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                            프로필 허용 URL 패턴
+                                            <textarea value={profile.allowedTargetPatterns.join('\n')} onChange={(e) => updateZapProfilePatterns(profile.id, 'allowedTargetPatterns', e.target.value)} rows={3} placeholder="app.internal" className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                                        </label>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                            프로필 차단 URL 패턴
+                                            <textarea value={profile.blockedTargetPatterns.join('\n')} onChange={(e) => updateZapProfilePatterns(profile.id, 'blockedTargetPatterns', e.target.value)} rows={3} placeholder="admin.app.internal" className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                                        </label>
+                                    </div>
+                                </div>
+                            ))}
+                            {zapConfig.targetProfiles.length === 0 && <p className="text-sm text-slate-500">등록된 프로필이 없습니다. ZAP 스캔을 사용하려면 하나 이상 등록하세요.</p>}
                         </div>
                     </div>
                 </div>

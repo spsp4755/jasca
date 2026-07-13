@@ -44,6 +44,7 @@ const defaultSettings: Record<string, unknown> = {
         allowedTargetPatterns: [],
         blockedTargetPatterns: [],
         defaultRiskThresholdForNotification: 'HIGH',
+        targetProfiles: [],
     },
     clustara: {
         enabled: false,
@@ -143,8 +144,23 @@ export class SettingsService {
 
         if (key === 'zap') {
             const { apiKey, ...safeValue } = value;
+            const allowedTargetPatterns = Array.isArray(safeValue.allowedTargetPatterns) ? safeValue.allowedTargetPatterns : [];
+            const targetProfiles = Array.isArray(safeValue.targetProfiles) && safeValue.targetProfiles.length > 0
+                ? safeValue.targetProfiles
+                : allowedTargetPatterns.length > 0
+                    ? [{
+                        id: 'legacy-default',
+                        name: '기본 대상 프로필',
+                        enabled: true,
+                        allowedTargetPatterns,
+                        blockedTargetPatterns: Array.isArray(safeValue.blockedTargetPatterns) ? safeValue.blockedTargetPatterns : [],
+                        maxScanDurationMinutes: safeValue.maxScanDurationMinutes || 30,
+                        defaultRiskThresholdForNotification: safeValue.defaultRiskThresholdForNotification || 'HIGH',
+                    }]
+                    : [];
             return {
                 ...safeValue,
+                targetProfiles,
                 apiKeyConfigured: typeof apiKey === 'string' && apiKey.trim().length > 0,
             };
         }

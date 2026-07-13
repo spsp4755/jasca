@@ -8,6 +8,7 @@ describe('ZapScanService', () => {
     };
     const policyService = {
         validateTargetUrl: jest.fn(),
+        getTargetProfile: jest.fn(),
     };
     const zapClient = {
         getVersion: jest.fn(),
@@ -33,8 +34,26 @@ describe('ZapScanService', () => {
             allowedTargetPatterns: ['*.internal'],
             blockedTargetPatterns: [],
             defaultRiskThresholdForNotification: 'HIGH',
+            targetProfiles: [{
+                id: 'internal-app',
+                name: 'Internal App',
+                enabled: true,
+                allowedTargetPatterns: ['*.internal'],
+                blockedTargetPatterns: [],
+                maxScanDurationMinutes: 1,
+                defaultRiskThresholdForNotification: 'HIGH',
+            }],
         });
         policyService.validateTargetUrl.mockReturnValue(new URL('https://demo.internal'));
+        policyService.getTargetProfile.mockReturnValue({
+            id: 'internal-app',
+            name: 'Internal App',
+            enabled: true,
+            allowedTargetPatterns: ['*.internal'],
+            blockedTargetPatterns: [],
+            maxScanDurationMinutes: 1,
+            defaultRiskThresholdForNotification: 'HIGH',
+        });
         zapClient.getVersion.mockResolvedValue('2.15.0');
         zapClient.spiderScan.mockResolvedValue('1');
         zapClient.spiderStatus.mockResolvedValue(100);
@@ -54,12 +73,12 @@ describe('ZapScanService', () => {
 
     it('runs a baseline ZAP scan and returns ZAP-shaped JSON', async () => {
         const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
-        const result = await service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'baseline' }, 'op-1');
+        const result = await service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'baseline', targetProfileId: 'internal-app' } as any, 'op-1');
 
         expect(policyService.validateTargetUrl).toHaveBeenCalledWith('https://demo.internal', expect.objectContaining({
             enabled: true,
             apiKey: 'key',
-        }));
+        }), 'internal-app');
         expect(zapClient.spiderScan).toHaveBeenCalledWith(expect.objectContaining({
             baseUrl: 'http://zap:8080',
             apiKey: 'key',
@@ -71,7 +90,46 @@ describe('ZapScanService', () => {
             targetUrl: 'https://demo.internal/',
             scanMode: 'baseline',
             zapVersion: '2.15.0',
+            targetProfile: { id: 'internal-app', name: 'Internal App' },
         }));
+    });
+
+    it('tests the configured ZAP server with the version endpoint only', async () => {
+        const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
+
+        await expect((service as any).testConnection()).resolves.toEqual({ connected: true, version: '2.15.0' });
+        expect(zapClient.getVersion).toHaveBeenCalledWith(expect.objectContaining({
+            baseUrl: 'http://zap:8080',
+            apiKey: 'key',
+            timeoutMs: 10000,
+        }));
+        expect(zapClient.spiderScan).not.toHaveBeenCalled();
+    });
+
+    it('provides a default target profile for existing allowlist-only settings', async () => {
+        settingsService.getRaw.mockResolvedValue({
+            enabled: true,
+            zapBaseUrl: 'http://zap:8080',
+            apiKey: 'key',
+            connectTimeoutSeconds: 10,
+            maxScanDurationMinutes: 5,
+            maxConcurrentScans: 1,
+            allowBaselineScan: true,
+            allowedTargetPatterns: ['*.internal'],
+            blockedTargetPatterns: [],
+            defaultRiskThresholdForNotification: 'HIGH',
+        });
+        const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
+
+        await service.scanUrl({ targetUrl: 'https://demo.internal', targetProfileId: 'legacy-default' }, 'op-legacy');
+
+        expect(policyService.getTargetProfile).toHaveBeenCalledWith(expect.objectContaining({
+            targetProfiles: [expect.objectContaining({
+                id: 'legacy-default',
+                allowedTargetPatterns: ['*.internal'],
+                maxScanDurationMinutes: 5,
+            })],
+        }), 'legacy-default');
     });
 
     it('rejects an active scan before contacting the ZAP service', async () => {
