@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jasca
+  namespace: jasca
+spec:
+  template:
+    spec:
+      # Create this registry credential before applying the overlay.
+      imagePullSecrets:
+        - name: harbor-registry
+      containers:
+        - name: jasca
+          imagePullPolicy: IfNotPresent

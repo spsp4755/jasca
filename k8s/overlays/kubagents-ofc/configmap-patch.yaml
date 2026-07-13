@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jasca-config
+  namespace: jasca
+data:
+  CORS_ORIGIN: "https://jasca.kubagents-ofc.koreacb.com"
+  TRIVY_UPLOAD_MAX_BYTES: "2147483648"
