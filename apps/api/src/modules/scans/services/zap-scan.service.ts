@@ -29,15 +29,14 @@ export class ZapScanService {
         const startedAt = Date.now();
         const operationKey = operationId || `internal-${startedAt}-${Math.random().toString(16).slice(2)}`;
         const settings = await this.getSettings();
-        const target = this.policyService.validateTargetUrl(options.targetUrl, settings);
         const scanMode = options.scanMode || 'baseline';
+        if (scanMode === 'active') {
+            throw new BadRequestException('JASCA currently supports Passive Spider Scan only.');
+        }
+        const target = this.policyService.validateTargetUrl(options.targetUrl, settings);
         const authentication = this.normalizeAuthentication(options.authentication);
 
-        if (scanMode === 'active' && !settings.allowActiveScan) {
-            throw new BadRequestException('ZAP Active Scan is disabled by administrator settings.');
-        }
-
-        if (scanMode !== 'active' && !settings.allowBaselineScan) {
+        if (!settings.allowBaselineScan) {
             throw new BadRequestException('ZAP Baseline Scan is disabled by administrator settings.');
         }
 

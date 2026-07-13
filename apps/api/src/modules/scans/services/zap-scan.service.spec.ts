@@ -74,10 +74,11 @@ describe('ZapScanService', () => {
         }));
     });
 
-    it('rejects active scan when disabled', async () => {
+    it('rejects an active scan before contacting the ZAP service', async () => {
         const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
         await expect(service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'active' }, 'op-1'))
-            .rejects.toThrow(BadRequestException);
+            .rejects.toThrow('Passive Spider Scan');
+        expect(zapClient.getVersion).not.toHaveBeenCalled();
     });
 
     it('rejects baseline scan when disabled', async () => {
