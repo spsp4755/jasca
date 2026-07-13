@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Archive, ArrowLeft, CheckCircle, FileJson, Globe, Loader2, ShieldCheck, Upload, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useCancelTrivyScan, useOrganizations, useProjects, useUploadScan, useZapScan } from '@/lib/api-hooks';
+import { useCancelTrivyScan, useOrganizations, useProjects, useUploadScan, useZapScan, useZapSettings } from '@/lib/api-hooks';
 import type { CheckovScanOptions, TrivyScanOptions } from '@/lib/api-hooks';
 
 type UploadMode = 'scan-target' | 'result-file';
@@ -62,6 +62,7 @@ export default function NewScanPage() {
     const [projectName, setProjectName] = useState<string>('');
     const [sourceType, setSourceType] = useState<SourceType>('TRIVY_JSON');
     const [zapTargetUrl, setZapTargetUrl] = useState('');
+    const [zapTargetProfileId, setZapTargetProfileId] = useState('');
     const [zapAuthType, setZapAuthType] = useState<'none' | 'cookie' | 'authorization'>('none');
     const [zapAuthValue, setZapAuthValue] = useState('');
     const [dragActive, setDragActive] = useState(false);
@@ -102,6 +103,7 @@ export default function NewScanPage() {
     const { data: orgsData } = useOrganizations();
     const uploadMutation = useUploadScan();
     const zapScanMutation = useZapScan();
+    const { data: zapSettings } = useZapSettings();
     const cancelScanMutation = useCancelTrivyScan();
 
     const projects = projectsData?.data || [];
@@ -112,7 +114,8 @@ export default function NewScanPage() {
     const isSemgrepScan = isScanningTarget && scannerProvider === 'semgrep';
     const scanActionLabel = isZapScan ? 'ZAP 검사 실행' : isCheckovScan ? 'Checkov 검사 실행' : isSemgrepScan ? 'Semgrep 검사 실행' : 'Trivy 검사 실행';
     const scanProgressLabel = isZapScan ? 'ZAP 검사 중...' : isCheckovScan ? 'Checkov 검사 중...' : isSemgrepScan ? 'Semgrep 검사 중...' : 'Trivy 검사 중...';
-    const missingZapRequiredInput = isZapScan && (!zapTargetUrl.trim() || (zapAuthType !== 'none' && !zapAuthValue.trim()));
+    const zapProfiles = (zapSettings?.targetProfiles || []).filter((profile) => profile.enabled);
+    const missingZapRequiredInput = isZapScan && (!zapTargetUrl.trim() || !zapTargetProfileId || (zapAuthType !== 'none' && !zapAuthValue.trim()));
     const isSubmitDisabled = uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (isZapScan ? missingZapRequiredInput : !file);
     const acceptedFiles = isScanningTarget
         ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.spdx,.cdx,.cyclonedx,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,.qcow2,.vmdk,.vhd,.vhdx,.img,Dockerfile'
@@ -221,6 +224,11 @@ export default function NewScanPage() {
                 return;
             }
 
+            if (!zapTargetProfileId) {
+                setErrorMessage('ZAP 대상 프로필을 선택해주세요.');
+                return;
+            }
+
             if (!selectedProjectId && !projectName.trim()) {
                 setErrorMessage('프로젝트를 선택하거나 새 프로젝트 이름을 입력해주세요.');
                 return;
@@ -242,6 +250,7 @@ export default function NewScanPage() {
                     projectId: selectedProjectId || undefined,
                     targetUrl: zapTargetUrl.trim(),
                     scanMode: 'passive',
+                    targetProfileId: zapTargetProfileId,
                     authentication: zapAuthType === 'none' ? { type: 'none' } : {
                         type: zapAuthType,
                         value: zapAuthValue.trim(),
@@ -469,6 +478,24 @@ export default function NewScanPage() {
                                     placeholder="https://app.internal"
                                     className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                                 />
+                                <div className="mt-4">
+                                    <label className="mb-2 block text-sm font-medium text-orange-100">대상 프로필</label>
+                                    <select
+                                        value={zapTargetProfileId}
+                                        onChange={(e) => setZapTargetProfileId(e.target.value)}
+                                        className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    >
+                                        <option value="">대상 프로필을 선택하세요</option>
+                                        {zapProfiles.map((profile) => (
+                                            <option key={profile.id} value={profile.id}>{profile.name}</option>
+                                        ))}
+                                    </select>
+                                    {zapProfiles.length === 0 ? (
+                                        <p className="mt-1 text-xs text-orange-100/80">사용 가능한 프로필이 없습니다. 관리자에게 ZAP 대상 프로필 등록을 요청하세요.</p>
+                                    ) : (
+                                        <p className="mt-1 text-xs text-orange-100/80">선택한 프로필의 URL 범위와 실행 시간 제한이 적용됩니다.</p>
+                                    )}
+                                </div>
                                 <div className="mt-4 rounded-lg border border-orange-200/30 bg-slate-950/30 p-3">
                                     <p className="font-medium text-orange-100">Passive Spider Scan</p>
                                     <p className="mt-1 text-sm text-orange-100/80">

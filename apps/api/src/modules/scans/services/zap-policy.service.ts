@@ -12,11 +12,22 @@ export interface ZapSettings {
     allowedTargetPatterns: string[];
     blockedTargetPatterns: string[];
     defaultRiskThresholdForNotification: string;
+    targetProfiles: ZapTargetProfile[];
+}
+
+export interface ZapTargetProfile {
+    id: string;
+    name: string;
+    enabled: boolean;
+    allowedTargetPatterns: string[];
+    blockedTargetPatterns: string[];
+    maxScanDurationMinutes: number;
+    defaultRiskThresholdForNotification: string;
 }
 
 @Injectable()
 export class ZapPolicyService {
-    validateTargetUrl(targetUrl: string, settings: ZapSettings): URL {
+    validateTargetUrl(targetUrl: string, settings: ZapSettings, profileId?: string): URL {
         if (!settings.enabled) {
             throw new BadRequestException('ZAP scanning is disabled by administrator settings.');
         }
@@ -46,7 +57,34 @@ export class ZapPolicyService {
             throw new BadRequestException('ZAP target URL is blocked by administrator policy.');
         }
 
+        const profile = this.getTargetProfile(settings, profileId);
+        if (!profile.allowedTargetPatterns.some((pattern) => this.matchesPattern(parsed, pattern))) {
+            throw new BadRequestException('ZAP target URL is not allowed by the selected profile.');
+        }
+
+        if (profile.blockedTargetPatterns.some((pattern) => this.matchesPattern(parsed, pattern))) {
+            throw new BadRequestException('ZAP target URL is blocked by the selected profile.');
+        }
+
         return parsed;
+    }
+
+    getTargetProfile(settings: ZapSettings, profileId?: string): ZapTargetProfile {
+        const profile = (settings.targetProfiles || []).find((item) => item.id === profileId);
+        if (!profile || !profile.enabled) {
+            throw new BadRequestException('ZAP target profile is unavailable.');
+        }
+
+        if (!profile.name.trim()
+            || !Array.isArray(profile.allowedTargetPatterns)
+            || profile.allowedTargetPatterns.length === 0
+            || !Array.isArray(profile.blockedTargetPatterns)
+            || !Number.isFinite(profile.maxScanDurationMinutes)
+            || profile.maxScanDurationMinutes < 1) {
+            throw new BadRequestException('ZAP target profile is invalid.');
+        }
+
+        return profile;
     }
 
     private matchesPattern(url: URL, pattern: string): boolean {

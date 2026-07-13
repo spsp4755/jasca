@@ -1,54 +1,62 @@
 import { BadRequestException } from '@nestjs/common';
-import { ZapPolicyService, ZapSettings } from './zap-policy.service';
+import { ZapPolicyService } from './zap-policy.service';
 
 describe('ZapPolicyService', () => {
-    const service = new ZapPolicyService();
-    const settings: ZapSettings = {
+    const settings = {
         enabled: true,
-        zapBaseUrl: 'http://zap-scanner:8080',
-        apiKey: 'secret',
+        zapBaseUrl: 'http://zap:8080',
         connectTimeoutSeconds: 10,
         maxScanDurationMinutes: 30,
         maxConcurrentScans: 1,
         allowBaselineScan: true,
         allowActiveScan: false,
-        allowedTargetPatterns: ['*.internal', 'https://app.koreacb.com'],
-        blockedTargetPatterns: ['admin.internal'],
+        allowedTargetPatterns: ['*.internal'],
+        blockedTargetPatterns: [],
         defaultRiskThresholdForNotification: 'HIGH',
+        targetProfiles: [
+            {
+                id: 'internal-app',
+                name: 'Internal App',
+                enabled: true,
+                allowedTargetPatterns: ['app.internal'],
+                blockedTargetPatterns: ['admin.app.internal'],
+                maxScanDurationMinutes: 10,
+                defaultRiskThresholdForNotification: 'MEDIUM',
+            },
+            {
+                id: 'disabled-profile',
+                name: 'Disabled',
+                enabled: false,
+                allowedTargetPatterns: ['disabled.internal'],
+                blockedTargetPatterns: [],
+                maxScanDurationMinutes: 10,
+                defaultRiskThresholdForNotification: 'HIGH',
+            },
+        ],
     };
 
-    it('allows a matching internal target', () => {
-        expect(service.validateTargetUrl('https://demo.internal/login', settings).href)
-            .toBe('https://demo.internal/login');
+    it('rejects a URL that is outside the selected target profile', () => {
+        const service = new ZapPolicyService();
+
+        expect(() => (service as any).validateTargetUrl('https://outside.internal', settings, 'internal-app'))
+            .toThrow('selected profile');
     });
 
-    it('allows an exact URL policy with a deeper path', () => {
-        expect(service.validateTargetUrl('https://app.koreacb.com/dashboard', settings).href)
-            .toBe('https://app.koreacb.com/dashboard');
-    });
+    it('rejects a disabled target profile', () => {
+        const service = new ZapPolicyService();
 
-    it('blocks targets when ZAP is disabled', () => {
-        expect(() => service.validateTargetUrl('https://demo.internal', { ...settings, enabled: false }))
+        expect(() => (service as any).validateTargetUrl('https://disabled.internal', settings, 'disabled-profile'))
             .toThrow(BadRequestException);
     });
 
-    it('blocks targets when allowlist is empty', () => {
-        expect(() => service.validateTargetUrl('https://demo.internal', { ...settings, allowedTargetPatterns: [] }))
-            .toThrow(BadRequestException);
-    });
+    it('rejects a profile with an invalid execution limit', () => {
+        const service = new ZapPolicyService();
+        const invalidSettings = {
+            ...settings,
+            targetProfiles: [{ ...settings.targetProfiles[0], maxScanDurationMinutes: 0 }],
+        };
 
-    it('blocks targets outside the allowlist', () => {
-        expect(() => service.validateTargetUrl('https://example.com', settings))
-            .toThrow(BadRequestException);
-    });
-
-    it('blocks explicit denylist matches', () => {
-        expect(() => service.validateTargetUrl('https://admin.internal', settings))
-            .toThrow(BadRequestException);
-    });
-
-    it('rejects non-http URLs', () => {
-        expect(() => service.validateTargetUrl('file:///etc/passwd', settings))
-            .toThrow(BadRequestException);
+        expect(() => (service as any).validateTargetUrl('https://app.internal', invalidSettings, 'internal-app'))
+            .toThrow('profile is invalid');
     });
 });

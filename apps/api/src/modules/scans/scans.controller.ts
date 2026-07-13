@@ -482,6 +482,7 @@ export class ScansController {
             targetUrl: body.targetUrl,
             scanMode: body.scanMode,
             authentication: body.authentication,
+            targetProfileId: body.targetProfileId,
         }, scanOperationId);
 
         const dto: UploadScanDto = {
@@ -507,6 +508,15 @@ export class ScansController {
 
         responseReady = true;
         return savedScan;
+    }
+
+    @Post('zap/test-connection')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles('SECURITY_ADMIN')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Test the configured OWASP ZAP server connection' })
+    async testZapConnection() {
+        return this.zapScanService.testConnection();
     }
 
     @Post('scan/cancel/:operationId')

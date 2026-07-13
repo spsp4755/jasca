@@ -447,6 +447,7 @@ export interface ZapScanRequest {
     imageRef?: string;
     tag?: string;
     scanOperationId?: string;
+    targetProfileId?: string;
 }
 
 export function useUploadScan() {
@@ -2380,6 +2381,7 @@ export function useZapScan() {
                     imageRef: request.imageRef,
                     tag: request.tag,
                     scanOperationId: request.scanOperationId,
+                    targetProfileId: request.targetProfileId,
                 }),
             });
 
@@ -2426,6 +2428,17 @@ export interface ZapSettings {
     allowedTargetPatterns: string[];
     blockedTargetPatterns: string[];
     defaultRiskThresholdForNotification: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+    targetProfiles: ZapTargetProfile[];
+}
+
+export interface ZapTargetProfile {
+    id: string;
+    name: string;
+    enabled: boolean;
+    allowedTargetPatterns: string[];
+    blockedTargetPatterns: string[];
+    maxScanDurationMinutes: number;
+    defaultRiskThresholdForNotification: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
 }
 
 export interface AiSettings {
@@ -2457,6 +2470,12 @@ export function useCheckovSettings() {
 
 export function useZapSettings() {
     return useSettings<ZapSettings>('zap');
+}
+
+export function useZapConnectionTest() {
+    return useMutation<{ connected: true; version: string }, Error>({
+        mutationFn: () => authFetch(`${API_BASE}/scans/zap/test-connection`, { method: 'POST' }),
+    });
 }
 
 export function useAiSettings() {
