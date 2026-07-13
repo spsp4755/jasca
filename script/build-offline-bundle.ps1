@@ -132,6 +132,8 @@ try {
     Copy-Item -LiteralPath "docker/monolith/start.ps1" -Destination (Join-Path $BundlePath "start.ps1") -Force
     Copy-Item -LiteralPath "docker/monolith/deploy-existing-layout.sh" -Destination (Join-Path $BundlePath "deploy-existing-layout.sh") -Force
     Copy-Item -LiteralPath "docker/monolith/deploy-existing-layout.env.example" -Destination (Join-Path $BundlePath "deploy-existing-layout.env.example") -Force
+    $deployEnvExample = Join-Path $BundlePath "deploy-existing-layout.env.example"
+    (Get-Content -LiteralPath $deployEnvExample -Raw) -replace '(?m)^IMAGE_NAME=.*$', "IMAGE_NAME=$ImageName" | Set-Content -LiteralPath $deployEnvExample -Encoding UTF8
     Copy-Item -LiteralPath "docker/monolith/README-OFFLINE.md" -Destination (Join-Path $BundlePath "README-OFFLINE.md") -Force
     Copy-Item -LiteralPath "docs/Kubernetes_Deployment_Guide_kr.md" -Destination (Join-Path $BundlePath "Kubernetes_Deployment_Guide_kr.md") -Force
     Copy-Item -LiteralPath "k8s/monolith" -Destination (Join-Path $BundlePath "k8s-monolith") -Recurse -Force
