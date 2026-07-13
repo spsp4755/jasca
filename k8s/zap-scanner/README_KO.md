@@ -16,7 +16,10 @@ kubectl -n jasca get pod,svc -l app=zap-scanner
 
 ## 운영 주의
 
-- ZAP Service는 외부에 노출하지 말고 JASCA에서만 접근하도록 네트워크 정책을 구성하는 것을 권장합니다.
+- JASCA의 ZAP은 허용된 URL을 탐색하고 Passive Alert만 수집합니다. 공격성 Active Scan은 제공하지 않습니다.
+- 운영계가 아닌 승인된 스테이징 URL만 관리자 허용 대상 목록에 등록합니다.
+- ZAP Service와 API 포트 `8080`은 외부 Ingress로 노출하지 말고 JASCA에서만 접근하도록 네트워크 정책을 구성합니다.
+- ZAP Pod의 egress는 승인된 검사 대상 네트워크로만 제한합니다.
+- 로그인 검사는 최소 권한의 테스트 계정과 짧은 만료 세션만 사용합니다. 운영 관리자 계정이나 장기 API 토큰은 입력하지 마세요.
 - 폐쇄망에서는 `ghcr.io/zaproxy/zaproxy:stable` 이미지를 사전에 반입하거나 사내 레지스트리 주소로 변경해야 합니다.
-- Active Scan은 대상 서비스에 부하를 줄 수 있으므로 관리자 설정에서 명시적으로 허용한 경우에만 사용하세요.
 - JASCA 관리자 화면에서 ZAP 허용 대상 패턴을 설정하지 않으면 사용자가 URL 스캔을 실행할 수 없습니다.

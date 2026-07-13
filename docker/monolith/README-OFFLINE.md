@@ -119,6 +119,15 @@ JASCA는 폐쇄망에서 업로드 파일을 먼저 Trivy로 직접 검사하고
 - `Trivy 직접 검사만`: 기존 Trivy 명령 결과만 확인하고 싶을 때 사용합니다.
 - `Syft SBOM 우선`: Alloy 같은 소스/릴리즈 압축본에서 직접 검사 누락이 의심될 때 사용합니다.
 
+## ZAP 웹 검사 안전 운영
+
+JASCA의 ZAP은 허용된 URL을 탐색하고 Passive Alert만 수집하는 `Passive Spider Scan`입니다. 공격성 Active Scan은 제공하지 않습니다.
+
+1. 운영계가 아닌 승인된 스테이징 URL만 관리자 허용 대상 목록에 등록합니다.
+2. ZAP API 포트 `8080`을 호스트 포트나 Ingress로 공개하지 않습니다. JASCA 전용 Docker 네트워크에서만 사용합니다.
+3. 로그인 검사는 최소 권한의 테스트 계정과 짧은 만료 세션만 사용합니다. 운영 관리자 계정이나 장기 API 토큰은 입력하지 마세요.
+4. 방화벽 또는 네트워크 정책으로 ZAP 컨테이너의 egress를 승인된 검사 대상 네트워크로 제한합니다.
+
 ## Clustara 폐쇄망 연동
 
 관리자 화면의 `Clustara 연동`에서 제공받은 curl 값에 맞춰 Base URL, Scan API 경로, SBOM API 경로, 인증 방식(`없음`, `X-API-Key`, `Bearer`), 기본 `cluster_id`, `scanner`, `generator`를 설정할 수 있습니다. 인증 비밀값은 저장 후 화면과 API 응답에 다시 표시되지 않습니다.
