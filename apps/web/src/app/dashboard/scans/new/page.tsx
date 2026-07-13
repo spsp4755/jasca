@@ -390,7 +390,7 @@ export default function NewScanPage() {
 
     return (
         <div className="min-h-screen bg-slate-950 p-6">
-            <div className="mx-auto max-w-4xl">
+            <div className={`mx-auto ${isCheckovScan ? 'max-w-6xl' : 'max-w-4xl'}`}>
                 <div className="mb-8">
                     <Link
                         href="/dashboard/scans"
@@ -405,7 +405,7 @@ export default function NewScanPage() {
                     </p>
                 </div>
 
-                <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+                <div className={isCheckovScan ? 'grid gap-6' : 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]'}>
                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
                         <div className="mb-6 grid gap-3 sm:grid-cols-2">
                             <button
@@ -736,22 +736,22 @@ export default function NewScanPage() {
                                 <div className="mt-5 space-y-4">
                                     <div>
                                         <label className="mb-2 block text-sm font-medium text-slate-300">Framework</label>
-                                        <div className="grid grid-cols-1 gap-2">
+                                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                                             {CHECKOV_FRAMEWORK_OPTIONS.map((framework) => (
                                                 <label
                                                     key={framework.value}
-                                                    className="flex min-w-0 items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-300"
+                                                    className="flex min-w-0 cursor-pointer items-start gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300 transition-colors hover:border-cyan-400/60"
                                                 >
                                                     <input
                                                         type="checkbox"
                                                         checked={checkovOptions.frameworks.includes(framework.value)}
                                                         onChange={() => toggleCheckovFramework(framework.value)}
-                                                        className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-900"
+                                                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-900"
                                                     />
-                                                    <span className="min-w-0">
+                                                    <span className="min-w-0 leading-5">
                                                         <span className="block font-medium text-slate-100">{framework.label}</span>
-                                                        <span className="mt-0.5 block leading-4 text-slate-500">{framework.description}</span>
-                                                        <span className="mt-1 block leading-4 text-cyan-100/80">{framework.detail}</span>
+                                                        <span className="mt-1 block text-slate-400">{framework.description}</span>
+                                                        <span className="mt-2 block text-cyan-100/80">{framework.detail}</span>
                                                     </span>
                                                 </label>
                                             ))}
