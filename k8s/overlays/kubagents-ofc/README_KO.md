@@ -3,23 +3,23 @@
 이 오버레이는 다음 이미지를 사용합니다.
 
 ```text
-harbor.kubagents-ofc.koreacb.com/jasca/jasca-offline:v0.3.10
+harbor.kubagents-ofc.koreacb.com/jasca/jasca-offline:v0.3.12
 ```
 
 접속 URL은 `https://jasca.kubagents-ofc.koreacb.com`입니다. JASCA monolith는 컨테이너 내부에서 PostgreSQL과 Redis를 함께 실행하므로 `replicas: 1`과 `Recreate` 전략을 유지해야 합니다.
 
 ## 1. Harbor에 이미지 반입
 
-폐쇄망 반입 파일 `jasca-offline-v0.3.10-amd64.tar.gz`를 사용합니다. Podman이 압축 파일을 직접 읽지 못하는 환경이면 `gzip -dc`로 표준 입력을 사용합니다.
+폐쇄망 반입 파일 `jasca-offline-v0.3.12-amd64.tar.gz`를 사용합니다. Podman이 압축 파일을 직접 읽지 못하는 환경이면 `gzip -dc`로 표준 입력을 사용합니다.
 
 ```bash
-gzip -dc jasca-offline-v0.3.10-amd64.tar.gz | podman load
+gzip -dc jasca-offline-v0.3.12-amd64.tar.gz | podman load
 podman images | grep jasca-offline
 
 podman login harbor.kubagents-ofc.koreacb.com
-podman tag jasca-offline:v0.3.10-amd64 \
-  harbor.kubagents-ofc.koreacb.com/jasca/jasca-offline:v0.3.10
-podman push harbor.kubagents-ofc.koreacb.com/jasca/jasca-offline:v0.3.10
+podman tag jasca-offline:v0.3.12-amd64 \
+  harbor.kubagents-ofc.koreacb.com/jasca/jasca-offline:v0.3.12
+podman push harbor.kubagents-ofc.koreacb.com/jasca/jasca-offline:v0.3.12
 ```
 
 `podman load` 결과의 원본 태그가 다르면 `podman images` 출력의 이미지명:태그를 `podman tag` 첫 번째 인수에 사용합니다.
