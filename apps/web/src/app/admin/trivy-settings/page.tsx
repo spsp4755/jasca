@@ -660,7 +660,7 @@ export default function TrivySettingsPage() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4">
                         <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                             <input
                                 type="checkbox"
@@ -669,20 +669,8 @@ export default function TrivySettingsPage() {
                                 className="mt-1"
                             />
                             <span>
-                                <span className="block font-medium text-slate-900 dark:text-white">Baseline/Passive 스캔 허용</span>
-                                <span className="text-sm text-slate-500">운영 기본값입니다. Spider 후 passive alerts를 수집합니다.</span>
-                            </span>
-                        </label>
-                        <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                            <input
-                                type="checkbox"
-                                checked={zapConfig.allowActiveScan}
-                                onChange={(e) => updateZapConfig('allowActiveScan', e.target.checked)}
-                                className="mt-1"
-                            />
-                            <span>
-                                <span className="block font-medium text-slate-900 dark:text-white">Active Scan 허용</span>
-                                <span className="text-sm text-slate-500">대상 서비스에 부하를 줄 수 있어 운영에서는 신중하게 켜야 합니다.</span>
+                                <span className="block font-medium text-slate-900 dark:text-white">Passive Spider 스캔 허용</span>
+                                <span className="text-sm text-slate-500">허용된 URL을 탐색하고 Passive Alert만 수집합니다. 공격성 Active Scan은 제공하지 않습니다.</span>
                             </span>
                         </label>
                     </div>
