@@ -405,7 +405,7 @@ export default function NewScanPage() {
                     </p>
                 </div>
 
-                <div className={isCheckovScan ? 'grid gap-6' : 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]'}>
+                <div className={`grid gap-6 ${isCheckovScan ? 'lg:grid-cols-[minmax(0,1fr)_440px]' : 'lg:grid-cols-[minmax(0,1fr)_320px]'}`}>
                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
                         <div className="mb-6 grid gap-3 sm:grid-cols-2">
                             <button
@@ -736,7 +736,7 @@ export default function NewScanPage() {
                                 <div className="mt-5 space-y-4">
                                     <div>
                                         <label className="mb-2 block text-sm font-medium text-slate-300">Framework</label>
-                                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                                             {CHECKOV_FRAMEWORK_OPTIONS.map((framework) => (
                                                 <label
                                                     key={framework.value}
