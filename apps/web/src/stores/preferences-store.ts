@@ -10,7 +10,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 export type DateFormat = 'YYYY-MM-DD' | 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'relative';
 export type TimeFormat = '12h' | '24h';
 export type ChartView = 'severity' | 'status';
-export type TrendPeriod = 7 | 14 | 30;
+export type TrendPeriod = 7 | 14 | 30 | 90;
 
 export interface DashboardWidgetVisibility {
     riskScore: boolean;

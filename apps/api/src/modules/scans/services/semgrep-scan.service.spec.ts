@@ -178,3 +178,48 @@ describe('SemgrepScanService.writeCustomRules', () => {
         expect(await (service2 as any).writeCustomRules(tmpDir)).toBeNull();
     });
 });
+
+describe('SemgrepScanService scan evidence', () => {
+    let rulesDir: string;
+    let uploadDir: string;
+    const originalRulesPath = process.env.SEMGREP_RULES_PATH;
+
+    beforeEach(() => {
+        rulesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'semgrep-evidence-rules-'));
+        uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'semgrep-evidence-upload-'));
+        process.env.SEMGREP_RULES_PATH = rulesDir;
+    });
+
+    afterEach(() => {
+        process.env.SEMGREP_RULES_PATH = originalRulesPath;
+        fs.rmSync(rulesDir, { recursive: true, force: true });
+        fs.rmSync(uploadDir, { recursive: true, force: true });
+    });
+
+    it('stores the executed command without the temporary upload path', async () => {
+        const sourceFile = path.join(uploadDir, 'app.js');
+        fs.writeFileSync(sourceFile, 'const password = "secret";');
+        const service: any = new SemgrepScanService(undefined);
+        service.runSemgrep = jest.fn().mockResolvedValue(JSON.stringify({ version: '2.1.0', runs: [] }));
+
+        const result = await service.scanUploadedFile(sourceFile);
+
+        expect(result.Metadata.JascaScanEvidence.command).toContain('semgrep scan --sarif');
+        expect(result.Metadata.JascaScanEvidence.command).toContain('app.js');
+        expect(result.Metadata.JascaScanEvidence.command).not.toContain(uploadDir);
+    });
+
+    it('summarizes multiple bundled security rule paths in execution evidence', async () => {
+        fs.mkdirSync(path.join(rulesDir, 'javascript', 'security'), { recursive: true });
+        fs.mkdirSync(path.join(rulesDir, 'python', 'security'), { recursive: true });
+        const sourceFile = path.join(uploadDir, 'app.js');
+        fs.writeFileSync(sourceFile, 'const input = process.argv[2];');
+        const service: any = new SemgrepScanService(undefined);
+        service.runSemgrep = jest.fn().mockResolvedValue(JSON.stringify({ version: '2.1.0', runs: [] }));
+
+        const result = await service.scanUploadedFile(sourceFile, { profile: 'security' });
+
+        expect(result.Metadata.JascaScanEvidence.command).toContain('--config <bundled-rules:2>');
+        expect(result.Metadata.JascaScanEvidence.command).not.toContain(`${path.sep}security`);
+    });
+});

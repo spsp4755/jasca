@@ -118,9 +118,11 @@ export class SemgrepScanService {
             const isIncremental = Boolean(options.incremental && baseline && diff);
 
             let result: any;
+            let command: string;
             if (isIncremental && diff!.changed.length === 0) {
                 // nothing changed: reuse the baseline results for surviving files
                 result = this.buildSarifFromBaseline(baseline!.rawResult, new Set(diff!.unchanged));
+                command = `${this.semgrepBinary} scan (incremental baseline reused)`;
                 this.logger.log(`Semgrep incremental scan: no changed files, reused baseline ${baseline!.id}`);
             } else {
                 const targets = isIncremental ? diff!.changed : ['.'];
@@ -134,6 +136,7 @@ export class SemgrepScanService {
                     ...(customRulesDir ? ['--config', customRulesDir] : []),
                     ...(prepared.inputKind === 'directory' ? targets : [path.basename(prepared.targetPath)]),
                 ];
+                command = this.formatCommand(args, bundledConfigs, customRulesDir);
                 this.logger.log(`Semgrep scan prepared. operationId=${operationId || 'n/a'} input=${prepared.inputKind} incremental=${isIncremental} targets=${prepared.inputKind === 'directory' ? targets.length : 1} file=${path.basename(filePath)}`);
 
                 const stdout = await this.runSemgrep(args, timeoutMs, operationId, cwd);
@@ -161,6 +164,7 @@ export class SemgrepScanService {
                 originalFileName: path.basename(filePath),
                 inputKind: prepared.inputKind,
                 archiveType: prepared.archiveType,
+                command,
                 options: {
                     profile: options.profile || 'all',
                     languages: options.languages || [],
@@ -333,6 +337,28 @@ export class SemgrepScanService {
         const securityDirs = bases.flatMap((base) => this.findSecurityDirs(base, 4));
         // a base without any security subdir (e.g. dockerfile/security IS the base) falls back to itself
         return securityDirs.length > 0 ? securityDirs : bases;
+    }
+
+    private formatCommand(args: string[], bundledConfigs: string[], customRulesDir: string | null): string {
+        const bundled = new Set(bundledConfigs);
+        const displayArgs: string[] = [];
+        let bundledConfigCount = 0;
+
+        for (let index = 0; index < args.length; index += 1) {
+            const arg = args[index];
+            const next = args[index + 1];
+            if (arg === '--config' && next && bundled.has(next)) {
+                bundledConfigCount += 1;
+                index += 1;
+                continue;
+            }
+            displayArgs.push(arg === customRulesDir ? '<custom-rules>' : (path.isAbsolute(arg) ? path.basename(arg) : arg));
+        }
+
+        if (bundledConfigCount > 0) {
+            displayArgs.splice(5, 0, '--config', `<bundled-rules:${bundledConfigCount}>`);
+        }
+        return [this.semgrepBinary, ...displayArgs].join(' ');
     }
 
     private findSecurityDirs(base: string, maxDepth: number): string[] {

@@ -488,7 +488,7 @@ export default function ScanDetailPage() {
                 </div>
             </div>
 
-            {!isCheckovScan && !isZapScan && !isSarifScan ? <ClustaraDeliveryPanel scan={scan} /> : null}
+            <ClustaraDeliveryPanel scan={scan} />
 
             {/* Scanner Execution Evidence */}
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">

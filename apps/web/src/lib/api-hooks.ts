@@ -2309,7 +2309,8 @@ export function useQueueClustaraDelivery(scanId: string) {
     return useMutation<ClustaraDelivery, Error, {
         type: ClustaraDeliveryType;
         clusterId: string;
-        imageDigest: string;
+        imageDigest?: string;
+        imageRef?: string;
         scanner?: string;
         generator?: string;
     }>({
