@@ -47,6 +47,46 @@ describe('ZapClientService', () => {
         );
     });
 
+    it('starts and stops an in-scope active scan', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ scan: '9' }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({}) } as any);
+
+        const client = new ZapClientService();
+        const options = { baseUrl: 'http://zap:8080', apiKey: 'key', timeoutMs: 1000 };
+        await expect(client.activeScan(options, 'https://demo.internal')).resolves.toBe('9');
+        await client.stopActive(options, '9');
+
+        const activeUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+        const stopUrl = (global.fetch as jest.Mock).mock.calls[1][0] as string;
+        expect(activeUrl).toContain('/JSON/ascan/action/scan/');
+        expect(activeUrl).toContain('recurse=true');
+        expect(activeUrl).toContain('inScopeOnly=true');
+        expect(stopUrl).toContain('/JSON/ascan/action/stop/');
+        expect(stopUrl).toContain('scanId=9');
+    });
+
+    it('creates a temporary context and includes only the approved URL expression', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ contextId: '3' }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({}) } as any)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({}) } as any);
+
+        const client = new ZapClientService();
+        const options = { baseUrl: 'http://zap:8080', timeoutMs: 1000 };
+        await expect(client.createContext(options, 'jasca-op-1')).resolves.toBe('3');
+        await client.includeInContext(options, 'jasca-op-1', '^https://demo\\.internal(?:/.*)?$');
+        await client.removeContext(options, 'jasca-op-1');
+
+        const createUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+        const includeUrl = (global.fetch as jest.Mock).mock.calls[1][0] as string;
+        const removeUrl = (global.fetch as jest.Mock).mock.calls[2][0] as string;
+        expect(createUrl).toContain('/JSON/context/action/newContext/');
+        expect(includeUrl).toContain('/JSON/context/action/includeInContext/');
+        expect(includeUrl).toContain('contextName=jasca-op-1');
+        expect(removeUrl).toContain('/JSON/context/action/removeContext/');
+    });
+
     it('loads alerts for a target URL', async () => {
         global.fetch = jest.fn().mockResolvedValue({
             ok: true,

@@ -6,6 +6,7 @@ import { ZapPolicyService, ZapSettings } from './zap-policy.service';
 export interface ZapScanOptions {
     targetUrl: string;
     scanMode?: 'baseline' | 'passive' | 'active';
+    confirmActiveScan?: boolean;
     authentication?: ZapScanAuthentication;
     targetProfileId?: string;
 }
@@ -18,7 +19,7 @@ export interface ZapScanAuthentication {
 @Injectable()
 export class ZapScanService {
     private readonly logger = new Logger(ZapScanService.name);
-    private readonly activeScans = new Map<string, { scanId?: string; cancelled: boolean }>();
+    private readonly activeScans = new Map<string, { spiderScanId?: string; activeScanId?: string; cancelled: boolean; usesAuthentication: boolean }>();
 
     constructor(
         private readonly settingsService: SettingsService,
@@ -31,9 +32,6 @@ export class ZapScanService {
         const operationKey = operationId || `internal-${startedAt}-${Math.random().toString(16).slice(2)}`;
         const settings = await this.getSettings();
         const scanMode = options.scanMode || 'baseline';
-        if (scanMode === 'active') {
-            throw new BadRequestException('JASCA currently supports Passive Spider Scan only.');
-        }
         const profile = this.policyService.getTargetProfile(settings, options.targetProfileId);
         const target = this.policyService.validateTargetUrl(options.targetUrl, settings, profile.id);
         const authentication = this.normalizeAuthentication(options.authentication);
@@ -41,9 +39,22 @@ export class ZapScanService {
         if (!settings.allowBaselineScan) {
             throw new BadRequestException('ZAP Baseline Scan is disabled by administrator settings.');
         }
+        if (scanMode === 'active' && !settings.allowActiveScan) {
+            throw new BadRequestException('ZAP Active Scan is disabled by administrator settings.');
+        }
+        if (scanMode === 'active' && options.confirmActiveScan !== true) {
+            throw new BadRequestException('Active Scan requires explicit confirmation because it can affect the target service.');
+        }
 
         if (this.activeScans.size >= settings.maxConcurrentScans) {
             throw new BadRequestException(`ZAP scan concurrency limit reached (${settings.maxConcurrentScans}). Try again after the current scan completes.`);
+        }
+        const usesAuthentication = authentication.type !== 'none';
+        if (usesAuthentication && this.activeScans.size > 0) {
+            throw new BadRequestException('An authenticated ZAP scan must run alone to protect its temporary request headers.');
+        }
+        if (!usesAuthentication && Array.from(this.activeScans.values()).some((scan) => scan.usesAuthentication)) {
+            throw new BadRequestException('Wait for the authenticated ZAP scan to finish before starting another ZAP scan.');
         }
 
         const clientOptions: ZapClientOptions = {
@@ -53,8 +64,9 @@ export class ZapScanService {
         };
         const timeoutMs = Math.min(settings.maxScanDurationMinutes, profile.maxScanDurationMinutes) * 60 * 1000;
         const authRuleNames: string[] = [];
+        let contextName: string | undefined;
 
-        this.activeScans.set(operationKey, { cancelled: false });
+        this.activeScans.set(operationKey, { cancelled: false, usesAuthentication });
 
         try {
             const zapVersion = await this.zapClient.getVersion(clientOptions);
@@ -67,11 +79,27 @@ export class ZapScanService {
             }
             this.throwIfCancelled(operationKey);
 
-            const spiderScanId = await this.zapClient.spiderScan(clientOptions, target.href);
-            this.activeScans.set(operationKey, { scanId: spiderScanId, cancelled: false });
+            contextName = this.buildContextName(operationKey);
+            const contextId = await this.zapClient.createContext(clientOptions, contextName);
+            if (!contextId) {
+                throw new BadRequestException('ZAP did not return a context ID for the approved target scope.');
+            }
+            await this.zapClient.includeInContext(clientOptions, contextName, this.buildTargetScopeRegex(target));
+            this.throwIfCancelled(operationKey);
+
+            const spiderScanId = await this.zapClient.spiderScan(clientOptions, target.href, contextName);
+            this.activeScans.set(operationKey, { spiderScanId, cancelled: false, usesAuthentication });
 
             await this.waitForSpider(clientOptions, spiderScanId, timeoutMs, operationKey);
             this.throwIfCancelled(operationKey);
+
+            let activeScanId: string | undefined;
+            if (scanMode === 'active') {
+                activeScanId = await this.zapClient.activeScan(clientOptions, target.href, contextId);
+                this.activeScans.set(operationKey, { spiderScanId, activeScanId, cancelled: false, usesAuthentication });
+                await this.waitForActive(clientOptions, activeScanId, timeoutMs, operationKey);
+                this.throwIfCancelled(operationKey);
+            }
 
             const alerts = await this.zapClient.alerts(clientOptions, target.href);
             this.throwIfCancelled(operationKey);
@@ -102,7 +130,9 @@ export class ZapScanService {
                         },
                         options: {
                             maxScanDurationMinutes: timeoutMs / 60_000,
-                            scanType: 'passive-spider',
+                            scanType: scanMode === 'active' ? 'spider-active' : 'spider-passive',
+                            activeScanId,
+                            contextScoped: true,
                         },
                     },
                 },
@@ -111,6 +141,11 @@ export class ZapScanService {
             await Promise.all(authRuleNames.map((ruleName) => this.zapClient.removeRule(clientOptions, ruleName).catch((error) => {
                 this.logger.warn(`Failed to remove ZAP auth rule ${ruleName}: ${(error as Error).message}`);
             })));
+            if (contextName) {
+                await this.zapClient.removeContext(clientOptions, contextName).catch((error) => {
+                    this.logger.warn(`Failed to remove ZAP scan context ${contextName}: ${(error as Error).message}`);
+                });
+            }
             this.activeScans.delete(operationKey);
         }
     }
@@ -125,13 +160,22 @@ export class ZapScanService {
         this.activeScans.set(operationId, active);
 
         const settings = await this.getSettings();
-        if (active.scanId) {
+        if (active.spiderScanId) {
             await this.zapClient.stopSpider({
                 baseUrl: settings.zapBaseUrl,
                 apiKey: settings.apiKey,
                 timeoutMs: settings.connectTimeoutSeconds * 1000,
-            }, active.scanId).catch((error) => {
+            }, active.spiderScanId).catch((error) => {
                 this.logger.warn(`Failed to stop ZAP spider: ${(error as Error).message}`);
+            });
+        }
+        if (active.activeScanId) {
+            await this.zapClient.stopActive({
+                baseUrl: settings.zapBaseUrl,
+                apiKey: settings.apiKey,
+                timeoutMs: settings.connectTimeoutSeconds * 1000,
+            }, active.activeScanId).catch((error) => {
+                this.logger.warn(`Failed to stop ZAP active scan: ${(error as Error).message}`);
             });
         }
 
@@ -164,6 +208,24 @@ export class ZapScanService {
         }
 
         throw new RequestTimeoutException(`ZAP scan timed out after ${timeoutMs}ms`);
+    }
+
+    private async waitForActive(options: ZapClientOptions, scanId: string, timeoutMs: number, operationId?: string): Promise<void> {
+        const deadline = Date.now() + timeoutMs;
+
+        while (Date.now() < deadline) {
+            this.throwIfCancelled(operationId);
+            const status = await this.zapClient.activeStatus(options, scanId);
+            this.throwIfCancelled(operationId);
+
+            if (status >= 100) {
+                return;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+
+        throw new RequestTimeoutException(`ZAP active scan timed out after ${timeoutMs}ms`);
     }
 
     private throwIfCancelled(operationId?: string): void {
@@ -212,6 +274,17 @@ export class ZapScanService {
             .replace(/[^a-zA-Z0-9._-]/g, '-')
             .slice(0, 80);
         return `jasca-auth-${id}-${kind}`;
+    }
+
+    private buildContextName(operationId: string): string {
+        return `jasca-${operationId.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 70)}`;
+    }
+
+    private buildTargetScopeRegex(target: URL): string {
+        const origin = target.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const rawPath = target.pathname === '/' ? '' : target.pathname.replace(/\/+$/, '');
+        const pathName = rawPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return `^${origin}${pathName || ''}(?:/.*)?(?:\\?.*)?$`;
     }
 
     private async getSettings(): Promise<ZapSettings> {

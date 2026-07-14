@@ -481,6 +481,7 @@ export class ScansController {
         const rawResult = await this.zapScanService.scanUrl({
             targetUrl: body.targetUrl,
             scanMode: body.scanMode,
+            confirmActiveScan: body.confirmActiveScan === true,
             authentication: body.authentication,
             targetProfileId: body.targetProfileId,
         }, scanOperationId);
