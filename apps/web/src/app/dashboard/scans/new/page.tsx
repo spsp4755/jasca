@@ -63,6 +63,8 @@ export default function NewScanPage() {
     const [sourceType, setSourceType] = useState<SourceType>('TRIVY_JSON');
     const [zapTargetUrl, setZapTargetUrl] = useState('');
     const [zapTargetProfileId, setZapTargetProfileId] = useState('');
+    const [zapScanMode, setZapScanMode] = useState<'baseline' | 'active'>('baseline');
+    const [zapActiveConfirmed, setZapActiveConfirmed] = useState(false);
     const [zapAuthType, setZapAuthType] = useState<'none' | 'cookie' | 'authorization'>('none');
     const [zapAuthValue, setZapAuthValue] = useState('');
     const [dragActive, setDragActive] = useState(false);
@@ -116,7 +118,7 @@ export default function NewScanPage() {
     const scanActionLabel = isZapScan ? 'ZAP 검사 실행' : isCheckovScan ? 'Checkov 검사 실행' : isSemgrepScan ? 'Semgrep 검사 실행' : 'Trivy 검사 실행';
     const scanProgressLabel = isZapScan ? 'ZAP 검사 중...' : isCheckovScan ? 'Checkov 검사 중...' : isSemgrepScan ? 'Semgrep 검사 중...' : 'Trivy 검사 중...';
     const zapProfiles = (zapSettings?.targetProfiles || []).filter((profile) => profile.enabled);
-    const missingZapRequiredInput = isZapScan && (!zapTargetUrl.trim() || !zapTargetProfileId || (zapAuthType !== 'none' && !zapAuthValue.trim()));
+    const missingZapRequiredInput = isZapScan && (!zapTargetUrl.trim() || !zapTargetProfileId || (zapAuthType !== 'none' && !zapAuthValue.trim()) || (zapScanMode === 'active' && !zapActiveConfirmed));
     const isSubmitDisabled = uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (isZapScan ? missingZapRequiredInput : !file);
     const acceptedFiles = isScanningTarget
         ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.spdx,.cdx,.cyclonedx,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,.qcow2,.vmdk,.vhd,.vhdx,.img,Dockerfile'
@@ -250,7 +252,8 @@ export default function NewScanPage() {
                 const scanResult = await zapScanMutation.mutateAsync({
                     projectId: selectedProjectId || undefined,
                     targetUrl: zapTargetUrl.trim(),
-                    scanMode: 'passive',
+                    scanMode: zapScanMode,
+                    confirmActiveScan: zapScanMode === 'active' && zapActiveConfirmed,
                     targetProfileId: zapTargetProfileId,
                     authentication: zapAuthType === 'none' ? { type: 'none' } : {
                         type: zapAuthType,
@@ -444,7 +447,7 @@ export default function NewScanPage() {
                                     {[
                                         { value: 'trivy' as const, label: 'Trivy', description: '패키지 취약점, 라이선스, Secret, Misconfig 검사' },
                                         { value: 'checkov' as const, label: 'Checkov', description: 'IaC, Kubernetes, Dockerfile, CI 설정 오류 검사' },
-                                        { value: 'zap' as const, label: 'ZAP', description: '웹 URL 대상 DAST Baseline/Passive 검사' },
+                                        { value: 'zap' as const, label: 'ZAP', description: '웹 URL 대상 DAST Baseline 및 승인형 Active 검사' },
                                         { value: 'semgrep' as const, label: 'Semgrep (SAST)', description: '소스코드 취약 패턴 검사 — 소스 zip/tar 업로드' },
                                     ].map((scanner) => (
                                         <button
@@ -480,6 +483,29 @@ export default function NewScanPage() {
                                     className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                                 />
                                 <div className="mt-4">
+                                    <label className="mb-2 block text-sm font-medium text-orange-100">스캔 모드</label>
+                                    <select
+                                        value={zapScanMode}
+                                        onChange={(e) => {
+                                            const mode = e.target.value as 'baseline' | 'active';
+                                            setZapScanMode(mode);
+                                            if (mode !== 'active') setZapActiveConfirmed(false);
+                                        }}
+                                        className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                    >
+                                        <option value="baseline">Baseline - Spider와 Passive Alert만 수집</option>
+                                        <option value="active">Active - 탐색 후 실제 공격성 검사 실행</option>
+                                    </select>
+                                    {zapScanMode === 'active' ? (
+                                        <label className="mt-3 flex items-start gap-2 rounded-lg border border-red-400/40 bg-red-950/30 p-3 text-xs text-red-100">
+                                            <input type="checkbox" checked={zapActiveConfirmed} onChange={(e) => setZapActiveConfirmed(e.target.checked)} className="mt-0.5" />
+                                            <span>대상 서비스 소유자의 사전 승인을 받았으며, Active Scan이 요청 변조와 서비스 영향 가능성을 가질 수 있음을 확인했습니다.</span>
+                                        </label>
+                                    ) : (
+                                        <p className="mt-2 text-xs text-orange-100/80">Baseline은 허용된 URL을 탐색하고 Passive Alert만 수집합니다.</p>
+                                    )}
+                                </div>
+                                <div className="mt-4">
                                     <label className="mb-2 block text-sm font-medium text-orange-100">대상 프로필</label>
                                     <select
                                         value={zapTargetProfileId}
@@ -498,9 +524,9 @@ export default function NewScanPage() {
                                     )}
                                 </div>
                                 <div className="mt-4 rounded-lg border border-orange-200/30 bg-slate-950/30 p-3">
-                                    <p className="font-medium text-orange-100">Passive Spider Scan</p>
+                                    <p className="font-medium text-orange-100">ZAP 스캔 모드</p>
                                     <p className="mt-1 text-sm text-orange-100/80">
-                                        허용된 URL을 탐색하고 Passive Alert만 수집합니다. 공격성 Active Scan은 제공하지 않습니다.
+                                        Baseline은 허용된 URL을 탐색하고 Passive Alert만 수집합니다. Active는 관리자 허용과 사용자 확인을 모두 통과한 경우에만 실행됩니다.
                                     </p>
                                 </div>
                                 <p className="mt-3 text-xs text-orange-100/80">관리자 설정의 허용 대상 패턴에 포함된 URL만 스캔할 수 있습니다.</p>
@@ -721,8 +747,8 @@ export default function NewScanPage() {
                                 </p>
                                 <div className="mt-4 space-y-3 text-sm text-slate-300">
                                     <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-                                        <p className="font-medium text-white">Passive Spider Scan</p>
-                                        <p className="mt-1 text-slate-400">허용된 URL만 탐색하고 Passive Alert를 수집합니다. Active 공격 검사는 제공하지 않습니다.</p>
+                                        <p className="font-medium text-white">ZAP 스캔 모드</p>
+                                        <p className="mt-1 text-slate-400">Baseline은 허용된 URL만 탐색해 Passive Alert를 수집합니다. Active는 관리자 설정과 사용자 확인 후 동일한 허용 범위 안에서만 실행합니다.</p>
                                     </div>
                                 </div>
                             </div>

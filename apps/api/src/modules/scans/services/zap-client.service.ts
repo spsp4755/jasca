@@ -13,13 +13,44 @@ export class ZapClientService {
         return result.version || 'unknown';
     }
 
-    async spiderScan(options: ZapClientOptions, targetUrl: string): Promise<string> {
-        const result = await this.getJson<{ scan?: string }>(options, '/JSON/spider/action/scan/', { url: targetUrl });
+    async spiderScan(options: ZapClientOptions, targetUrl: string, contextName?: string): Promise<string> {
+        const result = await this.getJson<{ scan?: string }>(options, '/JSON/spider/action/scan/', {
+            url: targetUrl,
+            ...(contextName ? { contextName, subtreeOnly: 'true' } : {}),
+        });
         return result.scan || '';
+    }
+
+    async createContext(options: ZapClientOptions, contextName: string): Promise<string> {
+        const result = await this.getJson<{ contextId?: string }>(options, '/JSON/context/action/newContext/', { contextName });
+        return result.contextId || '';
+    }
+
+    async includeInContext(options: ZapClientOptions, contextName: string, regex: string): Promise<void> {
+        await this.getJson(options, '/JSON/context/action/includeInContext/', { contextName, regex });
+    }
+
+    async removeContext(options: ZapClientOptions, contextName: string): Promise<void> {
+        await this.getJson(options, '/JSON/context/action/removeContext/', { contextName });
     }
 
     async spiderStatus(options: ZapClientOptions, scanId: string): Promise<number> {
         const result = await this.getJson<{ status?: string }>(options, '/JSON/spider/view/status/', { scanId });
+        return Number(result.status || 0);
+    }
+
+    async activeScan(options: ZapClientOptions, targetUrl: string, contextId?: string): Promise<string> {
+        const result = await this.getJson<{ scan?: string }>(options, '/JSON/ascan/action/scan/', {
+            url: targetUrl,
+            recurse: 'true',
+            inScopeOnly: 'true',
+            ...(contextId ? { contextId } : {}),
+        });
+        return result.scan || '';
+    }
+
+    async activeStatus(options: ZapClientOptions, scanId: string): Promise<number> {
+        const result = await this.getJson<{ status?: string }>(options, '/JSON/ascan/view/status/', { scanId });
         return Number(result.status || 0);
     }
 
@@ -34,6 +65,10 @@ export class ZapClientService {
 
     async stopSpider(options: ZapClientOptions, scanId: string): Promise<void> {
         await this.getJson(options, '/JSON/spider/action/stop/', { scanId });
+    }
+
+    async stopActive(options: ZapClientOptions, scanId: string): Promise<void> {
+        await this.getJson(options, '/JSON/ascan/action/stop/', { scanId });
     }
 
     async addRequestHeaderRule(

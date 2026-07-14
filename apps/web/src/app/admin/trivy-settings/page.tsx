@@ -710,8 +710,20 @@ export default function TrivySettingsPage() {
                                 className="mt-1"
                             />
                             <span>
-                                <span className="block font-medium text-slate-900 dark:text-white">Passive Spider 스캔 허용</span>
-                                <span className="text-sm text-slate-500">허용된 URL을 탐색하고 Passive Alert만 수집합니다. 공격성 Active Scan은 제공하지 않습니다.</span>
+                                <span className="block font-medium text-slate-900 dark:text-white">Baseline 스캔 허용</span>
+                                <span className="text-sm text-slate-500">허용된 URL을 탐색하고 Passive Alert만 수집합니다. Active Scan은 아래 설정을 별도로 활성화해야 합니다.</span>
+                            </span>
+                        </label>
+                        <label className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/50 dark:bg-red-950/20">
+                            <input
+                                type="checkbox"
+                                checked={zapConfig.allowActiveScan}
+                                onChange={(e) => updateZapConfig('allowActiveScan', e.target.checked)}
+                                className="mt-1"
+                            />
+                            <span>
+                                <span className="block font-medium text-red-900 dark:text-red-100">Active Scan 허용</span>
+                                <span className="text-sm text-red-700 dark:text-red-200">승인된 대상에만 실제 공격성 검사를 허용합니다. 사용자는 실행 시 별도 확인을 해야 하며, 기본값은 비활성입니다.</span>
                             </span>
                         </label>
                     </div>

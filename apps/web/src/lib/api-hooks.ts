@@ -438,6 +438,7 @@ export interface ZapScanRequest {
     projectId?: string;
     targetUrl: string;
     scanMode: 'baseline' | 'passive' | 'active';
+    confirmActiveScan?: boolean;
     authentication?: {
         type: 'none' | 'cookie' | 'authorization';
         value?: string;
@@ -2376,6 +2377,7 @@ export function useZapScan() {
                 body: JSON.stringify({
                     targetUrl: request.targetUrl,
                     scanMode: request.scanMode,
+                    confirmActiveScan: request.confirmActiveScan,
                     authentication: request.authentication,
                     projectName: request.projectName,
                     organizationId: request.organizationId,

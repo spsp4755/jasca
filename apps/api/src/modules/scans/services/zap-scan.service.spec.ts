@@ -12,10 +12,16 @@ describe('ZapScanService', () => {
     };
     const zapClient = {
         getVersion: jest.fn(),
+        createContext: jest.fn(),
+        includeInContext: jest.fn(),
+        removeContext: jest.fn(),
         spiderScan: jest.fn(),
         spiderStatus: jest.fn(),
+        activeScan: jest.fn(),
+        activeStatus: jest.fn(),
         alerts: jest.fn(),
         stopSpider: jest.fn(),
+        stopActive: jest.fn(),
         addRequestHeaderRule: jest.fn(),
         removeRule: jest.fn(),
     };
@@ -55,9 +61,15 @@ describe('ZapScanService', () => {
             defaultRiskThresholdForNotification: 'HIGH',
         });
         zapClient.getVersion.mockResolvedValue('2.15.0');
+        zapClient.createContext.mockResolvedValue('context-1');
+        zapClient.includeInContext.mockResolvedValue(undefined);
+        zapClient.removeContext.mockResolvedValue(undefined);
         zapClient.spiderScan.mockResolvedValue('1');
         zapClient.spiderStatus.mockResolvedValue(100);
+        zapClient.activeScan.mockResolvedValue('2');
+        zapClient.activeStatus.mockResolvedValue(100);
         zapClient.stopSpider.mockResolvedValue(undefined);
+        zapClient.stopActive.mockResolvedValue(undefined);
         zapClient.addRequestHeaderRule.mockResolvedValue(undefined);
         zapClient.removeRule.mockResolvedValue(undefined);
         zapClient.alerts.mockResolvedValue([
@@ -83,7 +95,9 @@ describe('ZapScanService', () => {
             baseUrl: 'http://zap:8080',
             apiKey: 'key',
             timeoutMs: 10000,
-        }), 'https://demo.internal/');
+        }), 'https://demo.internal/', 'jasca-op-1');
+        expect(zapClient.includeInContext).toHaveBeenCalledWith(expect.any(Object), 'jasca-op-1', '^https://demo\\.internal(?:/.*)?(?:\\?.*)?$');
+        expect(zapClient.removeContext).toHaveBeenCalledWith(expect.any(Object), 'jasca-op-1');
         expect(result.site[0].alerts).toHaveLength(1);
         expect(result.Metadata.JascaScanEvidence).toEqual(expect.objectContaining({
             scanner: 'zap',
@@ -132,11 +146,35 @@ describe('ZapScanService', () => {
         }), 'legacy-default');
     });
 
-    it('rejects an active scan before contacting the ZAP service', async () => {
+    it('rejects an active scan when the administrator has not enabled it', async () => {
         const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
         await expect(service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'active' }, 'op-1'))
-            .rejects.toThrow('Passive Spider Scan');
+            .rejects.toThrow('Active Scan is disabled');
         expect(zapClient.getVersion).not.toHaveBeenCalled();
+    });
+
+    it('runs an active scan only after explicit confirmation', async () => {
+        settingsService.getRaw.mockResolvedValue({
+            ...(await settingsService.getRaw()),
+            allowActiveScan: true,
+        });
+        const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
+
+        await expect(service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'active' }, 'op-active'))
+            .rejects.toThrow('explicit confirmation');
+
+        const result = await service.scanUrl({
+            targetUrl: 'https://demo.internal',
+            scanMode: 'active',
+            confirmActiveScan: true,
+        }, 'op-active');
+
+        expect(zapClient.activeScan).toHaveBeenCalledWith(expect.any(Object), 'https://demo.internal/', 'context-1');
+        expect(zapClient.activeStatus).toHaveBeenCalledWith(expect.any(Object), '2');
+        expect(result.Metadata.JascaScanEvidence.options).toEqual(expect.objectContaining({
+            scanType: 'spider-active',
+            activeScanId: '2',
+        }));
     });
 
     it('rejects baseline scan when disabled', async () => {
@@ -173,6 +211,32 @@ describe('ZapScanService', () => {
 
         await expect(scanPromise).rejects.toThrow(BadRequestException);
         expect(zapClient.stopSpider).toHaveBeenCalledWith(expect.any(Object), '1');
+    });
+
+    it('stops both spider and active scan when cancellation is requested', async () => {
+        settingsService.getRaw.mockResolvedValue({
+            ...(await settingsService.getRaw()),
+            allowActiveScan: true,
+        });
+        let resolveStatus: (value: number) => void = () => undefined;
+        zapClient.activeStatus.mockReturnValue(new Promise<number>((resolve) => {
+            resolveStatus = resolve;
+        }));
+
+        const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
+        const scanPromise = service.scanUrl({
+            targetUrl: 'https://demo.internal',
+            scanMode: 'active',
+            confirmActiveScan: true,
+        }, 'op-active-cancel');
+
+        await waitUntil(() => zapClient.activeStatus.mock.calls.length > 0);
+        await expect(service.cancelScan('op-active-cancel')).resolves.toBe(true);
+        resolveStatus(100);
+
+        await expect(scanPromise).rejects.toThrow(BadRequestException);
+        expect(zapClient.stopSpider).toHaveBeenCalledWith(expect.any(Object), '1');
+        expect(zapClient.stopActive).toHaveBeenCalledWith(expect.any(Object), '2');
     });
 
     it('uses temporary Authorization header rules without storing the secret in scan evidence', async () => {
@@ -241,6 +305,18 @@ describe('ZapScanService', () => {
 
         resolveStatus(100);
         await firstScan;
+    });
+
+    it('does not overlap another scan with an authenticated scan', async () => {
+        settingsService.getRaw.mockResolvedValue({
+            ...(await settingsService.getRaw()),
+            maxConcurrentScans: 2,
+        });
+        const service = new ZapScanService(settingsService as any, policyService as any, zapClient as any);
+        (service as any).activeScans.set('authenticated', { cancelled: false, usesAuthentication: true });
+
+        await expect(service.scanUrl({ targetUrl: 'https://demo.internal', scanMode: 'baseline' }, 'op-plain'))
+            .rejects.toThrow('authenticated ZAP scan');
     });
 
     it('enforces the concurrency limit even when no operation id is provided', async () => {
