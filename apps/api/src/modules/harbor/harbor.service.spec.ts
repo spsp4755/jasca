@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { HarborService } from './harbor.service';
 
 describe('HarborService', () => {
@@ -53,6 +53,34 @@ describe('HarborService', () => {
                 }),
             }),
         );
+    });
+
+    it('sends a bounded abort signal with Harbor requests', async () => {
+        const fetchImpl = jest.fn().mockResolvedValue({
+            ok: true,
+            json: jest.fn().mockResolvedValue([]),
+        });
+        const service = createService(fetchImpl);
+
+        await service.listProjects();
+
+        expect(fetchImpl).toHaveBeenCalledWith(
+            'https://harbor.example.test/api/v2.0/projects',
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+    });
+
+    it('maps invalid Harbor JSON responses to a safe service-unavailable error', async () => {
+        const fetchImpl = jest.fn().mockResolvedValue({
+            ok: true,
+            json: jest.fn().mockRejectedValue(new Error('invalid JSON for registry-password')),
+        });
+        const service = createService(fetchImpl);
+
+        await expect(service.listProjects()).rejects.toMatchObject({
+            message: 'Harbor request failed',
+            status: 503,
+        } as Partial<ServiceUnavailableException>);
     });
 
     it('encodes nested repository names in artifact URLs', async () => {

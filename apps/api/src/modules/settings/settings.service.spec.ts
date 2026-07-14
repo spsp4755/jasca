@@ -39,6 +39,95 @@ describe('SettingsService Clustara secret handling', () => {
     });
 });
 
+describe('SettingsService Harbor secret handling', () => {
+    const stored = {
+        enabled: true,
+        baseUrl: 'https://harbor.example.test/',
+        username: 'robot$jasca',
+        password: 'registry-password',
+        webhookSecret: 'webhook-secret',
+        allowedProjects: ['platform'],
+        defaultProjectId: 'jasca-project',
+        autoScanOnPush: true,
+    };
+
+    it('masks Harbor secrets in generic keyed reads', async () => {
+        const prisma = {
+            systemSettings: {
+                findUnique: jest.fn().mockResolvedValue({ value: stored }),
+            },
+        } as any;
+        const service = new SettingsService(prisma);
+
+        await expect(service.get('harbor')).resolves.toEqual({
+            enabled: true,
+            baseUrl: 'https://harbor.example.test',
+            username: 'robot$jasca',
+            allowedProjects: ['platform'],
+            defaultProjectId: 'jasca-project',
+            autoScanOnPush: true,
+            passwordConfigured: true,
+            webhookSecretConfigured: true,
+        });
+    });
+
+    it('masks Harbor secrets in generic aggregate reads', async () => {
+        const prisma = {
+            systemSettings: {
+                findMany: jest.fn().mockResolvedValue([{ key: 'harbor', value: stored }]),
+            },
+        } as any;
+        const service = new SettingsService(prisma);
+
+        await expect(service.getAll()).resolves.toMatchObject({
+            harbor: {
+                enabled: true,
+                baseUrl: 'https://harbor.example.test',
+                username: 'robot$jasca',
+                passwordConfigured: true,
+                webhookSecretConfigured: true,
+            },
+        });
+    });
+
+    it('normalizes generic Harbor updates and preserves masked secrets', async () => {
+        const prisma = {
+            systemSettings: {
+                findUnique: jest.fn().mockResolvedValue({ value: stored }),
+                upsert: jest.fn().mockImplementation(({ create }) => Promise.resolve({
+                    key: 'harbor',
+                    value: create.value,
+                })),
+            },
+        } as any;
+        const service = new SettingsService(prisma);
+
+        await expect(service.set('harbor', {
+            ...stored,
+            baseUrl: ' https://harbor.example.test/// ',
+            password: '********',
+            webhookSecret: '********',
+            allowedProjects: [' platform ', '', 123],
+        })).resolves.toMatchObject({
+            value: {
+                baseUrl: 'https://harbor.example.test',
+                allowedProjects: ['platform', '123'],
+                passwordConfigured: true,
+                webhookSecretConfigured: true,
+            },
+        });
+
+        expect(prisma.systemSettings.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            create: expect.objectContaining({
+                value: expect.objectContaining({
+                    password: 'registry-password',
+                    webhookSecret: 'webhook-secret',
+                }),
+            }),
+        }));
+    });
+});
+
 describe('SettingsService ZAP profile compatibility', () => {
     it('exposes a default profile for existing allowlist-only ZAP settings', async () => {
         const prisma = {

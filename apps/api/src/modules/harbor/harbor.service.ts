@@ -18,6 +18,10 @@ export type SafeHarborSettings = Omit<HarborSettings, 'password' | 'webhookSecre
 };
 
 const SETTINGS_KEY = 'harbor';
+const configuredRequestTimeout = Number(process.env.HARBOR_REQUEST_TIMEOUT_MS);
+const HARBOR_REQUEST_TIMEOUT_MS = Number.isFinite(configuredRequestTimeout) && configuredRequestTimeout > 0
+    ? configuredRequestTimeout
+    : 10_000;
 
 const DEFAULT_SETTINGS: HarborSettings = {
     enabled: false,
@@ -157,9 +161,10 @@ export class HarborService {
                     Accept: 'application/json',
                     Authorization: `Basic ${authorization}`,
                 },
+                signal: AbortSignal.timeout(HARBOR_REQUEST_TIMEOUT_MS),
             });
             if (!response.ok) throw new ServiceUnavailableException(`Harbor request failed (${response.status})`);
-            return response.json() as Promise<T>;
+            return await response.json() as T;
         } catch (error) {
             if (error instanceof ServiceUnavailableException) throw error;
             throw new ServiceUnavailableException('Harbor request failed');
