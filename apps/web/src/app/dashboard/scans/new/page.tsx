@@ -112,6 +112,7 @@ export default function NewScanPage() {
     const isCheckovScan = isScanningTarget && scannerProvider === 'checkov';
     const isZapScan = isScanningTarget && scannerProvider === 'zap';
     const isSemgrepScan = isScanningTarget && scannerProvider === 'semgrep';
+    const selectedCheckovFrameworks = CHECKOV_FRAMEWORK_OPTIONS.filter((framework) => checkovOptions.frameworks.includes(framework.value));
     const scanActionLabel = isZapScan ? 'ZAP 검사 실행' : isCheckovScan ? 'Checkov 검사 실행' : isSemgrepScan ? 'Semgrep 검사 실행' : 'Trivy 검사 실행';
     const scanProgressLabel = isZapScan ? 'ZAP 검사 중...' : isCheckovScan ? 'Checkov 검사 중...' : isSemgrepScan ? 'Semgrep 검사 중...' : 'Trivy 검사 중...';
     const zapProfiles = (zapSettings?.targetProfiles || []).filter((profile) => profile.enabled);
@@ -736,11 +737,25 @@ export default function NewScanPage() {
                                 <div className="mt-5 space-y-4">
                                     <div>
                                         <label className="mb-2 block text-sm font-medium text-slate-300">Framework</label>
+                                        <div className="mb-3 rounded-lg border border-cyan-500/20 bg-slate-950/40 px-3 py-2 text-xs text-slate-300">
+                                            {selectedCheckovFrameworks.length === 0 ? (
+                                                <span>선택 안 함: 업로드한 파일에서 Checkov가 지원 프레임워크를 자동 감지합니다.</span>
+                                            ) : (
+                                                <span>
+                                                    <strong className="font-semibold text-cyan-200">{selectedCheckovFrameworks.length}개 선택</strong>
+                                                    {' · '}{selectedCheckovFrameworks.map((framework) => framework.label).join(', ')}
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                                             {CHECKOV_FRAMEWORK_OPTIONS.map((framework) => (
                                                 <label
                                                     key={framework.value}
-                                                    className="flex min-w-0 cursor-pointer items-start gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300 transition-colors hover:border-cyan-400/60"
+                                                    className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-lg border p-4 text-sm transition-colors ${
+                                                        checkovOptions.frameworks.includes(framework.value)
+                                                            ? 'border-cyan-400/70 bg-cyan-500/10 text-cyan-50'
+                                                            : 'border-slate-800 bg-slate-950/40 text-slate-300 hover:border-cyan-400/60'
+                                                    }`}
                                                 >
                                                     <input
                                                         type="checkbox"

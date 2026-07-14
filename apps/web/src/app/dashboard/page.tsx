@@ -441,7 +441,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-900/60">
                         <div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">최근 스캔</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">최근 50건</p>
                             <p className="text-lg font-bold text-slate-900 dark:text-white">{scannerTotals.scans}</p>
                         </div>
                         <div>
@@ -586,10 +586,10 @@ export default function DashboardPage() {
                             취약점 추세
                         </CardTitle>
                         <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
-                            {[7, 14, 30].map((days) => (
+                            {[7, 30, 90].map((days) => (
                                 <button
                                     key={days}
-                                    onClick={() => setTrendPeriod(days as 7 | 14 | 30)}
+                                    onClick={() => setTrendPeriod(days as 7 | 30 | 90)}
                                     className={`px-3 py-1 text-xs rounded-md transition-colors ${
                                         trendPeriod === days
                                             ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'

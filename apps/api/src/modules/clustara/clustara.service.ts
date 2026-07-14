@@ -39,7 +39,8 @@ export type SafeClustaraSettings = Omit<ClustaraSettings, 'credential'> & {
 
 export interface ClustaraRequestInput {
     clusterId: string;
-    imageDigest: string;
+    imageDigest?: string;
+    imageRef?: string;
     scanner?: string;
     generator?: string;
 }
@@ -102,13 +103,20 @@ export function buildClustaraRequest(
     input: ClustaraRequestInput,
 ) {
     if (!settings.baseUrl) throw new BadRequestException('Clustara Base URL이 필요합니다.');
+    const imageDigest = String(input.imageDigest || '').trim();
+    const imageRef = String(input.imageRef || '').trim();
+    if (!DIGEST_PATTERN.test(imageDigest) && !imageRef) {
+        throw new BadRequestException('Clustara 전송에는 image_digest 또는 검사 대상 식별자가 필요합니다.');
+    }
     const url = new URL(type === 'TRIVY' ? settings.scanPath : settings.sbomPath, `${settings.baseUrl}/`);
     if (type === 'TRIVY') {
         url.searchParams.set('cluster_id', input.clusterId);
         url.searchParams.set('scanner', input.scanner || settings.scanner);
-        url.searchParams.set('image_digest', input.imageDigest);
+        if (DIGEST_PATTERN.test(imageDigest)) url.searchParams.set('image_digest', imageDigest);
+        else url.searchParams.set('image', imageRef);
     } else {
-        url.searchParams.set('image_digest', input.imageDigest);
+        if (DIGEST_PATTERN.test(imageDigest)) url.searchParams.set('image_digest', imageDigest);
+        else url.searchParams.set('image', imageRef);
         url.searchParams.set('generator', input.generator || settings.generator);
     }
 
@@ -128,6 +136,30 @@ export function deriveImageDigest(explicitDigest: unknown, rawResult: any): stri
         rawResult?.Metadata?.ImageID,
     ];
     return candidates.map((value) => String(value || '').trim()).find((value) => DIGEST_PATTERN.test(value));
+}
+
+export function deriveClustaraIdentifier(explicitRef: unknown, scan: any): string | undefined {
+    const candidates = [
+        explicitRef,
+        scan?.imageRef,
+        scan?.artifactName,
+        scan?.rawResult?.Metadata?.ArtifactName,
+        scan?.rawResult?.ArtifactName,
+        scan?.rawResult?.Metadata?.ImageName,
+        scan?.rawResult?.Metadata?.Target,
+        scan?.id ? `jasca-scan:${scan.id}` : undefined,
+    ];
+    return candidates.map((value) => String(value || '').trim()).find(Boolean);
+}
+
+export function deriveClustaraScanner(scan: any, fallback = 'trivy'): string {
+    const scanner = String(scan?.rawResult?.Metadata?.JascaScanEvidence?.scanner || '').trim().toLowerCase();
+    if (scanner) return scanner;
+    const sourceType = String(scan?.sourceType || '').toUpperCase();
+    if (sourceType === 'CHECKOV_JSON') return 'checkov';
+    if (sourceType === 'ZAP_JSON') return 'zap';
+    if (sourceType === 'SARIF') return 'semgrep';
+    return fallback;
 }
 
 export function isRetryableFailure(status?: number): boolean {
@@ -242,23 +274,25 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
         if (!settings.enabled) throw new BadRequestException('Clustara 연동이 비활성화되어 있습니다.');
         const clusterId = String(input.clusterId || settings.defaultClusterId).trim();
         const imageDigest = deriveImageDigest(input.imageDigest || scan.imageDigest, scan.rawResult);
+        const imageRef = deriveClustaraIdentifier(input.imageRef, scan);
+        const identifier = imageDigest || imageRef;
         if (!clusterId) throw new BadRequestException('Clustara cluster_id가 필요합니다.');
-        if (!imageDigest) {
-            throw new BadRequestException('image_digest는 sha256: 뒤에 64자리 16진수가 있어야 합니다.');
+        if (!identifier) {
+            throw new BadRequestException('Clustara 전송에는 image_digest 또는 검사 대상 식별자가 필요합니다.');
         }
         if (type === 'SBOM' && !scan.artifacts.some((artifact) => artifact.type === ScanArtifactType.CYCLONEDX_JSON)) {
             throw new BadRequestException('이 스캔에 저장된 CycloneDX SBOM이 없습니다.');
         }
 
         const deliveryType = type as ClustaraDeliveryType;
-        const unique = { scanResultId, type: deliveryType, clusterId, imageDigest };
+        const unique = { scanResultId, type: deliveryType, clusterId, imageDigest: identifier };
         // The unique key makes simultaneous manual and automatic requests idempotent.
         return this.prisma.clustaraDelivery.upsert({
             where: { scanResultId_type_clusterId_imageDigest: unique },
             update: {},
             create: {
                 ...unique,
-                scanner: type === 'TRIVY' ? String(input.scanner || settings.scanner).trim() : null,
+                scanner: type === 'TRIVY' ? String(input.scanner || deriveClustaraScanner(scan, settings.scanner)).trim() : null,
                 generator: type === 'SBOM' ? String(input.generator || settings.generator).trim() : null,
                 maxAttempts: settings.maxAttempts,
             },
@@ -273,19 +307,23 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
             where: { id: scanResultId },
             include: { artifacts: true },
         });
-        if (!scan || !this.isTrivyResult(scan.sourceType, scan.rawResult)) return [];
+        if (!scan || !scan.rawResult) return [];
         const imageDigest = deriveImageDigest(scan.imageDigest, scan.rawResult);
-        if (!imageDigest) return [];
+        const imageRef = deriveClustaraIdentifier(undefined, scan);
+        if (!imageDigest && !imageRef) return [];
+        const scanner = deriveClustaraScanner(scan, settings.scanner);
 
         const deliveries = [await this.queueDelivery(scanResultId, 'TRIVY', {
             clusterId: settings.defaultClusterId,
             imageDigest,
-            scanner: settings.scanner,
+            imageRef,
+            scanner,
         })];
         if (scan.artifacts.some((artifact) => artifact.type === ScanArtifactType.CYCLONEDX_JSON)) {
             deliveries.push(await this.queueDelivery(scanResultId, 'SBOM', {
                 clusterId: settings.defaultClusterId,
                 imageDigest,
+                imageRef,
                 generator: settings.generator,
             }));
         }
@@ -377,9 +415,11 @@ export class ClustaraService implements OnModuleInit, OnModuleDestroy {
             const body = type === 'TRIVY'
                 ? JSON.stringify(delivery.scanResult.rawResult)
                 : await this.readSbom(delivery.scanResult.artifacts);
+            const storedDigest = DIGEST_PATTERN.test(delivery.imageDigest) ? delivery.imageDigest : undefined;
             const response = await this.sendPayload(settings, type, {
                 clusterId: delivery.clusterId,
-                imageDigest: delivery.imageDigest,
+                imageDigest: storedDigest,
+                imageRef: storedDigest ? undefined : delivery.imageDigest,
                 scanner: delivery.scanner || settings.scanner,
                 generator: delivery.generator || settings.generator,
             }, body);

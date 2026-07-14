@@ -1,6 +1,7 @@
 import {
     buildClustaraRequest,
     ClustaraService,
+    deriveClustaraScanner,
     deriveImageDigest,
     isRetryableFailure,
     normalizeClustaraSettings,
@@ -80,6 +81,24 @@ describe('Clustara integration contract', () => {
         );
     });
 
+    it('uses an image reference for scan and SBOM imports when a digest is unavailable', () => {
+        const settings = normalizeClustaraSettings({ baseUrl: 'https://clustara.internal' });
+        const input = {
+            clusterId: 'prod',
+            imageDigest: '',
+            imageRef: 'registry.internal/team/api:1.2.3',
+            scanner: 'semgrep',
+            generator: 'syft',
+        };
+
+        expect(buildClustaraRequest(settings, 'TRIVY', input).url.toString()).toBe(
+            'https://clustara.internal/admin/k8s/security/scans/import?cluster_id=prod&scanner=semgrep&image=registry.internal%2Fteam%2Fapi%3A1.2.3',
+        );
+        expect(buildClustaraRequest(settings, 'SBOM', input).url.toString()).toBe(
+            'https://clustara.internal/admin/k8s/security/sboms?image=registry.internal%2Fteam%2Fapi%3A1.2.3&generator=syft',
+        );
+    });
+
     it('derives an OCI digest in explicit, RepoDigests, then ImageID order', () => {
         const repoDigest = `sha256:${'b'.repeat(64)}`;
         const imageId = `sha256:${'c'.repeat(64)}`;
@@ -92,6 +111,15 @@ describe('Clustara integration contract', () => {
         })).toBe(repoDigest);
         expect(deriveImageDigest(undefined, { Metadata: { ImageID: imageId } })).toBe(imageId);
         expect(deriveImageDigest('sha256:short', {})).toBeUndefined();
+    });
+
+    it.each([
+        [{ sourceType: 'CHECKOV_JSON' }, 'checkov'],
+        [{ sourceType: 'ZAP_JSON' }, 'zap'],
+        [{ sourceType: 'SARIF', rawResult: { Metadata: { JascaScanEvidence: { scanner: 'semgrep' } } } }, 'semgrep'],
+        [{ sourceType: 'TRIVY_JSON' }, 'trivy'],
+    ])('derives the correct scanner identifier for %o', (scan, expected) => {
+        expect(deriveClustaraScanner(scan)).toBe(expected);
     });
 
     it.each([
@@ -200,28 +228,57 @@ describe('ClustaraService', () => {
         }
     });
 
-    it('rejects an invalid image digest before creating a delivery', async () => {
+    it('queues a scan using its target reference when a digest is unavailable', async () => {
         const prisma = {
             scanResult: {
                 findUnique: jest.fn().mockResolvedValue({
                     id: 'scan-1',
+                    imageRef: 'uploaded-policy.zip',
                     project: { id: 'project-1', organizationId: 'org-1' },
                     rawResult: {},
                     artifacts: [],
                 }),
             },
-            clustaraDelivery: { findUnique: jest.fn(), create: jest.fn() },
+            clustaraDelivery: { upsert: jest.fn().mockResolvedValue({ id: 'delivery-1' }) },
         } as any;
         const settingsStore = {
             getRaw: jest.fn().mockResolvedValue({ enabled: true, defaultClusterId: 'prod' }),
         } as any;
         const service = new ClustaraService(prisma, settingsStore);
 
-        await expect(service.queueDelivery('scan-1', 'TRIVY', {
-            clusterId: 'prod',
-            imageDigest: 'sha256:short',
-        })).rejects.toThrow('sha256');
-        expect(prisma.clustaraDelivery.create).not.toHaveBeenCalled();
+        await expect(service.queueDelivery('scan-1', 'TRIVY', { clusterId: 'prod', scanner: 'zap' })).resolves.toEqual({ id: 'delivery-1' });
+        expect(prisma.clustaraDelivery.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            where: { scanResultId_type_clusterId_imageDigest: {
+                scanResultId: 'scan-1',
+                type: 'TRIVY',
+                clusterId: 'prod',
+                imageDigest: 'uploaded-policy.zip',
+            } },
+            create: expect.objectContaining({ scanner: 'zap' }),
+        }));
+    });
+
+    it('automatically queues a Checkov result with its uploaded target reference', async () => {
+        const scan = {
+            id: 'scan-checkov',
+            sourceType: 'CHECKOV_JSON',
+            imageRef: 'Dockerfile',
+            rawResult: { results: { failed_checks: [] } },
+            artifacts: [],
+            project: { id: 'project-1', organizationId: 'org-1' },
+        };
+        const prisma = {
+            scanResult: { findUnique: jest.fn().mockResolvedValue(scan) },
+            clustaraDelivery: { upsert: jest.fn().mockResolvedValue({ id: 'delivery-checkov' }) },
+        } as any;
+        const service = new ClustaraService(prisma, {
+            getRaw: jest.fn().mockResolvedValue({ enabled: true, autoSend: true, defaultClusterId: 'prod' }),
+        } as any);
+
+        await expect(service.queueAutomatic(scan.id)).resolves.toEqual([{ id: 'delivery-checkov' }]);
+        expect(prisma.clustaraDelivery.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            create: expect.objectContaining({ scanner: 'checkov', imageDigest: 'Dockerfile' }),
+        }));
     });
 
     it('rejects manual queue requests while the integration is disabled', async () => {
