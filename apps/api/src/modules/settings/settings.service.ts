@@ -1,5 +1,27 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+
+interface HarborSettingsValue {
+    enabled: boolean;
+    baseUrl: string;
+    username: string;
+    password: string;
+    allowedProjects: string[];
+    defaultProjectId: string;
+    webhookSecret: string;
+    autoScanOnPush: boolean;
+}
+
+const defaultHarborSettings: HarborSettingsValue = {
+    enabled: false,
+    baseUrl: '',
+    username: '',
+    password: '',
+    allowedProjects: [],
+    defaultProjectId: '',
+    webhookSecret: '',
+    autoScanOnPush: false,
+};
 
 // Default settings for each category
 const defaultSettings: Record<string, unknown> = {
@@ -133,6 +155,48 @@ function isMaskLikeSecret(value: string) {
     return /^\*+$/.test(value.trim());
 }
 
+function normalizeHarborSettings(input: Record<string, unknown>): HarborSettingsValue {
+    return {
+        ...defaultHarborSettings,
+        ...input,
+        enabled: Boolean(input.enabled),
+        baseUrl: String(input.baseUrl || '').trim().replace(/\/+$/, ''),
+        username: String(input.username || '').trim(),
+        password: String(input.password || '').trim(),
+        allowedProjects: Array.isArray(input.allowedProjects)
+            ? input.allowedProjects.map((project) => String(project).trim()).filter(Boolean)
+            : [],
+        defaultProjectId: String(input.defaultProjectId || '').trim(),
+        webhookSecret: String(input.webhookSecret || '').trim(),
+        autoScanOnPush: Boolean(input.autoScanOnPush),
+    };
+}
+
+function maskHarborSettings(settings: HarborSettingsValue) {
+    const { password, webhookSecret, ...safeSettings } = settings;
+    return {
+        ...safeSettings,
+        passwordConfigured: password.length > 0,
+        webhookSecretConfigured: webhookSecret.length > 0,
+    };
+}
+
+function assertSecureHarborBaseUrl(baseUrl: string) {
+    if (!baseUrl) throw new BadRequestException('Harbor base URL is required');
+    let parsed: URL;
+    try {
+        parsed = new URL(baseUrl);
+    } catch {
+        throw new BadRequestException('Harbor base URL is invalid');
+    }
+    const isLocalTestHost = parsed.hostname === 'localhost'
+        || parsed.hostname === '127.0.0.1'
+        || parsed.hostname === '::1';
+    if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && isLocalTestHost)) {
+        throw new BadRequestException('Harbor base URL must use HTTPS');
+    }
+}
+
 @Injectable()
 export class SettingsService {
     constructor(private readonly prisma: PrismaService) { }
@@ -171,6 +235,10 @@ export class SettingsService {
                 ...safeValue,
                 credentialConfigured: typeof credential === 'string' && credential.trim().length > 0,
             };
+        }
+
+        if (key === 'harbor') {
+            return maskHarborSettings(normalizeHarborSettings(value));
         }
 
         return value;
@@ -233,6 +301,32 @@ export class SettingsService {
             };
         }
 
+        if (key === 'harbor') {
+            const currentValue = await this.getRaw(key);
+            const currentSettings = normalizeHarborSettings(isRecord(currentValue) ? currentValue : {});
+            const submittedSettings = isRecord(value) ? value : {};
+            const submittedPassword = submittedSettings.password;
+            const submittedWebhookSecret = submittedSettings.webhookSecret;
+            const password = typeof submittedPassword === 'string'
+                && submittedPassword.trim().length > 0
+                && !isMaskLikeSecret(submittedPassword)
+                ? submittedPassword
+                : currentSettings.password;
+            const webhookSecret = typeof submittedWebhookSecret === 'string'
+                && submittedWebhookSecret.trim().length > 0
+                && !isMaskLikeSecret(submittedWebhookSecret)
+                ? submittedWebhookSecret
+                : currentSettings.webhookSecret;
+
+            nextValue = normalizeHarborSettings({
+                ...currentSettings,
+                ...submittedSettings,
+                password,
+                webhookSecret,
+            });
+            assertSecureHarborBaseUrl((nextValue as HarborSettingsValue).baseUrl);
+        }
+
         const setting = await this.prisma.systemSettings.upsert({
             where: { key },
             update: { value: nextValue as any },
@@ -258,6 +352,7 @@ export class SettingsService {
 
         result.zap = this.sanitize('zap', result.zap);
         result.clustara = this.sanitize('clustara', result.clustara);
+        result.harbor = this.sanitize('harbor', result.harbor);
 
         return result;
     }
