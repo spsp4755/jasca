@@ -31,6 +31,7 @@ import { ManualAdvisoriesModule } from './modules/manual-advisories/manual-advis
 import { SemgrepRulesModule } from './modules/semgrep-rules/semgrep-rules.module';
 import { VulnPortalModule } from './modules/vuln-portal/vuln-portal.module';
 import { ClustaraModule } from './modules/clustara/clustara.module';
+import { HarborModule } from './modules/harbor/harbor.module';
 
 @Module({
     imports: [
@@ -68,6 +69,7 @@ import { ClustaraModule } from './modules/clustara/clustara.module';
         SemgrepRulesModule,
         VulnPortalModule,
         ClustaraModule,
+        HarborModule,
         DatabaseModule,
     ],
 })
