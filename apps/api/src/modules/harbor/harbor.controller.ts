@@ -1,9 +1,25 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { HarborPushArtifactPayload, HarborScanService } from './harbor-scan.service';
 import { HarborService, HarborSettings } from './harbor.service';
+
+@ApiTags('Harbor')
+@Controller('harbor')
+export class HarborWebhookController {
+    constructor(private readonly harborScanService: HarborScanService) {}
+
+    @Post('webhook')
+    @ApiOperation({ summary: 'Receive a Harbor default PUSH_ARTIFACT webhook' })
+    webhook(
+        @Headers('authorization') authorization: string | undefined,
+        @Body() payload: HarborPushArtifactPayload,
+    ) {
+        return this.harborScanService.handleWebhook(authorization, payload);
+    }
+}
 
 @ApiTags('Harbor')
 @ApiBearerAuth()

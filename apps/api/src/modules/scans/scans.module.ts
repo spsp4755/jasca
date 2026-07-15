@@ -39,7 +39,7 @@ import { ScanArtifactService } from './services/scan-artifact.service';
         SemgrepScanService,
         ScanArtifactService,
     ],
-    exports: [ScansService],
+    exports: [ScansService, TrivyScanService],
 })
 export class ScansModule { }
 
