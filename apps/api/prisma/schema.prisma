@@ -1349,19 +1349,29 @@ model AiExecution {
   // Context and result (optional, can be large)
   context       Json?
   result        String?  @db.Text
+
+  attempts          Int       @default(0)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  notificationSentAt DateTime?
   
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   
   @@index([userId])
   @@index([action])
   @@index([status])
   @@index([createdAt])
+  @@index([status, createdAt])
 }
 
 enum AiExecutionStatus {
+  QUEUED
+  RUNNING
   SUCCESS
   ERROR
   TIMEOUT
+  CANCELLED
 }
 
 // ============================================
