@@ -287,7 +287,7 @@ export class AiService {
     /**
      * Execute AI action with given context
      */
-    async runQueuedExecution(executionId: string): Promise<void> {
+    async runExecution(executionId: string): Promise<void> {
         const execution = await this.prisma.aiExecution.findUnique({ where: { id: executionId } });
         if (!execution) throw new Error(`AI execution not found: ${executionId}`);
         if (execution.status !== AiExecutionStatus.RUNNING) return;

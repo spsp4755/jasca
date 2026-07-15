@@ -15,3 +15,9 @@ ALTER TABLE "AiExecution"
 
 CREATE INDEX "AiExecution_status_createdAt_idx"
     ON "AiExecution"("status", "createdAt");
+
+ALTER TABLE "UserNotification"
+    ADD COLUMN "deduplicationKey" TEXT;
+
+CREATE UNIQUE INDEX "UserNotification_deduplicationKey_key"
+    ON "UserNotification"("deduplicationKey");

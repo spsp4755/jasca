@@ -15,7 +15,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 export const AI_JOB_EXECUTOR = Symbol('AI_JOB_EXECUTOR');
 
 export interface AiJobExecutor {
-    runQueuedExecution(executionId: string): Promise<void>;
+    runExecution(executionId: string): Promise<void>;
 }
 
 export interface AiJobActor {
@@ -127,7 +127,7 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
 
         const heartbeat = this.startHeartbeat(queued.id);
         try {
-            await this.executor.runQueuedExecution(queued.id);
+            await this.executor.runExecution(queued.id);
         } catch (error) {
             await this.prisma.aiExecution.updateMany({
                 where: { id: queued.id, status: AiExecutionStatus.RUNNING },
@@ -237,6 +237,7 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
                 title,
                 message,
                 `/dashboard/ai-results/${execution.id}`,
+                `ai-execution:${execution.id}:${execution.status}`,
             );
             await this.prisma.aiExecution.updateMany({
                 where: {

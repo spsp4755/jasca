@@ -23,6 +23,7 @@ export interface UserNotification {
     isRead: boolean;
     createdAt: Date;
     link: string | null;
+    deduplicationKey: string | null;
 }
 
 @Injectable()
@@ -100,17 +101,35 @@ export class NotificationsService {
         title: string,
         message: string,
         link?: string,
+        deduplicationKey?: string,
     ): Promise<UserNotification> {
-        const notification = await this.prisma.userNotification.create({
-            data: {
-                userId,
-                type,
-                title,
-                message,
-                link,
-                isRead: false,
-            },
-        });
+        const data = {
+            userId,
+            type,
+            title,
+            message,
+            link,
+            isRead: false,
+        };
+        const notification = deduplicationKey
+            ? await this.prisma.userNotification.upsert({
+                where: { deduplicationKey },
+                update: {},
+                create: {
+                    ...data,
+                    deduplicationKey,
+                },
+            })
+            : await this.prisma.userNotification.create({
+                data: {
+                    userId,
+                    type,
+                    title,
+                    message,
+                    link,
+                    isRead: false,
+                },
+            });
 
         this.logger.log(`Created notification for user ${userId}: ${title}`);
         return notification;
