@@ -8,7 +8,7 @@ const user = {
     email: 'user@example.test',
     name: 'Test User',
     organizationId: 'org-1',
-    roles: [{ role: 'DEVELOPER' }],
+    roles: [{ role: 'DEVELOPER', scope: 'PROJECT', scopeId: 'project-1' }],
 };
 
 const apiTokenUser = {
@@ -25,6 +25,7 @@ const userActor = {
     id: user.id,
     organizationId: user.organizationId,
     roles: ['DEVELOPER'],
+    scopedRoles: user.roles,
     isApiToken: false,
     permissions: [],
     apiTokenId: undefined,
@@ -131,6 +132,7 @@ describe('AiController job API', () => {
             id: apiTokenUser.id,
             organizationId: apiTokenUser.organizationId,
             roles: [],
+            scopedRoles: [],
             isApiToken: true,
             permissions: apiTokenUser.permissions,
             apiTokenId: apiTokenUser.apiTokenId,
@@ -282,6 +284,32 @@ describe('AiController job API', () => {
             'execution-1',
             'pdf',
             'everything',
+            { user },
+            { set: jest.fn(), send: jest.fn() },
+        )).rejects.toBeInstanceOf(BadRequestException);
+        expect(aiExportService.exportExecution).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-string export format with BadRequestException', async () => {
+        const { controller, aiExportService } = createController();
+
+        await expect((controller as any).exportHistory(
+            'execution-1',
+            ['pdf'],
+            'summary',
+            { user },
+            { set: jest.fn(), send: jest.fn() },
+        )).rejects.toBeInstanceOf(BadRequestException);
+        expect(aiExportService.exportExecution).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-string export scope with BadRequestException', async () => {
+        const { controller, aiExportService } = createController();
+
+        await expect((controller as any).exportHistory(
+            'execution-1',
+            'pdf',
+            ['summary'],
             { user },
             { set: jest.fn(), send: jest.fn() },
         )).rejects.toBeInstanceOf(BadRequestException);

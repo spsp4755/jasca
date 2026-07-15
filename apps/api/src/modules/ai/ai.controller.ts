@@ -4,7 +4,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { AiService } from './ai.service';
-import { AiExportFormat, AiExportScope, AiExportService } from './ai-export.service';
+import { AiExportActor, AiExportFormat, AiExportScope, AiExportService } from './ai-export.service';
 import { AiJobActor, AiJobService } from './ai-job.service';
 import { AiActionType, AI_ACTION_METADATA } from './ai-actions';
 import type { Request, Response } from 'express';
@@ -45,7 +45,7 @@ interface AuthenticatedUser {
     email?: string;
     name?: string;
     organizationId?: string | null;
-    roles?: Array<{ role: string }>;
+    roles?: Array<{ role: string; scope?: string | null; scopeId?: string | null }>;
     isApiToken?: boolean;
     permissions?: string[];
     apiTokenId?: string;
@@ -151,16 +151,22 @@ export class AiController {
     @Get('history/:id/export')
     async exportHistory(
         @Param('id') id: string,
-        @Query('format') requestedFormat: string | undefined,
-        @Query('scope') requestedScope: string | undefined,
+        @Query('format') requestedFormat: unknown,
+        @Query('scope') requestedScope: unknown,
         @Req() req: RequestWithUser,
         @Res() res: Response,
     ) {
         const user = this.requireUser(req);
 
-        const format = requestedFormat?.toLowerCase();
+        if (typeof requestedFormat !== 'string') {
+            throw new BadRequestException('format must be pdf or docx');
+        }
+        const format = requestedFormat.toLowerCase();
         if (format !== 'pdf' && format !== 'docx') {
             throw new BadRequestException('format must be pdf or docx');
+        }
+        if (requestedScope !== undefined && typeof requestedScope !== 'string') {
+            throw new BadRequestException('scope must be summary or full');
         }
         const scope = (requestedScope || 'summary').toLowerCase();
         if (scope !== 'summary' && scope !== 'full') {
@@ -377,11 +383,12 @@ export class AiController {
         return req.user;
     }
 
-    private toActor(user: AuthenticatedUser): AiJobActor {
+    private toActor(user: AuthenticatedUser): AiJobActor & Pick<AiExportActor, 'scopedRoles'> {
         return {
             id: user.id,
             organizationId: user.organizationId || undefined,
             roles: user.roles?.map(role => role.role) || [],
+            scopedRoles: user.roles || [],
             isApiToken: user.isApiToken === true,
             permissions: user.permissions || [],
             apiTokenId: user.apiTokenId,

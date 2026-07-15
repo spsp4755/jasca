@@ -14,13 +14,17 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import * as PDFDocument from 'pdfkit';
+import { assertProjectAccess, RequestUserRole } from '../../common/authz/access-control';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AiExecutionAccessActor, canAccessAiExecution } from './ai-execution-access';
 
 export type AiExportFormat = 'pdf' | 'docx';
 export type AiExportScope = 'summary' | 'full';
 
-export type AiExportActor = AiExecutionAccessActor;
+export interface AiExportActor extends AiExecutionAccessActor {
+    scopedRoles?: RequestUserRole[];
+    permissions?: string[];
+}
 
 export interface AiExportExecution {
     id: string;
@@ -71,7 +75,10 @@ export interface AiExportFinding {
     target: string;
     location: string;
     reference: string;
+    affectedCount?: number;
 }
+
+type AiExportFindingColumn = Exclude<keyof AiExportFinding, 'affectedCount'>;
 
 interface BuildReportOptions {
     scope?: AiExportScope;
@@ -123,7 +130,8 @@ export function buildAiExportReport(
     options: BuildReportOptions = {},
 ): AiExportReport {
     const cleanedResult = stripAiExportReasoning(execution.result || '');
-    const actionLabel = execution.actionLabel || execution.action;
+    const cleanedError = stripAiExportReasoning(execution.error || '');
+    const actionLabel = cleanText(execution.actionLabel || execution.action);
     const evidence = buildEvidence(execution);
     const context = asRecord(execution.context);
     const scope = options.scope || 'summary';
@@ -133,10 +141,11 @@ export function buildAiExportReport(
         .sort((left, right) => severityRank(left.severity) - severityRank(right.severity))
         .slice(0, scope === 'summary' ? SUMMARY_FINDING_LIMIT : undefined);
     const baseStatistics = options.statistics || buildStoredStatistics(context, availableFindings);
+    const included = findings.reduce((total, finding) => total + findingAffectedCount(finding), 0);
     const statistics: AiExportStatistics = {
         ...baseStatistics,
-        included: findings.length,
-        omitted: Math.max(0, baseStatistics.total - findings.length),
+        included,
+        omitted: Math.max(0, baseStatistics.total - included),
     };
     const metadata = [
         { label: '실행 ID', value: execution.id },
@@ -144,8 +153,8 @@ export function buildAiExportReport(
         { label: 'AI 작업', value: `${actionLabel} (${execution.action})` },
         { label: '분석 범위', value: scope === 'summary' ? '요약 (상위 20건)' : '전체 항목' },
         { label: '상태', value: formatStatus(execution.status) },
-        { label: '제공자', value: execution.provider || '-' },
-        { label: '모델', value: execution.model || '-' },
+        { label: '제공자', value: cleanText(execution.provider) || '-' },
+        { label: '모델', value: cleanText(execution.model) || '-' },
         { label: '토큰', value: `입력 ${execution.inputTokens.toLocaleString('ko-KR')} / 출력 ${execution.outputTokens.toLocaleString('ko-KR')}` },
         { label: '처리 시간', value: `${(execution.durationMs / 1000).toFixed(2)}초` },
     ];
@@ -155,8 +164,8 @@ export function buildAiExportReport(
     return {
         title: `${actionLabel} AI 분석 보고서`,
         metadata,
-        summary: summarizeResult(cleanedResult, execution.error),
-        detailedAnalysis: cleanedResult || execution.error || '저장된 상세 분석 결과가 없습니다.',
+        summary: summarizeResult(cleanedResult, cleanedError || null),
+        detailedAnalysis: cleanedResult || cleanedError || '저장된 상세 분석 결과가 없습니다.',
         scope,
         partial,
         statistics,
@@ -185,7 +194,7 @@ export class AiExportService {
         }
 
         await this.assertCanExport(execution, actor);
-        const report = await this.buildReport(execution, scope);
+        const report = await this.buildReport(execution, scope, actor);
         const content = format === 'pdf'
             ? await renderPdf(report)
             : await renderDocx(report);
@@ -202,6 +211,7 @@ export class AiExportService {
     private async buildReport(
         execution: AiExportExecution,
         scope: AiExportScope,
+        actor: AiExportActor,
     ): Promise<AiExportReport> {
         if (scope !== 'full') return buildAiExportReport(execution, { scope });
 
@@ -211,6 +221,12 @@ export class AiExportService {
         const scan = await this.prisma.scanResult.findUnique({
             where: { id: scanId },
             select: {
+                project: {
+                    select: {
+                        id: true,
+                        organizationId: true,
+                    },
+                },
                 imageRef: true,
                 imageDigest: true,
                 artifactName: true,
@@ -249,6 +265,14 @@ export class AiExportService {
             },
         });
         if (!scan) return buildAiExportReport(execution, { scope, partial: true });
+
+        assertProjectAccess({
+            id: actor.id,
+            organizationId: actor.organizationId,
+            roles: actor.scopedRoles ?? actor.roles.map(role => ({ role })),
+            isApiToken: actor.isApiToken,
+            permissions: actor.permissions,
+        }, scan.project);
 
         const findings = normalizeScanFindings(scan);
         return buildAiExportReport(execution, {
@@ -289,13 +313,17 @@ function stringValue(value: unknown): string {
     return '';
 }
 
+function cleanText(value: unknown): string {
+    return stripAiExportReasoning(stringValue(value));
+}
+
 function numberValue(value: unknown): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 function firstValue(...values: unknown[]): string {
     for (const value of values) {
-        const text = stringValue(value);
+        const text = cleanText(value);
         if (text) return text;
     }
     return '';
@@ -303,8 +331,8 @@ function firstValue(...values: unknown[]): string {
 
 function referenceValue(value: unknown): string {
     return Array.isArray(value)
-        ? value.map(stringValue).filter(Boolean).join(', ')
-        : stringValue(value);
+        ? value.map(cleanText).filter(Boolean).join(', ')
+        : cleanText(value);
 }
 
 function severityRank(severity: string): number {
@@ -353,6 +381,7 @@ function normalizeStoredFindings(context: UnknownRecord): AiExportFinding[] {
             row.fixedVersion ? `수정 버전: ${stringValue(row.fixedVersion)}` : '',
             fallbackReference,
         ) || '-',
+        affectedCount: positiveCount(row.affectedCount),
     }));
     const licenses = normalizeStoredLicenses(context);
     const unique = new Map<string, AiExportFinding>();
@@ -369,7 +398,7 @@ function normalizeStoredLicenses(context: UnknownRecord): AiExportFinding[] {
         ...recordArray(context.licenseIssues),
         ...recordArray(context.licenses),
     ].map(row => {
-        const packageCount = numberValue(row.packages);
+        const packageCount = positiveCount(row.packages || row.packageCount);
         return {
             id: firstValue(row.spdxId, row.licenseName, row.id, row.name) || '-',
             name: firstValue(row.name, row.licenseName, row.spdxId) || '-',
@@ -379,6 +408,7 @@ function normalizeStoredLicenses(context: UnknownRecord): AiExportFinding[] {
             target: packageTarget(row, packageCount ? `${packageCount}개 패키지` : firstValue(context.target)),
             location: firstValue(row.location, row.pkgPath, fallbackLocation) || '-',
             reference: firstValue(row.reference, row.url, row.spdxId, fallbackReference) || '-',
+            affectedCount: packageCount,
         };
     });
 }
@@ -408,11 +438,23 @@ function countFindings(
     findings: AiExportFinding[],
 ): Omit<AiExportStatistics, 'included' | 'omitted'> {
     const counts = { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 };
+    let total = 0;
     for (const finding of findings) {
         const key = normalizeSeverity(finding.severity).toLowerCase() as keyof typeof counts;
-        counts[key] += 1;
+        const affectedCount = findingAffectedCount(finding);
+        counts[key] += affectedCount;
+        total += affectedCount;
     }
-    return { total: findings.length, ...counts };
+    return { total, ...counts };
+}
+
+function positiveCount(value: unknown): number | undefined {
+    const count = numberValue(value);
+    return count > 0 ? Math.floor(count) : undefined;
+}
+
+function findingAffectedCount(finding: AiExportFinding): number {
+    return positiveCount(finding.affectedCount) || 1;
 }
 
 function normalizeScanFindings(scan: {
@@ -446,23 +488,23 @@ function normalizeScanFindings(scan: {
 }): AiExportFinding[] {
     const fallbackLocation = scan.artifactName || scan.imageRef;
     const vulnerabilities = scan.vulnerabilities.map(row => ({
-        id: row.vulnerability.cveId,
-        name: row.vulnerability.title || row.vulnerability.cveId,
+        id: cleanText(row.vulnerability.cveId) || '-',
+        name: cleanText(row.vulnerability.title || row.vulnerability.cveId) || '-',
         severity: normalizeSeverity(row.vulnerability.severity),
-        target: `${row.pkgName}@${row.pkgVersion}`,
-        location: row.pkgPath || fallbackLocation,
+        target: `${cleanText(row.pkgName)}@${cleanText(row.pkgVersion)}`,
+        location: cleanText(row.pkgPath || fallbackLocation) || '-',
         reference: [
-            row.fixedVersion ? `수정 버전: ${row.fixedVersion}` : '',
-            row.vulnerability.references.join(', '),
-        ].filter(Boolean).join(' | ') || scan.imageDigest || '-',
+            row.fixedVersion ? `수정 버전: ${cleanText(row.fixedVersion)}` : '',
+            row.vulnerability.references.map(cleanText).filter(Boolean).join(', '),
+        ].filter(Boolean).join(' | ') || cleanText(scan.imageDigest) || '-',
     }));
     const licenses = scan.packageLicenses.map(row => ({
-        id: row.license?.spdxId || row.licenseName,
-        name: row.license?.name || row.licenseName,
+        id: cleanText(row.license?.spdxId || row.licenseName) || '-',
+        name: cleanText(row.license?.name || row.licenseName) || '-',
         severity: licenseSeverity(row.license?.classification),
-        target: `${row.pkgName}@${row.pkgVersion}`,
-        location: row.pkgPath || fallbackLocation,
-        reference: row.license?.url || row.license?.spdxId || scan.imageDigest || '-',
+        target: `${cleanText(row.pkgName)}@${cleanText(row.pkgVersion)}`,
+        location: cleanText(row.pkgPath || fallbackLocation) || '-',
+        reference: cleanText(row.license?.url || row.license?.spdxId || scan.imageDigest) || '-',
     }));
     return [...vulnerabilities, ...licenses];
 }
@@ -478,7 +520,7 @@ function addContextMetadata(
         ['참조 정보', context.reference],
     ] as const;
     for (const [label, value] of values) {
-        const text = stringValue(value);
+        const text = cleanText(value);
         if (text) metadata.push({ label, value: text });
     }
 }
@@ -513,6 +555,7 @@ function findOpeningTagBefore(text: string, openPrefix: string, beforeIndex: num
         if (next === '>' || /\s/.test(next || '')) {
             return index;
         }
+        if (index === 0) return -1;
         searchFrom = index;
     }
 }
@@ -556,16 +599,18 @@ function buildEvidence(execution: AiExportExecution): string[] {
     if (execution.context !== null && execution.context !== undefined) {
         try {
             evidence.push(`저장된 입력 컨텍스트\n${JSON.stringify(execution.context, (key, value) => (
-                REASONING_TAGS.includes(key.toLowerCase()) ? undefined : value
+                REASONING_TAGS.includes(key.toLowerCase())
+                    ? undefined
+                    : typeof value === 'string' ? stripAiExportReasoning(value) : value
             ), 2)}`);
         } catch {
-            evidence.push(`저장된 입력 컨텍스트\n${String(execution.context)}`);
+            evidence.push(`저장된 입력 컨텍스트\n${stripAiExportReasoning(String(execution.context))}`);
         }
     } else {
         evidence.push('저장된 입력 컨텍스트가 없습니다.');
     }
     if (execution.error) {
-        evidence.push(`실행 오류\n${execution.error}`);
+        evidence.push(`실행 오류\n${stripAiExportReasoning(execution.error)}`);
     }
     return evidence;
 }
@@ -693,7 +738,7 @@ function addPdfMarkdown(doc: PDFKit.PDFDocument, markdown: string): void {
 }
 
 const PDF_TABLE_COLUMNS: Array<{
-    key: keyof AiExportFinding;
+    key: AiExportFindingColumn;
     label: string;
     width: number;
 }> = [
@@ -704,6 +749,8 @@ const PDF_TABLE_COLUMNS: Array<{
     { key: 'location', label: '상세 위치', width: 96 },
     { key: 'reference', label: '참조 정보', width: 100 },
 ];
+const PDF_MAX_ROW_HEIGHT = 120;
+const PDF_CELL_CHUNK_SIZE = 120;
 
 function addPdfFindingTable(doc: PDFKit.PDFDocument, findings: AiExportFinding[]): void {
     const left = 48;
@@ -728,40 +775,63 @@ function addPdfFindingTable(doc: PDFKit.PDFDocument, findings: AiExportFinding[]
     if (doc.y + headerHeight > pageBottom) doc.addPage();
     drawHeader();
     for (const finding of findings) {
-        const values = PDF_TABLE_COLUMNS.map(column => truncateCell(finding[column.key]));
-        const rowHeight = Math.max(24, ...values.map((value, index) => (
-            doc.heightOfString(value, {
-                width: PDF_TABLE_COLUMNS[index].width - 8,
-                lineGap: 1,
-            }) + 8
-        )));
-        if (doc.y + rowHeight > pageBottom) {
-            doc.addPage();
-            drawHeader();
-        }
+        doc.fontSize(7);
+        const cellChunks = PDF_TABLE_COLUMNS.map(column => (
+            splitPdfCell(doc, finding[column.key], column.width - 8)
+        ));
+        const continuationRows = Math.max(...cellChunks.map(chunks => chunks.length));
 
-        const y = doc.y;
-        let x = left;
-        doc.save().strokeColor('#cbd5e1').lineWidth(0.5);
-        for (let index = 0; index < PDF_TABLE_COLUMNS.length; index += 1) {
-            const column = PDF_TABLE_COLUMNS[index];
-            doc.rect(x, y, column.width, rowHeight).stroke();
-            doc.fillColor('#1e293b').fontSize(7).text(values[index], x + 4, y + 4, {
-                width: column.width - 8,
-                height: rowHeight - 8,
-                lineGap: 1,
-                ellipsis: true,
-            });
-            x += column.width;
+        for (let rowIndex = 0; rowIndex < continuationRows; rowIndex += 1) {
+            const values = cellChunks.map(chunks => chunks[rowIndex] || '');
+            const rowHeight = Math.max(24, ...values.map((value, index) => (
+                pdfCellHeight(doc, value, PDF_TABLE_COLUMNS[index].width - 8)
+            )));
+            if (doc.y + rowHeight > pageBottom) {
+                doc.addPage();
+                drawHeader();
+            }
+
+            const y = doc.y;
+            let x = left;
+            doc.save().strokeColor('#cbd5e1').lineWidth(0.5);
+            for (let index = 0; index < PDF_TABLE_COLUMNS.length; index += 1) {
+                const column = PDF_TABLE_COLUMNS[index];
+                doc.rect(x, y, column.width, rowHeight).stroke();
+                doc.fillColor('#1e293b').fontSize(7).text(values[index], x + 4, y + 4, {
+                    width: column.width - 8,
+                    height: rowHeight - 8,
+                    lineGap: 1,
+                });
+                x += column.width;
+            }
+            doc.restore();
+            doc.y = y + rowHeight;
         }
-        doc.restore();
-        doc.y = y + rowHeight;
     }
     doc.moveDown(0.5);
 }
 
-function truncateCell(value: string): string {
-    return value.length > 180 ? `${value.slice(0, 177)}...` : value;
+function splitPdfCell(doc: PDFKit.PDFDocument, value: string, width: number): string[] {
+    const characters = Array.from(value);
+    if (characters.length === 0) return [''];
+
+    const chunks: string[] = [];
+    let offset = 0;
+    while (offset < characters.length) {
+        let length = Math.min(PDF_CELL_CHUNK_SIZE, characters.length - offset);
+        let chunk = characters.slice(offset, offset + length).join('');
+        while (length > 1 && pdfCellHeight(doc, chunk, width) > PDF_MAX_ROW_HEIGHT) {
+            length = Math.max(1, Math.floor(length / 2));
+            chunk = characters.slice(offset, offset + length).join('');
+        }
+        chunks.push(chunk);
+        offset += length;
+    }
+    return chunks;
+}
+
+function pdfCellHeight(doc: PDFKit.PDFDocument, value: string, width: number): number {
+    return doc.heightOfString(value, { width, lineGap: 1 }) + 8;
 }
 
 async function renderDocx(report: AiExportReport): Promise<Buffer> {
@@ -825,7 +895,7 @@ function findingCountText(statistics: AiExportStatistics): string {
 }
 
 function docxFindingTable(findings: AiExportFinding[]): Table {
-    const columns: Array<{ key: keyof AiExportFinding; label: string }> = [
+    const columns: Array<{ key: AiExportFindingColumn; label: string }> = [
         { key: 'id', label: 'ID' },
         { key: 'name', label: '취약점/정책 이름' },
         { key: 'severity', label: '심각도' },
@@ -856,8 +926,7 @@ function docxFindingTable(findings: AiExportFinding[]): Table {
                 children: columns.map(column => cell(column.label, true)),
             }),
             ...findings.map(finding => new TableRow({
-                cantSplit: true,
-                children: columns.map(column => cell(truncateCell(finding[column.key]))),
+                children: columns.map(column => cell(finding[column.key])),
             })),
         ],
     });

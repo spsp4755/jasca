@@ -90,6 +90,28 @@ function createExportService(execution: AiExportExecution = savedExecution) {
     return { prisma, service: new AiExportService(prisma) };
 }
 
+function createScan(projectId = 'project-1', organizationId = 'org-1') {
+    return {
+        imageRef: 'registry.example.test/team/api:latest',
+        imageDigest: 'sha256:abc123',
+        artifactName: null,
+        project: { id: projectId, organizationId },
+        vulnerabilities: [{
+            pkgName: 'api',
+            pkgVersion: '1.0.0',
+            fixedVersion: '1.0.1',
+            pkgPath: '/app/api',
+            vulnerability: {
+                cveId: 'CVE-2026-9999',
+                title: '접근 제어 테스트',
+                severity: 'HIGH',
+                references: ['https://example.test/CVE-2026-9999'],
+            },
+        }],
+        packageLicenses: [],
+    };
+}
+
 describe('AI execution exports', () => {
     afterEach(() => jest.restoreAllMocks());
 
@@ -132,6 +154,57 @@ describe('AI execution exports', () => {
         expect(report.partial).toBe(false);
     });
 
+    it('counts grouped license packages as affected items', () => {
+        const report = buildAiExportReport({
+            ...savedExecution,
+            context: {
+                licenseIssues: [{
+                    name: 'GNU Affero General Public License',
+                    spdxId: 'AGPL-3.0-only',
+                    classification: 'FORBIDDEN',
+                    packages: 100,
+                }],
+            },
+        }) as any;
+
+        expect(report.findings).toHaveLength(1);
+        expect(report.findings[0]).toEqual(expect.objectContaining({ affectedCount: 100 }));
+        expect(report.statistics).toEqual(expect.objectContaining({
+            total: 100,
+            included: 100,
+            omitted: 0,
+            critical: 100,
+        }));
+    });
+
+    it('sanitizes reasoning blocks from errors, findings, metadata and evidence', () => {
+        const report = buildAiExportReport({
+            ...savedExecution,
+            result: null,
+            error: '<think>secret error</think>\n공개 오류',
+            context: {
+                scanner: '<thinking>secret scanner</thinking>\nTrivy',
+                findings: [{
+                    id: 'CVE-PUBLIC',
+                    name: '<analysis>secret finding</analysis>\n공개 취약점',
+                    severity: 'HIGH',
+                    target: 'api',
+                    location: '/app',
+                    reference: '<reasoning>secret reference</reasoning>\n공개 참조',
+                }],
+                evidence: '```reasoning\nsecret evidence\n```\n공개 근거',
+                nested: {
+                    analysis: 'secret analysis key',
+                    note: '<think>secret note</think>\n공개 메모',
+                },
+            },
+        });
+        const serialized = JSON.stringify(report);
+
+        expect(serialized).toMatch(/공개 오류|공개 취약점|공개 참조|공개 근거|공개 메모/);
+        expect(serialized).not.toMatch(/secret|<\/?(?:think|thinking|analysis|reasoning)>|```reasoning/i);
+    });
+
     it.each([
         ['pdf', 'application/pdf', '%PDF'],
         ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'PK'],
@@ -169,6 +242,66 @@ describe('AI execution exports', () => {
         expect(documentXml.match(/<w:gridCol/g)).toHaveLength(6);
     });
 
+    it('preserves complete long DOCX cell text', async () => {
+        const longReference = `BEGIN ${'long reference content '.repeat(600)}END`;
+        const { service } = createExportService({
+            ...savedExecution,
+            context: {
+                findings: [{
+                    id: 'CVE-LONG-DOCX',
+                    name: '긴 셀 테스트',
+                    severity: 'HIGH',
+                    target: 'api',
+                    location: '/app/api',
+                    reference: longReference,
+                }],
+            },
+        });
+
+        const exported = await service.exportExecution('execution-1', 'docx', {
+            id: 'user-1',
+            roles: ['DEVELOPER'],
+            isApiToken: false,
+        }, 'summary');
+        const documentXml = readZipEntry(exported.content, 'word/document.xml');
+        const tableXml = documentXml.match(/<w:tbl>[\s\S]*?<\/w:tbl>/)?.[0] || '';
+
+        expect(tableXml).toContain(longReference);
+    });
+
+    it('splits oversized PDF cells without losing text and repeats headers', async () => {
+        const longReference = `BEGIN ${'long reference content '.repeat(600)}END`;
+        const { service } = createExportService({
+            ...savedExecution,
+            context: {
+                findings: [{
+                    id: 'CVE-LONG-PDF',
+                    name: '긴 셀 테스트',
+                    severity: 'HIGH',
+                    target: 'api',
+                    location: '/app/api',
+                    reference: longReference,
+                }],
+            },
+        });
+        const textSpy = jest.spyOn((PDFDocument as any).prototype, 'text');
+
+        const exported = await service.exportExecution('execution-1', 'pdf', {
+            id: 'user-1',
+            roles: ['DEVELOPER'],
+            isApiToken: false,
+        }, 'summary');
+        const renderedText = textSpy.mock.calls.map(call => String(call[0]));
+        const cellChunks = textSpy.mock.calls
+            .filter(call => call[1] === 451 && call[0] && longReference.includes(String(call[0])))
+            .map(call => String(call[0]));
+        const pageCount = (exported.content.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
+
+        expect(cellChunks.join('')).toBe(longReference);
+        expect(renderedText.filter(text => text === 'ID').length).toBeGreaterThan(1);
+        expect(pageCount).toBeGreaterThan(1);
+    });
+
     it('loads every original scan finding for full exports', async () => {
         const { prisma, service } = createExportService();
         const vulnerabilities = Array.from({ length: 28 }, (_, index) => ({
@@ -188,6 +321,7 @@ describe('AI execution exports', () => {
             imageRef: 'registry.example.test/team/api:latest',
             imageDigest: 'sha256:abc123',
             artifactName: null,
+            project: { id: 'project-1', organizationId: 'org-1' },
             sourceType: 'TRIVY_JSON',
             summary: { totalVulns: 28, critical: 2, high: 0, medium: 26, low: 0, unknown: 0 },
             vulnerabilities,
@@ -208,6 +342,7 @@ describe('AI execution exports', () => {
 
         const exported = await (service as any).exportExecution('execution-1', 'pdf', {
             id: 'user-1',
+            organizationId: 'org-1',
             roles: ['DEVELOPER'],
             isApiToken: false,
         }, 'full');
@@ -216,6 +351,9 @@ describe('AI execution exports', () => {
 
         expect(prisma.scanResult.findUnique).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: 'scan-1' },
+            select: expect.objectContaining({
+                project: { select: { id: true, organizationId: true } },
+            }),
         }));
         expect(renderedText).toContain('CVE-FULL-28');
         expect(renderedText).toContain('AGPL-3.0-only');
@@ -224,6 +362,52 @@ describe('AI execution exports', () => {
         expect(pageCount).toBeGreaterThan(1);
         expect(renderedText.join('\n')).not.toMatch(/hidden reasoning|<reasoning>/i);
         textSpy.mockRestore();
+    });
+
+    it('rejects an owned execution whose context points to another project scan', async () => {
+        const { prisma, service } = createExportService();
+        prisma.scanResult.findUnique.mockResolvedValue(createScan('project-2', 'org-2'));
+
+        await expect(service.exportExecution('execution-1', 'docx', {
+            id: 'user-1',
+            organizationId: 'org-1',
+            roles: ['DEVELOPER'],
+            isApiToken: false,
+        }, 'full')).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('limits API token full exports to scans in the token organization', async () => {
+        const tokenExecution = { ...savedExecution, userId: 'api-token:token-1' };
+        const { prisma, service } = createExportService(tokenExecution);
+        prisma.scanResult.findUnique.mockResolvedValue(createScan('project-1', 'org-1'));
+
+        await expect(service.exportExecution('execution-1', 'docx', {
+            id: 'api-token:token-1',
+            organizationId: 'org-1',
+            roles: [],
+            isApiToken: true,
+        }, 'full')).resolves.toEqual(expect.objectContaining({ content: expect.any(Buffer) }));
+
+        prisma.scanResult.findUnique.mockResolvedValue(createScan('project-2', 'org-2'));
+        await expect(service.exportExecution('execution-1', 'docx', {
+            id: 'api-token:token-1',
+            organizationId: 'org-1',
+            roles: [],
+            isApiToken: true,
+        }, 'full')).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('allows full export through an exact PROJECT scoped role', async () => {
+        const { prisma, service } = createExportService();
+        prisma.scanResult.findUnique.mockResolvedValue(createScan('project-2', 'org-2'));
+
+        await expect(service.exportExecution('execution-1', 'docx', {
+            id: 'user-1',
+            organizationId: 'org-1',
+            roles: ['VIEWER'],
+            scopedRoles: [{ role: 'VIEWER', scope: 'PROJECT', scopeId: 'project-2' }],
+            isApiToken: false,
+        } as any, 'full')).resolves.toEqual(expect.objectContaining({ content: expect.any(Buffer) }));
     });
 
     it('falls back to stored findings and marks a deleted scan full export as partial', async () => {
