@@ -53,7 +53,7 @@ function createDependencies() {
         createUserNotification: jest.fn().mockResolvedValue({ id: 'notification-1' }),
     } as any;
     const executor = {
-        runQueuedExecution: jest.fn().mockResolvedValue(undefined),
+        runExecution: jest.fn().mockResolvedValue(undefined),
     };
 
     return { prisma, notifications, executor };
@@ -117,8 +117,8 @@ describe('AiJobService', () => {
 
         await Promise.all([service.processNextJob(), service.processNextJob()]);
 
-        expect(executor.runQueuedExecution).toHaveBeenCalledTimes(1);
-        expect(executor.runQueuedExecution).toHaveBeenCalledWith(queuedJob.id);
+        expect(executor.runExecution).toHaveBeenCalledTimes(1);
+        expect(executor.runExecution).toHaveBeenCalledWith(queuedJob.id);
     });
 
     it('recovers stale jobs by heartbeat on startup and every worker cycle', async () => {
@@ -159,7 +159,7 @@ describe('AiJobService', () => {
         ));
 
         let finishExecution!: () => void;
-        executor.runQueuedExecution.mockImplementation(() => new Promise<void>((resolve) => {
+        executor.runExecution.mockImplementation(() => new Promise<void>((resolve) => {
             finishExecution = resolve;
         }));
         let heartbeat!: () => void;
@@ -172,10 +172,10 @@ describe('AiJobService', () => {
 
         try {
             const processing = service.processNextJob();
-            for (let i = 0; i < 10 && !executor.runQueuedExecution.mock.calls.length; i += 1) {
+            for (let i = 0; i < 10 && !executor.runExecution.mock.calls.length; i += 1) {
                 await Promise.resolve();
             }
-            expect(executor.runQueuedExecution).toHaveBeenCalledTimes(1);
+            expect(executor.runExecution).toHaveBeenCalledTimes(1);
 
             heartbeat();
             await Promise.resolve();
@@ -235,6 +235,14 @@ describe('AiJobService', () => {
         await Promise.all([service.processNextJob(), service.processNextJob()]);
 
         expect(notifications.createUserNotification).toHaveBeenCalledTimes(1);
+        expect(notifications.createUserNotification).toHaveBeenCalledWith(
+            completedJob.userId,
+            'ai_execution',
+            'AI 분석이 완료되었습니다',
+            expect.any(String),
+            `/dashboard/ai-results/${completedJob.id}`,
+            `ai-execution:${completedJob.id}:${completedJob.status}`,
+        );
         expect(prisma.aiExecution.findFirst).toHaveBeenCalledWith({
             where: {
                 attempts: { gt: 0 },
@@ -318,7 +326,7 @@ describe('AiService queued execution boundary', () => {
         prisma.aiExecution.updateMany.mockResolvedValue({ count: 1 });
         const service = new AiService(prisma);
 
-        await service.runQueuedExecution(queuedJob.id);
+        await service.runExecution(queuedJob.id);
 
         expect(prisma.aiExecution.create).not.toHaveBeenCalled();
         expect(prisma.aiExecution.updateMany).toHaveBeenCalledWith({
@@ -337,7 +345,7 @@ describe('AiService queued execution boundary', () => {
         prisma.aiExecution.updateMany.mockResolvedValue({ count: 0 });
         const service = new AiService(prisma);
 
-        await service.runQueuedExecution(queuedJob.id);
+        await service.runExecution(queuedJob.id);
 
         expect(prisma.aiExecution.updateMany).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: queuedJob.id, status: 'RUNNING' },
@@ -367,7 +375,7 @@ describe('AiService queued execution boundary', () => {
         const service = new AiService(prisma);
 
         try {
-            await expect(service.runQueuedExecution(queuedJob.id))
+            await expect(service.runExecution(queuedJob.id))
                 .rejects.toBeInstanceOf(ServiceUnavailableException);
         } finally {
             fetchSpy.mockRestore();

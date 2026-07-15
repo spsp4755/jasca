@@ -666,6 +666,7 @@ model UserNotification {
   title          String
   message        String
   link           String?
+  deduplicationKey String? @unique
   
   isRead         Boolean   @default(false)
   
