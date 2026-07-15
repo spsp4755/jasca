@@ -76,4 +76,23 @@ describe('TrivyScanService image references', () => {
         await expect(promise).rejects.toBeInstanceOf(ServiceUnavailableException);
         await expect(promise).rejects.not.toThrow(/registry-password|robot\$jasca/);
     });
+
+    it('explicitly clears inherited registry credentials when none are configured', async () => {
+        const service = createService();
+        const runTrivy = jest.spyOn(service as any, 'runTrivy').mockResolvedValue(JSON.stringify({
+            SchemaVersion: 2,
+            ArtifactName: imageRef,
+            Results: [],
+        }));
+
+        await service.scanImageReference(imageRef);
+
+        const processEnv = runTrivy.mock.calls[0][3];
+        expect(Object.prototype.hasOwnProperty.call(processEnv, 'TRIVY_USERNAME')).toBe(true);
+        expect(Object.prototype.hasOwnProperty.call(processEnv, 'TRIVY_PASSWORD')).toBe(true);
+        expect(processEnv).toEqual({
+            TRIVY_USERNAME: undefined,
+            TRIVY_PASSWORD: undefined,
+        });
+    });
 });
