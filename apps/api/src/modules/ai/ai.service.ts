@@ -1,7 +1,7 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { AiExecutionStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AiActionType, AI_PROMPTS, AI_ACTION_METADATA } from './ai-actions';
+import { AiActionType, AI_PROMPTS, AI_ACTION_METADATA, buildAiPrompt } from './ai-actions';
 
 export interface RiskSummary {
     projectId: string;
@@ -111,6 +111,8 @@ export class AiService {
      * Get prompt for action (custom from DB or default)
      */
     async getPromptForAction(action: AiActionType): Promise<string> {
+        let basePrompt = AI_PROMPTS[action] || '';
+
         try {
             const customPrompts = await this.prisma.systemSettings.findUnique({
                 where: { key: 'ai_prompts' },
@@ -119,15 +121,14 @@ export class AiService {
             if (customPrompts) {
                 const prompts = customPrompts.value as Record<string, string>;
                 if (prompts[action]) {
-                    return prompts[action];
+                    basePrompt = prompts[action];
                 }
             }
         } catch (error) {
             this.logger.warn('Failed to fetch custom prompts:', error);
         }
 
-        // Return default prompt
-        return AI_PROMPTS[action] || '';
+        return buildAiPrompt(action, basePrompt);
     }
 
     /**

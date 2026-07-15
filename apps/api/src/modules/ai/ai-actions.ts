@@ -48,6 +48,47 @@ export interface AiActionMetadata {
     expectedOutputTokens: number;
 }
 
+const COMMON_AI_PROMPT_RULES = `
+**공통 안전 및 보고서 규칙:**
+- 출력은 반드시 한국어로만 작성합니다.
+- 입력 컨텍스트에 없는 사실을 만들지 마세요. 근거 없는 수치, CVE, URL, 참조 정보는 생성하거나 추정하지 마세요.
+- 내부 추론 과정, 사고 과정, reasoning은 출력하지 말고 검증 가능한 결론과 근거만 간결하게 제시하세요.
+- 입력 데이터에서 발견되지 않은 항목은 **발견 없음**으로, 정보가 부족하거나 추가 검증이 필요한 내용은 **확인 필요**로 명확히 구분하세요.
+- 여러 스캐너의 결과가 있으면 스캐너별로 구분하여 서로 다른 스캐너의 결과를 혼합하지 마세요.
+
+**공통 출력 구조:**
+## 요약
+## 주요 발견 사항
+## 권장 조치
+## 확인 필요 사항
+`;
+
+const SCAN_REPORT_ACTIONS: readonly AiActionType[] = [
+    AiActionType.SCAN_ANALYSIS,
+    AiActionType.SCAN_CHANGE_ANALYSIS,
+    AiActionType.REPORT_GENERATION,
+];
+
+const SCAN_REPORT_PROMPT_RULES = `
+**스캔/보고서 발견 사항 형식:**
+- 발견 사항은 반드시 스캐너별로 구분한 소제목 아래에 제시하세요.
+- 각 스캐너 구분에는 다음 6열 표를 사용하세요: | ID | 이름 | 심각도 | 대상 | 상세 위치 | 참조 정보 |.
+- 표의 항목은 Critical, High 순으로 우선 정렬하고, 그 다음 심각도를 따르세요.
+- 표에는 최대 20건만 표기하세요.
+- 표 뒤에 전체 건수, 표기 건수, 생략 건수를 명시하세요.
+`;
+
+/**
+ * Adds mandatory safety and reporting instructions to any action prompt.
+ */
+export function buildAiPrompt(action: AiActionType, basePrompt: string): string {
+    const actionRules = SCAN_REPORT_ACTIONS.includes(action) ? SCAN_REPORT_PROMPT_RULES : '';
+
+    return [basePrompt.trim(), COMMON_AI_PROMPT_RULES.trim(), actionRules.trim()]
+        .filter(Boolean)
+        .join('\n\n');
+}
+
 export const AI_ACTION_METADATA: Record<AiActionType, AiActionMetadata> = {
     [AiActionType.DASHBOARD_SUMMARY]: {
         label: 'AI 요약',
