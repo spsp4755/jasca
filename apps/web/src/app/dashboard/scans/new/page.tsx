@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Archive, ArrowLeft, CheckCircle, FileJson, Globe, Loader2, ShieldCheck, Upload, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useCancelTrivyScan, useOrganizations, useProjects, useUploadScan, useZapScan, useZapSettings } from '@/lib/api-hooks';
+import { useCancelTrivyScan, useHarborArtifacts, useHarborProjects, useHarborRepositories, useHarborScan, useHarborSettings, useOrganizations, useProjects, useUploadScan, useZapScan, useZapSettings } from '@/lib/api-hooks';
 import type { CheckovScanOptions, TrivyScanOptions } from '@/lib/api-hooks';
 
 type UploadMode = 'scan-target' | 'result-file';
 type SourceType = 'TRIVY_JSON' | 'TRIVY_SARIF' | 'CHECKOV_JSON' | 'ZAP_JSON' | 'SARIF' | 'MANUAL';
-type ScannerProvider = 'trivy' | 'checkov' | 'zap' | 'semgrep';
+type ScannerProvider = 'trivy' | 'checkov' | 'zap' | 'semgrep' | 'harbor';
 
 const SEVERITY_OPTIONS = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'];
 const SCANNER_OPTIONS = [
@@ -67,6 +67,10 @@ export default function NewScanPage() {
     const [zapActiveConfirmed, setZapActiveConfirmed] = useState(false);
     const [zapAuthType, setZapAuthType] = useState<'none' | 'cookie' | 'authorization'>('none');
     const [zapAuthValue, setZapAuthValue] = useState('');
+    const [harborProject, setHarborProject] = useState('');
+    const [harborRepository, setHarborRepository] = useState('');
+    const [harborDigest, setHarborDigest] = useState('');
+    const [harborTag, setHarborTag] = useState('');
     const [dragActive, setDragActive] = useState(false);
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'cancelling' | 'success' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState<string>('');
@@ -106,6 +110,11 @@ export default function NewScanPage() {
     const uploadMutation = useUploadScan();
     const zapScanMutation = useZapScan();
     const { data: zapSettings } = useZapSettings();
+    const harborSettingsQuery = useHarborSettings(scannerProvider === 'harbor');
+    const harborProjectsQuery = useHarborProjects(scannerProvider === 'harbor');
+    const harborRepositoriesQuery = useHarborRepositories(scannerProvider === 'harbor' ? harborProject : undefined);
+    const harborArtifactsQuery = useHarborArtifacts(scannerProvider === 'harbor' ? harborProject : undefined, scannerProvider === 'harbor' ? harborRepository : undefined);
+    const harborScanMutation = useHarborScan();
     const cancelScanMutation = useCancelTrivyScan();
 
     const projects = projectsData?.data || [];
@@ -114,12 +123,29 @@ export default function NewScanPage() {
     const isCheckovScan = isScanningTarget && scannerProvider === 'checkov';
     const isZapScan = isScanningTarget && scannerProvider === 'zap';
     const isSemgrepScan = isScanningTarget && scannerProvider === 'semgrep';
+    const isHarborScan = isScanningTarget && scannerProvider === 'harbor';
+    const harborProjects = harborProjectsQuery.data || [];
+    const harborRepositories = harborRepositoriesQuery.data || [];
+    const harborArtifacts = harborArtifactsQuery.data || [];
+    const registryHost = (() => {
+        try {
+            return harborSettingsQuery.data?.baseUrl ? new URL(harborSettingsQuery.data.baseUrl).host : '';
+        } catch {
+            return '';
+        }
+    })();
+    const harborRepositoryPath = harborRepository.startsWith(`${harborProject}/`)
+        ? harborRepository
+        : `${harborProject}/${harborRepository}`;
+    const harborImageRef = registryHost && harborProject && harborRepository
+        ? `${registryHost}/${harborRepositoryPath}`
+        : '';
     const selectedCheckovFrameworks = CHECKOV_FRAMEWORK_OPTIONS.filter((framework) => checkovOptions.frameworks.includes(framework.value));
     const scanActionLabel = isZapScan ? 'ZAP 검사 실행' : isCheckovScan ? 'Checkov 검사 실행' : isSemgrepScan ? 'Semgrep 검사 실행' : 'Trivy 검사 실행';
     const scanProgressLabel = isZapScan ? 'ZAP 검사 중...' : isCheckovScan ? 'Checkov 검사 중...' : isSemgrepScan ? 'Semgrep 검사 중...' : 'Trivy 검사 중...';
     const zapProfiles = (zapSettings?.targetProfiles || []).filter((profile) => profile.enabled);
     const missingZapRequiredInput = isZapScan && (!zapTargetUrl.trim() || !zapTargetProfileId || (zapAuthType !== 'none' && !zapAuthValue.trim()) || (zapScanMode === 'active' && !zapActiveConfirmed));
-    const isSubmitDisabled = uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (isZapScan ? missingZapRequiredInput : !file);
+    const isSubmitDisabled = uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (isHarborScan ? !selectedProjectId || !harborDigest : isZapScan ? missingZapRequiredInput : !file);
     const acceptedFiles = isScanningTarget
         ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.spdx,.cdx,.cyclonedx,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,.qcow2,.vmdk,.vhd,.vhdx,.img,Dockerfile'
         : '.json,.sarif';
@@ -153,6 +179,13 @@ export default function NewScanPage() {
         setScannerProvider(scanner);
         if (scanner === 'zap') {
             setFile(null);
+        }
+        if (scanner === 'harbor') {
+            setFile(null);
+            setHarborProject('');
+            setHarborRepository('');
+            setHarborDigest('');
+            setHarborTag('');
         }
         if (uploadMode === 'scan-target') {
             setSourceType(scanner === 'checkov' ? 'CHECKOV_JSON' : scanner === 'zap' ? 'ZAP_JSON' : scanner === 'semgrep' ? 'SARIF' : 'TRIVY_JSON');
@@ -221,6 +254,36 @@ export default function NewScanPage() {
     };
 
     const handleUpload = async () => {
+        if (isHarborScan) {
+            if (!selectedProjectId || !harborDigest || !harborImageRef) {
+                setErrorMessage('Select a JASCA project and a Harbor artifact digest before starting the scan.');
+                return;
+            }
+
+            setUploadStatus('uploading');
+            setErrorMessage('');
+            try {
+                const result = await harborScanMutation.mutateAsync({
+                    projectId: selectedProjectId,
+                    imageRef: harborImageRef,
+                    imageDigest: harborDigest,
+                    tag: harborTag || undefined,
+                });
+                if (!isPageActiveRef.current) return;
+
+                setUploadStatus('success');
+                const destination = result.scan?.id ? `/dashboard/scans/${result.scan.id}` : '/dashboard/scans';
+                redirectTimeoutRef.current = window.setTimeout(() => {
+                    if (isPageActiveRef.current) router.push(destination);
+                }, 1500);
+            } catch (error: any) {
+                if (!isPageActiveRef.current) return;
+                setUploadStatus('error');
+                setErrorMessage(error.message || 'Harbor image scan failed.');
+            }
+            return;
+        }
+
         if (isZapScan) {
             if (!zapTargetUrl.trim()) {
                 setErrorMessage('ZAP으로 검사할 URL을 입력해주세요.');
@@ -327,7 +390,7 @@ export default function NewScanPage() {
                 projectId: selectedProjectId || undefined,
                 file,
                 scanTarget: isScanningTarget,
-                scanner: isScanningTarget && scannerProvider !== 'zap' ? scannerProvider : undefined,
+                scanner: isScanningTarget && (scannerProvider === 'trivy' || scannerProvider === 'checkov' || scannerProvider === 'semgrep') ? scannerProvider : undefined,
                 trivyOptions: isScanningTarget && scannerProvider === 'trivy' ? trivyOptions : undefined,
                 checkovOptions: isScanningTarget && scannerProvider === 'checkov' ? checkovOptions : undefined,
                 semgrepOptions: isScanningTarget && scannerProvider === 'semgrep'
@@ -444,6 +507,18 @@ export default function NewScanPage() {
                             <div className="mb-6 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                                 <label className="mb-3 block text-sm font-medium text-slate-300">실행 스캐너</label>
                                 <div className="grid gap-3 sm:grid-cols-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleScannerChange('harbor')}
+                                        className={`rounded-lg border p-3 text-left transition ${
+                                            scannerProvider === 'harbor'
+                                                ? 'border-cyan-400 bg-cyan-500/10 text-white'
+                                                : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                                        }`}
+                                    >
+                                        <div className="font-semibold">Harbor image</div>
+                                        <div className="mt-1 text-xs text-slate-400">Select a Harbor project, repository, and immutable digest. No file upload is required.</div>
+                                    </button>
                                     {[
                                         { value: 'trivy' as const, label: 'Trivy', description: '패키지 취약점, 라이선스, Secret, Misconfig 검사' },
                                         { value: 'checkov' as const, label: 'Checkov', description: 'IaC, Kubernetes, Dockerfile, CI 설정 오류 검사' },
@@ -565,7 +640,52 @@ export default function NewScanPage() {
                             </div>
                         )}
 
-                        {!isZapScan && (
+                        {isHarborScan && (
+                            <div className="mb-6 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+                                <h2 className="text-lg font-semibold text-cyan-100">Harbor image selection</h2>
+                                <p className="mt-1 text-sm text-cyan-100/80">The digest is the scan target. A tag is retained only as supplementary metadata.</p>
+                                <div className="mt-4 grid gap-4">
+                                    <label className="text-sm font-medium text-cyan-100">JASCA project
+                                        <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white">
+                                            <option value="">Select a JASCA project</option>
+                                            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                                        </select>
+                                    </label>
+                                    <label className="text-sm font-medium text-cyan-100">Harbor project
+                                        <select value={harborProject} onChange={(event) => { setHarborProject(event.target.value); setHarborRepository(''); setHarborDigest(''); setHarborTag(''); }} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white">
+                                            <option value="">Select a Harbor project</option>
+                                            {harborProjects.map((project) => {
+                                                const name = project.name || project.project_name || String(project.project_id || '');
+                                                return <option key={name} value={name}>{name}</option>;
+                                            })}
+                                        </select>
+                                    </label>
+                                    <label className="text-sm font-medium text-cyan-100">Repository
+                                        <select value={harborRepository} disabled={!harborProject || harborRepositoriesQuery.isLoading} onChange={(event) => { setHarborRepository(event.target.value); setHarborDigest(''); setHarborTag(''); }} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white disabled:opacity-50">
+                                            <option value="">{harborRepositoriesQuery.isLoading ? 'Loading repositories...' : 'Select a repository'}</option>
+                                            {harborRepositories.map((repository) => <option key={repository.name} value={repository.name}>{repository.name}</option>)}
+                                        </select>
+                                    </label>
+                                    <label className="text-sm font-medium text-cyan-100">Artifact digest
+                                        <select value={harborDigest} disabled={!harborRepository || harborArtifactsQuery.isLoading} onChange={(event) => { const artifact = harborArtifacts.find((item) => item.digest === event.target.value); setHarborDigest(event.target.value); setHarborTag(artifact?.tags?.[0]?.name || ''); }} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 font-mono text-white disabled:opacity-50">
+                                            <option value="">{harborArtifactsQuery.isLoading ? 'Loading artifacts...' : 'Select an immutable digest'}</option>
+                                            {harborArtifacts.map((artifact) => <option key={artifact.digest} value={artifact.digest}>{artifact.digest}</option>)}
+                                        </select>
+                                    </label>
+                                    {harborDigest && (
+                                        <label className="text-sm font-medium text-cyan-100">Tag (supplementary)
+                                            <select value={harborTag} onChange={(event) => setHarborTag(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white">
+                                                <option value="">No tag</option>
+                                                {(harborArtifacts.find((artifact) => artifact.digest === harborDigest)?.tags || []).map((tag) => tag.name ? <option key={tag.name} value={tag.name}>{tag.name}</option> : null)}
+                                            </select>
+                                        </label>
+                                    )}
+                                    {harborImageRef && <p className="rounded-lg bg-slate-950/40 px-3 py-2 font-mono text-xs text-cyan-100">{harborImageRef}@{harborDigest || '&lt;digest&gt;'}</p>}
+                                </div>
+                            </div>
+                        )}
+
+                        {!isZapScan && !isHarborScan && (
                         <div
                             className={`relative rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
                                 dragActive ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-500'
@@ -631,7 +751,7 @@ export default function NewScanPage() {
                             </div>
                         )}
 
-                        <div className="mt-6">
+                        <div className={`mt-6 ${isHarborScan ? 'hidden' : ''}`}>
                             <label className="mb-2 block text-sm font-medium text-slate-300">프로젝트</label>
                             <select
                                 value={selectedProjectId}
@@ -647,7 +767,7 @@ export default function NewScanPage() {
                             </select>
                         </div>
 
-                        {!selectedProjectId && (
+                        {!selectedProjectId && !isHarborScan && (
                             <>
                                 <div className="mt-4">
                                     <label className="mb-2 block text-sm font-medium text-slate-300">새 프로젝트 이름</label>
@@ -716,7 +836,7 @@ export default function NewScanPage() {
                             )}
                         </button>
 
-                        {isScanningTarget && (uploadStatus === 'uploading' || uploadStatus === 'cancelling') && (
+                        {isScanningTarget && !isHarborScan && (uploadStatus === 'uploading' || uploadStatus === 'cancelling') && (
                             <button
                                 type="button"
                                 onClick={handleCancelScan}
@@ -920,7 +1040,7 @@ export default function NewScanPage() {
                                 )}
                             </div>
                         )}
-                        {!isCheckovScan && !isZapScan && !isSemgrepScan && (
+                        {!isCheckovScan && !isZapScan && !isSemgrepScan && !isHarborScan && (
                             <>
                                 <h2 className="text-lg font-semibold text-white">Trivy 실행 옵션</h2>
                                 <p className="mt-2 text-sm text-slate-400">
