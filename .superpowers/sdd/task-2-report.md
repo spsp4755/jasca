@@ -1,3 +1,67 @@
+# JASCA AI Background Analysis Task 2 Report
+
+## Status
+
+Implemented and verified the asynchronous AI job controller API while preserving the synchronous `POST /api/ai/execute` contract.
+
+Implementation commit: `e70563a` (`feat: expose AI background job API`)
+
+## Changed Files
+
+- `apps/api/src/modules/ai/ai.controller.ts`
+- `apps/api/src/modules/ai/ai.controller.spec.ts`
+
+Task 1 already provided `AiJobService`, `AiService.runExecution(executionId)`, the RUNNING compare-and-set completion boundary, `AiModule` provider wiring, and `NotificationsModule` integration. Those files required no additional Task 2 changes.
+
+## Test Commands and Results
+
+RED from `apps/api`:
+
+```powershell
+npm.cmd test -- --runInBand modules/ai/ai.controller.spec.ts
+```
+
+Result: exit code 1 as expected. The existing synchronous execute test passed, while eight job tests failed because `createJob`, `getJob`, `cancelJob`, and their route metadata did not exist. A second RED cycle confirmed missing HTTP 202 metadata and an unhandled empty body.
+
+Focused GREEN from `apps/api`:
+
+```powershell
+npm.cmd test -- --runInBand modules/ai/ai.controller.spec.ts modules/ai/ai-job.service.spec.ts
+```
+
+Result: exit code 0, `2/2` suites and `23/23` tests passed.
+
+Full API tests from `apps/api`:
+
+```powershell
+npm.cmd test -- --runInBand
+```
+
+Result: exit code 0, `25/25` suites and `173/173` tests passed.
+
+API build from `apps/api`:
+
+```powershell
+npm.cmd run build
+```
+
+Result: exit code 0.
+
+## Self-Review
+
+- `POST /api/ai/jobs` validates authentication, action membership, object context, and action role requirements before enqueueing, responds with HTTP 202, and returns only `{ id, status }`.
+- `GET /api/ai/jobs/:id` and `DELETE /api/ai/jobs/:id` delegate ownership and active-state enforcement to `AiJobService`.
+- Authenticated user-to-actor mapping exists once and is reused by GET, DELETE, and history export authorization.
+- `POST /api/ai/execute` still invokes `AiService.executeAction` and retains its synchronous response shape; it does not enqueue a job.
+- No provider invocation, timeout, masking, mock fallback, persistence completion, worker, or notification behavior was changed.
+- Scoped staged diff contained only the two Task 2 implementation files; unrelated worktree changes were not included in the implementation commit.
+
+## Concerns
+
+No Task 2 blocker remains. Full test output includes expected warning/error logs from mocked notification and AI provider failure paths, but all assertions pass. Unrelated pre-existing design, plan, report, and release artifact changes remain outside implementation commit `e70563a`.
+
+---
+
 # Task 2 Harbor Trivy Scanning Report
 
 ## Status
