@@ -595,20 +595,12 @@ function extractPrioritizedRemediation(content: string): string[] {
 }
 
 function buildEvidence(execution: AiExportExecution): string[] {
-    const evidence: string[] = [];
-    if (execution.context !== null && execution.context !== undefined) {
-        try {
-            evidence.push(`저장된 입력 컨텍스트\n${JSON.stringify(execution.context, (key, value) => (
-                REASONING_TAGS.includes(key.toLowerCase())
-                    ? undefined
-                    : typeof value === 'string' ? stripAiExportReasoning(value) : value
-            ), 2)}`);
-        } catch {
-            evidence.push(`저장된 입력 컨텍스트\n${stripAiExportReasoning(String(execution.context))}`);
-        }
-    } else {
-        evidence.push('저장된 입력 컨텍스트가 없습니다.');
-    }
+    const context = asRecord(execution.context);
+    const evidence = [
+        `스캐너: ${firstValue(context.scanner, context.scanType) || '-'}`,
+        `대상: ${firstValue(context.target, context.location, context.imageRef, context.artifactName) || '-'}`,
+        `참조: ${firstValue(context.reference, context.imageDigest, context.scanId) || '-'}`,
+    ];
     if (execution.error) {
         evidence.push(`실행 오류\n${stripAiExportReasoning(execution.error)}`);
     }
@@ -732,8 +724,9 @@ function addPdfMarkdown(doc: PDFKit.PDFDocument, markdown: string): void {
             doc.moveDown(0.25);
             continue;
         }
+        if (isMarkdownTableLine(line)) continue;
         const bullet = /^(?:[-*+]\s+|\d+[.)]\s+)(.+)$/.exec(line);
-        addPdfBody(doc, bullet ? `• ${stripInlineMarkdown(bullet[1])}` : stripInlineMarkdown(line));
+        addPdfBody(doc, bullet ? `- ${stripInlineMarkdown(bullet[1])}` : stripInlineMarkdown(line));
     }
 }
 
@@ -950,7 +943,7 @@ function docxBody(text: string): Paragraph {
 function docxMarkdown(markdown: string): Paragraph[] {
     return markdown
         .split(/\r?\n/)
-        .filter(line => line.trim().length > 0)
+        .filter(line => line.trim().length > 0 && !isMarkdownTableLine(line.trim()))
         .map(rawLine => {
             const line = rawLine.trim();
             const heading = /^#{1,6}\s+(.+)$/.exec(line);
@@ -964,6 +957,10 @@ function docxMarkdown(markdown: string): Paragraph[] {
             const bullet = /^(?:[-*+]\s+|\d+[.)]\s+)(.+)$/.exec(line);
             return docxBody(bullet ? `• ${stripInlineMarkdown(bullet[1])}` : stripInlineMarkdown(line));
         });
+}
+
+function isMarkdownTableLine(line: string): boolean {
+    return /^\|.*\|$/.test(line) || /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line);
 }
 
 function stripInlineMarkdown(text: string): string {
