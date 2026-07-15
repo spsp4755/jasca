@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import {
     AiExportService,
+    AiExportExecution,
     buildAiExportReport,
     stripAiExportReasoning,
 } from './ai-export.service';
@@ -8,6 +9,7 @@ import {
 const savedExecution = {
     id: 'execution-1',
     userId: 'user-1',
+    organizationId: 'org-1',
     action: 'scan.analysis',
     actionLabel: '스캔 결과 분석',
     provider: 'openai',
@@ -41,6 +43,19 @@ const savedExecution = {
     createdAt: new Date('2026-07-15T03:00:00.000Z'),
 };
 
+function createExportService(execution: AiExportExecution = savedExecution) {
+    const prisma = {
+        aiExecution: {
+            findUnique: jest.fn().mockResolvedValue(execution),
+        },
+        user: {
+            findUnique: jest.fn(),
+        },
+    } as any;
+
+    return { prisma, service: new AiExportService(prisma) };
+}
+
 describe('AI execution exports', () => {
     it('removes model reasoning while preserving the final answer', () => {
         const cleaned = stripAiExportReasoning(savedExecution.result);
@@ -71,19 +86,12 @@ describe('AI execution exports', () => {
         ['pdf', 'application/pdf', '%PDF'],
         ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'PK'],
     ] as const)('exports an owned execution as %s', async (format, contentType, signature) => {
-        const prisma = {
-            aiExecution: {
-                findUnique: jest.fn().mockResolvedValue(savedExecution),
-            },
-            user: {
-                findUnique: jest.fn(),
-            },
-        } as any;
-        const service = new AiExportService(prisma);
+        const { service } = createExportService();
 
         const exported = await service.exportExecution('execution-1', format, {
             id: 'user-1',
             roles: ['DEVELOPER'],
+            isApiToken: false,
         });
 
         expect(exported.contentType).toBe(contentType);
@@ -92,19 +100,81 @@ describe('AI execution exports', () => {
     });
 
     it('rejects exporting another user\'s saved execution', async () => {
-        const prisma = {
-            aiExecution: {
-                findUnique: jest.fn().mockResolvedValue(savedExecution),
-            },
-            user: {
-                findUnique: jest.fn(),
-            },
-        } as any;
-        const service = new AiExportService(prisma);
+        const { service } = createExportService();
 
         await expect(service.exportExecution('execution-1', 'pdf', {
             id: 'user-2',
             roles: ['DEVELOPER'],
+            isApiToken: false,
         })).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('allows ORG_ADMIN export from the execution organization snapshot without a user lookup', async () => {
+        const { prisma, service } = createExportService({
+            ...savedExecution,
+            userId: 'api-token:token-1',
+        });
+
+        await expect(service.exportExecution('execution-1', 'docx', {
+            id: 'org-admin-1',
+            organizationId: 'org-1',
+            roles: ['ORG_ADMIN'],
+            isApiToken: false,
+        })).resolves.toEqual(expect.objectContaining({
+            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        }));
+        expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('uses the user lookup fallback only for a legacy execution without an organization snapshot', async () => {
+        const { prisma, service } = createExportService({
+            ...savedExecution,
+            organizationId: null,
+        });
+        prisma.user.findUnique.mockResolvedValue({ organizationId: 'org-1' });
+
+        await expect(service.exportExecution('execution-1', 'docx', {
+            id: 'org-admin-1',
+            organizationId: 'org-1',
+            roles: ['ORG_ADMIN'],
+            isApiToken: false,
+        })).resolves.toEqual(expect.objectContaining({ content: expect.any(Buffer) }));
+        expect(prisma.user.findUnique).toHaveBeenCalledWith({
+            where: { id: savedExecution.userId },
+            select: { organizationId: true },
+        });
+    });
+
+    it('does not use the legacy fallback when an execution has another organization snapshot', async () => {
+        const { prisma, service } = createExportService();
+
+        await expect(service.exportExecution('execution-1', 'pdf', {
+            id: 'org-admin-2',
+            organizationId: 'org-2',
+            roles: ['ORG_ADMIN'],
+            isApiToken: false,
+        })).rejects.toBeInstanceOf(ForbiddenException);
+        expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('keeps API token owner and SYSTEM_ADMIN export access', async () => {
+        const tokenExecution = {
+            ...savedExecution,
+            userId: 'api-token:token-1',
+        };
+        const tokenService = createExportService(tokenExecution).service;
+        const systemService = createExportService(tokenExecution).service;
+
+        await expect(tokenService.exportExecution('execution-1', 'docx', {
+            id: 'api-token:token-1',
+            organizationId: 'org-1',
+            roles: [],
+            isApiToken: true,
+        })).resolves.toEqual(expect.objectContaining({ content: expect.any(Buffer) }));
+        await expect(systemService.exportExecution('execution-1', 'docx', {
+            id: 'system-admin-1',
+            roles: ['SYSTEM_ADMIN'],
+            isApiToken: false,
+        })).resolves.toEqual(expect.objectContaining({ content: expect.any(Buffer) }));
     });
 });
