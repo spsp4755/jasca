@@ -1334,6 +1334,7 @@ model AiExecution {
   id            String   @id @default(uuid())
   
   userId        String?
+  organizationId String?
   action        String   // AI action type (e.g., 'dashboard.summary', 'vuln.actionGuide')
   actionLabel   String?  // Human readable label
   
@@ -1361,6 +1362,7 @@ model AiExecution {
   updatedAt     DateTime  @updatedAt
   
   @@index([userId])
+  @@index([organizationId])
   @@index([action])
   @@index([status])
   @@index([createdAt])

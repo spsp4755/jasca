@@ -11,6 +11,25 @@ const user = {
     roles: [{ role: 'DEVELOPER' }],
 };
 
+const apiTokenUser = {
+    id: 'api-token:token-1',
+    organizationId: 'org-1',
+    role: 'API_TOKEN',
+    permissions: ['scans:read'],
+    isApiToken: true,
+    apiTokenId: 'token-1',
+    apiTokenName: 'CI token',
+};
+
+const userActor = {
+    id: user.id,
+    organizationId: user.organizationId,
+    roles: ['DEVELOPER'],
+    isApiToken: false,
+    permissions: [],
+    apiTokenId: undefined,
+};
+
 function createController() {
     const aiService = {
         executeAction: jest.fn().mockResolvedValue({
@@ -61,7 +80,7 @@ describe('AiController job API', () => {
         expect(aiJobService.enqueue).toHaveBeenCalledWith(
             AiActionType.DASHBOARD_SUMMARY,
             context,
-            user.id,
+            userActor,
         );
         expect(result).toEqual({ id: 'job-1', status: 'QUEUED' });
     });
@@ -88,15 +107,87 @@ describe('AiController job API', () => {
         expect(aiJobService.enqueue).not.toHaveBeenCalled();
     });
 
+    it('rejects unauthenticated job requests', async () => {
+        const { controller, aiJobService } = createController();
+
+        await expect(controller.createJob({
+            action: AiActionType.DASHBOARD_SUMMARY,
+            context: {},
+        }, {})).rejects.toBeInstanceOf(BadRequestException);
+        await expect(controller.getJob('job-1', {})).rejects.toBeInstanceOf(BadRequestException);
+        await expect(controller.cancelJob('job-1', {})).rejects.toBeInstanceOf(BadRequestException);
+        expect(aiJobService.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('preserves the actual API token principal when queueing and polling', async () => {
+        const { controller, aiJobService } = createController();
+        const expectedActor = {
+            id: apiTokenUser.id,
+            organizationId: apiTokenUser.organizationId,
+            roles: [],
+            isApiToken: true,
+            permissions: apiTokenUser.permissions,
+            apiTokenId: apiTokenUser.apiTokenId,
+        };
+
+        await controller.createJob({
+            action: AiActionType.DASHBOARD_SUMMARY,
+            context: {},
+        }, { user: apiTokenUser });
+        await controller.getJob('job-1', { user: apiTokenUser });
+
+        expect(aiJobService.enqueue).toHaveBeenCalledWith(
+            AiActionType.DASHBOARD_SUMMARY,
+            {},
+            expectedActor,
+        );
+        expect(aiJobService.getJob).toHaveBeenCalledWith('job-1', expectedActor);
+    });
+
+    it('maps API token admin permission only to ORG_ADMIN-required actions', async () => {
+        const { controller, aiJobService } = createController();
+        const adminToken = { ...apiTokenUser, permissions: ['admin'] };
+
+        await controller.createJob({
+            action: AiActionType.DASHBOARD_RISK_ANALYSIS,
+            context: {},
+        }, { user: adminToken });
+        await expect(controller.createJob({
+            action: AiActionType.PERMISSION_RECOMMENDATION,
+            context: {},
+        }, { user: adminToken })).rejects.toBeInstanceOf(ForbiddenException);
+
+        expect(aiJobService.enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps ORG_ADMIN and SYSTEM_ADMIN action authorization', async () => {
+        const { controller, aiJobService } = createController();
+        const orgAdmin = { ...user, roles: [{ role: 'ORG_ADMIN' }] };
+        const systemAdmin = { ...user, roles: [{ role: 'SYSTEM_ADMIN' }] };
+
+        await controller.createJob({
+            action: AiActionType.DASHBOARD_RISK_ANALYSIS,
+            context: {},
+        }, { user: orgAdmin });
+        await expect(controller.createJob({
+            action: AiActionType.PERMISSION_RECOMMENDATION,
+            context: {},
+        }, { user: orgAdmin })).rejects.toBeInstanceOf(ForbiddenException);
+        await controller.createJob({
+            action: AiActionType.PERMISSION_RECOMMENDATION,
+            context: {},
+        }, { user: systemAdmin });
+
+        expect(aiJobService.enqueue).toHaveBeenCalledTimes(2);
+    });
+
     it('delegates ownership enforcement for job reads with the mapped actor', async () => {
         const { controller, aiJobService } = createController();
 
         const result = await controller.getJob('job-1', { user });
 
         expect(aiJobService.getJob).toHaveBeenCalledWith('job-1', {
-            id: user.id,
-            organizationId: user.organizationId,
-            roles: ['DEVELOPER'],
+            ...userActor,
         });
         expect(result).toEqual({ id: 'job-1', status: 'RUNNING' });
     });
@@ -107,9 +198,7 @@ describe('AiController job API', () => {
         const result = await controller.cancelJob('job-1', { user });
 
         expect(aiJobService.cancel).toHaveBeenCalledWith('job-1', {
-            id: user.id,
-            organizationId: user.organizationId,
-            roles: ['DEVELOPER'],
+            ...userActor,
         });
         expect(result).toEqual({ id: 'job-1', status: 'CANCELLED' });
     });
@@ -133,5 +222,21 @@ describe('AiController job API', () => {
             action: AiActionType.DASHBOARD_SUMMARY,
             content: 'result',
         }));
+    });
+
+    it('preserves synchronous execute for API tokens on generally allowed actions', async () => {
+        const { controller, aiService, aiJobService } = createController();
+
+        await controller.executeAi({
+            action: AiActionType.DASHBOARD_SUMMARY,
+            context: {},
+        }, { user: apiTokenUser });
+
+        expect(aiService.executeAction).toHaveBeenCalledWith(
+            AiActionType.DASHBOARD_SUMMARY,
+            {},
+            apiTokenUser.id,
+        );
+        expect(aiJobService.enqueue).not.toHaveBeenCalled();
     });
 });
