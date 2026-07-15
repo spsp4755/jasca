@@ -2288,6 +2288,109 @@ export function useTestClustaraConnection() {
     });
 }
 
+export interface HarborSettings {
+    enabled: boolean;
+    baseUrl: string;
+    username: string;
+    password?: string;
+    passwordConfigured: boolean;
+    allowedProjects: string[];
+    defaultProjectId: string;
+    webhookSecret?: string;
+    webhookSecretConfigured: boolean;
+    autoScanOnPush: boolean;
+}
+
+export interface HarborProject {
+    name?: string;
+    project_name?: string;
+    project_id?: number | string;
+}
+
+export interface HarborRepository {
+    name: string;
+}
+
+export interface HarborArtifact {
+    digest: string;
+    tags?: Array<{ name?: string }>;
+}
+
+export interface HarborScanRequest {
+    projectId: string;
+    imageRef: string;
+    imageDigest: string;
+    tag?: string;
+}
+
+export interface HarborScanResponse {
+    duplicate: boolean;
+    scan?: Scan;
+}
+
+export function useHarborSettings(enabled = true) {
+    return useQuery<HarborSettings>({
+        queryKey: ['harbor-settings'],
+        queryFn: () => authFetch(`${API_BASE}/harbor/settings`),
+        enabled,
+    });
+}
+
+export function useUpdateHarborSettings() {
+    const queryClient = useQueryClient();
+    return useMutation<HarborSettings, Error, Partial<HarborSettings>>({
+        mutationFn: (settings) => authFetch(`${API_BASE}/harbor/settings`, {
+            method: 'PUT',
+            body: JSON.stringify(settings),
+        }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['harbor-settings'] }),
+    });
+}
+
+export function useTestHarborConnection() {
+    return useMutation<{ connected: boolean; projectCount: number }, Error, void>({
+        mutationFn: () => authFetch(`${API_BASE}/harbor/test-connection`, { method: 'POST' }),
+    });
+}
+
+export function useHarborProjects(enabled = true) {
+    return useQuery<HarborProject[]>({
+        queryKey: ['harbor-projects'],
+        queryFn: () => authFetch(`${API_BASE}/harbor/projects`),
+        enabled,
+    });
+}
+
+export function useHarborRepositories(project?: string) {
+    return useQuery<HarborRepository[]>({
+        queryKey: ['harbor-repositories', project],
+        queryFn: () => authFetch(`${API_BASE}/harbor/projects/${encodeURIComponent(project!)}/repositories`),
+        enabled: Boolean(project),
+    });
+}
+
+export function useHarborArtifacts(project?: string, repository?: string) {
+    return useQuery<HarborArtifact[]>({
+        queryKey: ['harbor-artifacts', project, repository],
+        queryFn: () => authFetch(`${API_BASE}/harbor/projects/${encodeURIComponent(project!)}/repositories/${encodeURIComponent(repository!)}/artifacts`),
+        enabled: Boolean(project && repository),
+    });
+}
+
+export function useHarborScan() {
+    const queryClient = useQueryClient();
+    return useMutation<HarborScanResponse, Error, HarborScanRequest>({
+        mutationFn: (request) => authFetch(`${API_BASE}/harbor/scan`, {
+            method: 'POST',
+            body: JSON.stringify(request),
+        }),
+        onSuccess: (_, request) => {
+            queryClient.invalidateQueries({ queryKey: ['scans'] });
+            queryClient.invalidateQueries({ queryKey: ['project-scans', request.projectId] });
+        },
+    });
+}
+
 export function useClustaraDeliveries(limit = 50) {
     return useQuery<ClustaraDelivery[]>({
         queryKey: ['clustara-deliveries', limit],
