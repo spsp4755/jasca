@@ -88,6 +88,21 @@ Implementation commit: `8ef1293` (`fix: support API token AI job ownership`)
 
 The migration remains additive and modifies only the unreleased AI job migration. New access decisions avoid User lookups for API token IDs and organization-snapshotted jobs; only legacy human rows use the compatibility lookup. No blocker remains. Deployments must apply the updated migration before starting this API version. Existing mocked provider/notification warning logs are expected and non-failing. Unrelated worktree changes remain outside commit `8ef1293`.
 
+### Re-review Fixes
+
+Implementation commit: `ed8d011` (`fix: align AI export and token authorization`)
+
+- Added a small shared `canAccessAiExecution` helper used by both `AiJobService` and `AiExportService`. It preserves exact owner access including API token synthetic IDs, JWT SYSTEM_ADMIN access, organization-snapshot ORG_ADMIN access, and legacy-human User lookup only when `execution.organizationId` is null.
+- Added export regressions for snapshot ORG_ADMIN access without a User lookup, legacy fallback, mismatched snapshot rejection, API token owner access, and SYSTEM_ADMIN access.
+- Added an integration-style guard test that runs the real bearer API-token branch of `JwtAuthGuard`, verifies `isApiToken`, `apiTokenId`, `organizationId`, and `permissions`, then passes the resulting request principal through the real `RolesGuard` permission mapping.
+- Removed the unconditional `admin` permission fallback from `RolesGuard`. The existing permission map now grants `admin` only its declared ORG_ADMIN role and rejects SYSTEM_ADMIN requirements.
+- RED: `npm.cmd test -- --runInBand modules/ai/ai-export.service.spec.ts common/guards/api-token-guards.spec.ts` failed on the missing export actor/snapshot contract and on `admin` incorrectly satisfying SYSTEM_ADMIN.
+- Focused GREEN: `npm.cmd test -- --runInBand modules/ai/ai-export.service.spec.ts modules/ai/ai-job.service.spec.ts common/guards/api-token-guards.spec.ts` passed `3/3` suites and `31/31` tests.
+- Full API: `npm.cmd test -- --runInBand` passed `26/26` suites and `191/191` tests.
+- API build: `npm.cmd run build` exited 0.
+
+No blocker remains. The shared helper keeps job and export authorization aligned without moving rendering, persistence, or guard concerns into a larger abstraction. Existing mocked warning/error logs remain expected and non-failing.
+
 ---
 
 # Task 2 Harbor Trivy Scanning Report
