@@ -1,0 +1,205 @@
+import {
+    BadRequestException,
+    ForbiddenException,
+    Inject,
+    Injectable,
+    Logger,
+    NotFoundException,
+    OnModuleDestroy,
+    OnModuleInit,
+    Optional,
+} from '@nestjs/common';
+import { AiExecution, AiExecutionStatus, Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+
+export const AI_JOB_EXECUTOR = Symbol('AI_JOB_EXECUTOR');
+
+export interface AiJobExecutor {
+    runQueuedExecution(executionId: string): Promise<void>;
+}
+
+export interface AiJobActor {
+    id: string;
+    organizationId?: string;
+    roles: string[];
+}
+
+const ACTIVE_STATUSES: AiExecutionStatus[] = [
+    AiExecutionStatus.QUEUED,
+    AiExecutionStatus.RUNNING,
+];
+const TERMINAL_NOTIFICATION_STATUSES: AiExecutionStatus[] = [
+    AiExecutionStatus.SUCCESS,
+    AiExecutionStatus.ERROR,
+    AiExecutionStatus.TIMEOUT,
+];
+const WORKER_INTERVAL_MS = 5_000;
+const STALE_JOB_MS = 15 * 60_000;
+
+@Injectable()
+export class AiJobService implements OnModuleInit, OnModuleDestroy {
+    private readonly logger = new Logger(AiJobService.name);
+    private worker?: NodeJS.Timeout;
+
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly notifications: NotificationsService,
+        @Optional()
+        @Inject(AI_JOB_EXECUTOR)
+        private readonly executor?: AiJobExecutor,
+    ) {}
+
+    async onModuleInit(): Promise<void> {
+        await this.prisma.aiExecution.updateMany({
+            where: {
+                status: AiExecutionStatus.RUNNING,
+                startedAt: { lt: new Date(Date.now() - STALE_JOB_MS) },
+            },
+            data: {
+                status: AiExecutionStatus.QUEUED,
+                startedAt: null,
+            },
+        });
+
+        this.worker = setInterval(() => {
+            this.processNextJob().catch((error: Error) => {
+                this.logger.warn(`AI job worker failed: ${error.message}`);
+            });
+        }, WORKER_INTERVAL_MS);
+        this.worker.unref?.();
+    }
+
+    onModuleDestroy(): void {
+        if (this.worker) clearInterval(this.worker);
+    }
+
+    enqueue(action: string, context: Record<string, unknown>, userId: string) {
+        return this.prisma.aiExecution.create({
+            data: {
+                action,
+                context: context as Prisma.JsonObject,
+                status: AiExecutionStatus.QUEUED,
+                userId,
+            },
+        });
+    }
+
+    async getJob(id: string, actor: AiJobActor): Promise<AiExecution> {
+        const execution = await this.prisma.aiExecution.findUnique({ where: { id } });
+        if (!execution) {
+            throw new NotFoundException('AI execution not found');
+        }
+
+        await this.assertCanAccess(execution, actor);
+        return execution;
+    }
+
+    async cancel(id: string, actor: AiJobActor): Promise<AiExecution> {
+        const execution = await this.getJob(id, actor);
+        if (!ACTIVE_STATUSES.includes(execution.status)) {
+            throw new BadRequestException('Only active AI jobs can be cancelled');
+        }
+
+        const completedAt = new Date();
+        const cancelled = await this.prisma.aiExecution.updateMany({
+            where: { id, status: { in: ACTIVE_STATUSES } },
+            data: { status: AiExecutionStatus.CANCELLED, completedAt },
+        });
+        if (cancelled.count !== 1) {
+            return this.getJob(id, actor);
+        }
+
+        return {
+            ...execution,
+            status: AiExecutionStatus.CANCELLED,
+            completedAt,
+        };
+    }
+
+    async processNextJob(): Promise<AiExecution | null> {
+        if (!this.executor) return null;
+
+        const queued = await this.prisma.aiExecution.findFirst({
+            where: { status: AiExecutionStatus.QUEUED },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+        });
+        if (!queued) return null;
+
+        const claimed = await this.prisma.aiExecution.updateMany({
+            where: { id: queued.id, status: AiExecutionStatus.QUEUED },
+            data: {
+                status: AiExecutionStatus.RUNNING,
+                startedAt: new Date(),
+                attempts: { increment: 1 },
+            },
+        });
+        if (claimed.count !== 1) return null;
+
+        try {
+            await this.executor.runQueuedExecution(queued.id);
+        } catch (error) {
+            await this.prisma.aiExecution.updateMany({
+                where: { id: queued.id, status: AiExecutionStatus.RUNNING },
+                data: {
+                    status: AiExecutionStatus.ERROR,
+                    error: error instanceof Error ? error.message : 'Unknown AI execution error',
+                    completedAt: new Date(),
+                },
+            });
+        }
+
+        const execution = await this.prisma.aiExecution.findUnique({ where: { id: queued.id } });
+        if (!execution) return null;
+
+        await this.createTerminalNotification(execution);
+        return execution;
+    }
+
+    private async assertCanAccess(execution: Pick<AiExecution, 'userId'>, actor: AiJobActor): Promise<void> {
+        if (execution.userId === actor.id || actor.roles.includes('SYSTEM_ADMIN')) return;
+
+        if (actor.roles.includes('ORG_ADMIN') && actor.organizationId && execution.userId) {
+            const owner = await this.prisma.user.findUnique({
+                where: { id: execution.userId },
+                select: { organizationId: true },
+            });
+            if (owner?.organizationId === actor.organizationId) return;
+        }
+
+        throw new ForbiddenException('You cannot access this AI execution');
+    }
+
+    private async createTerminalNotification(execution: AiExecution): Promise<void> {
+        if (!execution.userId || !TERMINAL_NOTIFICATION_STATUSES.includes(execution.status)) return;
+
+        const reserved = await this.prisma.aiExecution.updateMany({
+            where: {
+                id: execution.id,
+                notificationSentAt: null,
+                status: { in: TERMINAL_NOTIFICATION_STATUSES },
+            },
+            data: { notificationSentAt: new Date() },
+        });
+        if (reserved.count !== 1) return;
+
+        const succeeded = execution.status === AiExecutionStatus.SUCCESS;
+        const title = succeeded ? 'AI 분석이 완료되었습니다' : 'AI 분석에 실패했습니다';
+        const message = succeeded
+            ? `${execution.actionLabel || execution.action} 결과를 확인하세요.`
+            : execution.error || `${execution.actionLabel || execution.action} 작업을 완료하지 못했습니다.`;
+
+        try {
+            await this.notifications.createUserNotification(
+                execution.userId,
+                'ai_execution',
+                title,
+                message,
+                `/dashboard/ai-results/${execution.id}`,
+            );
+        } catch (error) {
+            this.logger.warn(`Failed to create AI job notification: ${(error as Error).message}`);
+        }
+    }
+}
