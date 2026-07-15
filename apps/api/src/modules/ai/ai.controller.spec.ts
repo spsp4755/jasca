@@ -44,7 +44,13 @@ function createController() {
             isSaved: true,
         }),
     };
-    const aiExportService = { exportExecution: jest.fn() };
+    const aiExportService = {
+        exportExecution: jest.fn().mockResolvedValue({
+            content: Buffer.from('%PDF-test'),
+            contentType: 'application/pdf',
+            fileName: 'ai-report.pdf',
+        }),
+    };
     const aiJobService = {
         enqueue: jest.fn().mockResolvedValue({ id: 'job-1', status: 'QUEUED' }),
         getJob: jest.fn().mockResolvedValue({ id: 'job-1', status: 'RUNNING' }),
@@ -238,5 +244,47 @@ describe('AiController job API', () => {
             apiTokenUser.id,
         );
         expect(aiJobService.enqueue).not.toHaveBeenCalled();
+    });
+
+    it.each(['summary', 'full'] as const)('passes the validated %s export scope to the service', async (scope) => {
+        const { controller, aiExportService } = createController();
+        const response = { set: jest.fn(), send: jest.fn() };
+
+        await (controller as any).exportHistory('execution-1', 'pdf', scope, { user }, response);
+
+        expect(aiExportService.exportExecution).toHaveBeenCalledWith(
+            'execution-1',
+            'pdf',
+            userActor,
+            scope,
+        );
+        expect(response.send).toHaveBeenCalledWith(Buffer.from('%PDF-test'));
+    });
+
+    it('defaults export scope to summary', async () => {
+        const { controller, aiExportService } = createController();
+        const response = { set: jest.fn(), send: jest.fn() };
+
+        await (controller as any).exportHistory('execution-1', 'docx', undefined, { user }, response);
+
+        expect(aiExportService.exportExecution).toHaveBeenCalledWith(
+            'execution-1',
+            'docx',
+            userActor,
+            'summary',
+        );
+    });
+
+    it('rejects an invalid export scope before calling the service', async () => {
+        const { controller, aiExportService } = createController();
+
+        await expect((controller as any).exportHistory(
+            'execution-1',
+            'pdf',
+            'everything',
+            { user },
+            { set: jest.fn(), send: jest.fn() },
+        )).rejects.toBeInstanceOf(BadRequestException);
+        expect(aiExportService.exportExecution).not.toHaveBeenCalled();
     });
 });

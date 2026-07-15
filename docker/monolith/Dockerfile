@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     rpm \
     cpio \
     unzip \
+    fonts-noto-cjk \
     locales \
     tzdata \
     && rm -rf /var/lib/apt/lists/*

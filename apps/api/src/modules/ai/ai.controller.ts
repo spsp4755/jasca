@@ -4,7 +4,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { AiService } from './ai.service';
-import { AiExportFormat, AiExportService } from './ai-export.service';
+import { AiExportFormat, AiExportScope, AiExportService } from './ai-export.service';
 import { AiJobActor, AiJobService } from './ai-job.service';
 import { AiActionType, AI_ACTION_METADATA } from './ai-actions';
 import type { Request, Response } from 'express';
@@ -152,6 +152,7 @@ export class AiController {
     async exportHistory(
         @Param('id') id: string,
         @Query('format') requestedFormat: string | undefined,
+        @Query('scope') requestedScope: string | undefined,
         @Req() req: RequestWithUser,
         @Res() res: Response,
     ) {
@@ -161,11 +162,16 @@ export class AiController {
         if (format !== 'pdf' && format !== 'docx') {
             throw new BadRequestException('format must be pdf or docx');
         }
+        const scope = (requestedScope || 'summary').toLowerCase();
+        if (scope !== 'summary' && scope !== 'full') {
+            throw new BadRequestException('scope must be summary or full');
+        }
 
         const exported = await this.aiExportService.exportExecution(
             id,
             format as AiExportFormat,
             this.toActor(user),
+            scope as AiExportScope,
         );
         const encodedFileName = encodeURIComponent(exported.fileName);
 
