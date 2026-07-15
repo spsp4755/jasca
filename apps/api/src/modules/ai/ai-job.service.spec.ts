@@ -7,6 +7,7 @@ import { AiService } from './ai.service';
 const queuedJob = {
     id: 'execution-1',
     userId: 'user-1',
+    organizationId: 'org-1',
     action: AiActionType.DASHBOARD_SUMMARY,
     actionLabel: null,
     provider: null,
@@ -25,6 +26,23 @@ const queuedJob = {
     notificationSentAt: null,
     createdAt: new Date('2026-07-15T04:00:00.000Z'),
     updatedAt: new Date('2026-07-15T04:00:00.000Z'),
+};
+
+const userActor = {
+    id: 'user-1',
+    organizationId: 'org-1',
+    roles: ['DEVELOPER'],
+    isApiToken: false,
+    permissions: [],
+};
+
+const apiTokenActor = {
+    id: 'api-token:token-1',
+    organizationId: 'org-1',
+    roles: [],
+    isApiToken: true,
+    permissions: ['scans:read'],
+    apiTokenId: 'token-1',
 };
 
 const completedJob = {
@@ -90,7 +108,7 @@ describe('AiJobService', () => {
         const { service, prisma } = createJobService();
         const context = { projectId: 'project-1' };
 
-        await service.enqueue(AiActionType.DASHBOARD_SUMMARY, context, 'user-1');
+        await service.enqueue(AiActionType.DASHBOARD_SUMMARY, context, userActor);
 
         expect(prisma.aiExecution.create).toHaveBeenCalledWith({
             data: expect.objectContaining({
@@ -98,6 +116,20 @@ describe('AiJobService', () => {
                 action: AiActionType.DASHBOARD_SUMMARY,
                 context,
                 userId: 'user-1',
+                organizationId: 'org-1',
+            }),
+        });
+    });
+
+    it('stores an API token synthetic owner and organization snapshot', async () => {
+        const { service, prisma } = createJobService();
+
+        await service.enqueue(AiActionType.DASHBOARD_SUMMARY, {}, apiTokenActor);
+
+        expect(prisma.aiExecution.create).toHaveBeenCalledWith({
+            data: expect.objectContaining({
+                userId: apiTokenActor.id,
+                organizationId: apiTokenActor.organizationId,
             }),
         });
     });
@@ -199,8 +231,7 @@ describe('AiJobService', () => {
         prisma.aiExecution.updateMany.mockResolvedValue({ count: 1 });
 
         const cancelled = await service.cancel(queuedJob.id, {
-            id: 'user-1',
-            roles: ['DEVELOPER'],
+            ...userActor,
         });
 
         expect(prisma.aiExecution.updateMany).toHaveBeenCalledWith({
@@ -216,7 +247,99 @@ describe('AiJobService', () => {
 
         await expect(service.getJob(queuedJob.id, {
             id: 'user-2',
+            organizationId: 'org-2',
             roles: ['DEVELOPER'],
+            isApiToken: false,
+            permissions: [],
+        })).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('allows an API token principal to read and cancel its own job', async () => {
+        const { service, prisma } = createJobService();
+        const tokenJob = { ...queuedJob, userId: apiTokenActor.id };
+        prisma.aiExecution.findUnique.mockResolvedValue(tokenJob);
+        prisma.aiExecution.updateMany.mockResolvedValue({ count: 1 });
+
+        await expect(service.getJob(tokenJob.id, apiTokenActor)).resolves.toEqual(tokenJob);
+        await expect(service.cancel(tokenJob.id, apiTokenActor)).resolves.toEqual(expect.objectContaining({
+            status: 'CANCELLED',
+        }));
+    });
+
+    it('allows ORG_ADMIN to access jobs by the execution organization snapshot', async () => {
+        const { service, prisma } = createJobService();
+        prisma.aiExecution.findUnique.mockResolvedValue({
+            ...queuedJob,
+            userId: apiTokenActor.id,
+            organizationId: 'org-1',
+        });
+
+        await expect(service.getJob(queuedJob.id, {
+            id: 'org-admin-1',
+            organizationId: 'org-1',
+            roles: ['ORG_ADMIN'],
+            isApiToken: false,
+            permissions: [],
+        })).resolves.toEqual(expect.objectContaining({ id: queuedJob.id }));
+        expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('preserves ORG_ADMIN access to legacy human jobs without an organization snapshot', async () => {
+        const { service, prisma } = createJobService();
+        prisma.aiExecution.findUnique.mockResolvedValue({
+            ...queuedJob,
+            organizationId: null,
+        });
+        prisma.user.findUnique.mockResolvedValue({ organizationId: 'org-1' });
+
+        await expect(service.getJob(queuedJob.id, {
+            id: 'org-admin-1',
+            organizationId: 'org-1',
+            roles: ['ORG_ADMIN'],
+            isApiToken: false,
+            permissions: [],
+        })).resolves.toEqual(expect.objectContaining({ id: queuedJob.id }));
+        expect(prisma.user.findUnique).toHaveBeenCalledWith({
+            where: { id: queuedJob.userId },
+            select: { organizationId: true },
+        });
+    });
+
+    it('rejects ORG_ADMIN from another organization', async () => {
+        const { service, prisma } = createJobService();
+        prisma.aiExecution.findUnique.mockResolvedValue(queuedJob);
+
+        await expect(service.getJob(queuedJob.id, {
+            id: 'org-admin-2',
+            organizationId: 'org-2',
+            roles: ['ORG_ADMIN'],
+            isApiToken: false,
+            permissions: [],
+        })).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('allows SYSTEM_ADMIN to access jobs across organizations', async () => {
+        const { service, prisma } = createJobService();
+        prisma.aiExecution.findUnique.mockResolvedValue(queuedJob);
+
+        await expect(service.getJob(queuedJob.id, {
+            id: 'system-admin-1',
+            organizationId: 'org-2',
+            roles: ['SYSTEM_ADMIN'],
+            isApiToken: false,
+            permissions: [],
+        })).resolves.toEqual(queuedJob);
+    });
+
+    it('does not trust SYSTEM_ADMIN roles attached to an API token principal', async () => {
+        const { service, prisma } = createJobService();
+        prisma.aiExecution.findUnique.mockResolvedValue(queuedJob);
+
+        await expect(service.getJob(queuedJob.id, {
+            ...apiTokenActor,
+            id: 'api-token:token-2',
+            apiTokenId: 'token-2',
+            roles: ['SYSTEM_ADMIN'],
         })).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -247,6 +370,8 @@ describe('AiJobService', () => {
             where: {
                 attempts: { gt: 0 },
                 status: { in: ['SUCCESS', 'ERROR', 'TIMEOUT'] },
+                userId: { not: null },
+                NOT: { userId: { startsWith: 'api-token:' } },
                 notificationSentAt: null,
                 OR: [
                     { notificationClaimedAt: null },
@@ -300,6 +425,29 @@ describe('AiJobService', () => {
                 notificationSentAt: expect.any(Date),
             },
         });
+    });
+
+    it('skips terminal notifications for API token principals without retrying them', async () => {
+        const { service, prisma, notifications } = createJobService();
+        const tokenJob = {
+            ...completedJob,
+            userId: apiTokenActor.id,
+            organizationId: apiTokenActor.organizationId,
+        };
+        routeWorkerQueries(prisma, null, tokenJob);
+
+        await service.processNextJob();
+
+        expect(notifications.createUserNotification).not.toHaveBeenCalled();
+        expect(prisma.aiExecution.findFirst).toHaveBeenCalledWith({
+            where: expect.objectContaining({
+                NOT: { userId: { startsWith: 'api-token:' } },
+            }),
+            orderBy: { completedAt: 'asc' },
+        });
+        expect(prisma.aiExecution.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({
+            data: { notificationClaimedAt: expect.any(Date) },
+        }));
     });
 });
 

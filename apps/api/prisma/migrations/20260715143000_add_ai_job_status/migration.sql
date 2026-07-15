@@ -4,6 +4,7 @@ ALTER TYPE "AiExecutionStatus" ADD VALUE 'CANCELLED';
 
 ALTER TABLE "AiExecution"
     ADD COLUMN "attempts" INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN "organizationId" TEXT,
     ADD COLUMN "startedAt" TIMESTAMP(3),
     ADD COLUMN "completedAt" TIMESTAMP(3),
     ADD COLUMN "notificationClaimedAt" TIMESTAMP(3),
@@ -15,6 +16,9 @@ ALTER TABLE "AiExecution"
 
 CREATE INDEX "AiExecution_status_createdAt_idx"
     ON "AiExecution"("status", "createdAt");
+
+CREATE INDEX "AiExecution_organizationId_idx"
+    ON "AiExecution"("organizationId");
 
 ALTER TABLE "UserNotification"
     ADD COLUMN "deduplicationKey" TEXT;

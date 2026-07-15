@@ -42,10 +42,13 @@ interface RequestWithUser extends Request {
 
 interface AuthenticatedUser {
     id: string;
-    email: string;
-    name: string;
-    organizationId?: string;
+    email?: string;
+    name?: string;
+    organizationId?: string | null;
     roles?: Array<{ role: string }>;
+    isApiToken?: boolean;
+    permissions?: string[];
+    apiTokenId?: string;
 }
 
 @Controller('ai')
@@ -69,9 +72,9 @@ export class AiController {
         if (!dto.context || typeof dto.context !== 'object' || Array.isArray(dto.context)) {
             throw new BadRequestException('AI context must be an object');
         }
-        this.assertActionAllowed(dto.action, actor.roles);
+        this.assertActionAllowed(dto.action, actor);
 
-        const job = await this.aiJobService.enqueue(dto.action, dto.context, user.id);
+        const job = await this.aiJobService.enqueue(dto.action, dto.context, actor);
         return { id: job.id, status: job.status };
     }
 
@@ -91,7 +94,7 @@ export class AiController {
     @Post('execute')
     async executeAi(@Body() dto: ExecuteAiDto, @Req() req: RequestWithUser) {
         const user = this.requireUser(req);
-        this.assertActionAllowed(dto.action, this.toActor(user).roles);
+        this.assertActionAllowed(dto.action, this.toActor(user));
 
         const startTime = Date.now();
 
@@ -371,19 +374,26 @@ export class AiController {
     private toActor(user: AuthenticatedUser): AiJobActor {
         return {
             id: user.id,
-            organizationId: user.organizationId,
+            organizationId: user.organizationId || undefined,
             roles: user.roles?.map(role => role.role) || [],
+            isApiToken: user.isApiToken === true,
+            permissions: user.permissions || [],
+            apiTokenId: user.apiTokenId,
         };
     }
 
-    private assertActionAllowed(action: AiActionType, userRoles: string[]): void {
+    private assertActionAllowed(action: AiActionType, actor: AiJobActor): void {
         const requiredRoles = AI_ACTION_METADATA[action]?.requiredRoles;
         if (!requiredRoles?.length) return;
 
-        const hasRequiredRole = requiredRoles.some(role => userRoles.includes(role));
-        if (!hasRequiredRole && !userRoles.includes('SYSTEM_ADMIN')) {
-            throw new ForbiddenException('Insufficient permissions for this AI action');
+        if (actor.isApiToken) {
+            if (actor.permissions.includes('admin') && requiredRoles.includes('ORG_ADMIN')) return;
+        } else {
+            const hasRequiredRole = requiredRoles.some(role => actor.roles.includes(role));
+            if (hasRequiredRole || actor.roles.includes('SYSTEM_ADMIN')) return;
         }
+
+        throw new ForbiddenException('Insufficient permissions for this AI action');
     }
 
     private async testOllamaConnectionDetailed(apiUrl: string): Promise<{

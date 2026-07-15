@@ -22,6 +22,9 @@ export interface AiJobActor {
     id: string;
     organizationId?: string;
     roles: string[];
+    isApiToken: boolean;
+    permissions: string[];
+    apiTokenId?: string;
 }
 
 const ACTIVE_STATUSES: AiExecutionStatus[] = [
@@ -37,6 +40,7 @@ const WORKER_INTERVAL_MS = 5_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const STALE_JOB_MS = 15 * 60_000;
 const NOTIFICATION_LEASE_MS = 60_000;
+const API_TOKEN_USER_ID_PREFIX = 'api-token:';
 
 @Injectable()
 export class AiJobService implements OnModuleInit, OnModuleDestroy {
@@ -64,13 +68,14 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
         if (this.worker) clearInterval(this.worker);
     }
 
-    enqueue(action: string, context: Record<string, unknown>, userId: string) {
+    enqueue(action: string, context: Record<string, unknown>, actor: AiJobActor) {
         return this.prisma.aiExecution.create({
             data: {
                 action,
                 context: context as Prisma.JsonObject,
                 status: AiExecutionStatus.QUEUED,
-                userId,
+                userId: actor.id,
+                organizationId: actor.organizationId || null,
             },
         });
     }
@@ -180,6 +185,8 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
             where: {
                 attempts: { gt: 0 },
                 status: { in: TERMINAL_NOTIFICATION_STATUSES },
+                userId: { not: null },
+                NOT: { userId: { startsWith: API_TOKEN_USER_ID_PREFIX } },
                 notificationSentAt: null,
                 OR: [
                     { notificationClaimedAt: null },
@@ -191,22 +198,42 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
         if (pending) await this.createTerminalNotification(pending);
     }
 
-    private async assertCanAccess(execution: Pick<AiExecution, 'userId'>, actor: AiJobActor): Promise<void> {
-        if (execution.userId === actor.id || actor.roles.includes('SYSTEM_ADMIN')) return;
+    private async assertCanAccess(
+        execution: Pick<AiExecution, 'userId' | 'organizationId'>,
+        actor: AiJobActor,
+    ): Promise<void> {
+        if (execution.userId === actor.id) return;
+        if (!actor.isApiToken && actor.roles.includes('SYSTEM_ADMIN')) return;
 
-        if (actor.roles.includes('ORG_ADMIN') && actor.organizationId && execution.userId) {
-            const owner = await this.prisma.user.findUnique({
-                where: { id: execution.userId },
-                select: { organizationId: true },
-            });
-            if (owner?.organizationId === actor.organizationId) return;
+        if (
+            !actor.isApiToken
+            && actor.roles.includes('ORG_ADMIN')
+            && actor.organizationId
+        ) {
+            if (execution.organizationId === actor.organizationId) return;
+
+            if (
+                !execution.organizationId
+                && execution.userId
+                && !execution.userId.startsWith(API_TOKEN_USER_ID_PREFIX)
+            ) {
+                const owner = await this.prisma.user.findUnique({
+                    where: { id: execution.userId },
+                    select: { organizationId: true },
+                });
+                if (owner?.organizationId === actor.organizationId) return;
+            }
         }
 
         throw new ForbiddenException('You cannot access this AI execution');
     }
 
     private async createTerminalNotification(execution: AiExecution): Promise<void> {
-        if (!execution.userId || !TERMINAL_NOTIFICATION_STATUSES.includes(execution.status)) return;
+        if (
+            !execution.userId
+            || execution.userId.startsWith(API_TOKEN_USER_ID_PREFIX)
+            || !TERMINAL_NOTIFICATION_STATUSES.includes(execution.status)
+        ) return;
 
         const claimedAt = new Date();
         const leaseExpiredAt = new Date(claimedAt.getTime() - NOTIFICATION_LEASE_MS);
