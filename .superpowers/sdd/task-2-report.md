@@ -60,6 +60,34 @@ Result: exit code 0.
 
 No Task 2 blocker remains. Full test output includes expected warning/error logs from mocked notification and AI provider failure paths, but all assertions pass. Unrelated pre-existing design, plan, report, and release artifact changes remain outside implementation commit `e70563a`.
 
+## Review Fixes
+
+Status: Important/Minor review findings fixed and verified.
+
+Implementation commit: `8ef1293` (`fix: support API token AI job ownership`)
+
+### Changes
+
+- Added nullable, indexed `AiExecution.organizationId` to the unreleased additive migration and Prisma schema. New queued jobs snapshot the actor organization while retaining the principal ID as owner.
+- Expanded `AiJobActor` and controller principal mapping to preserve `id`, `organizationId`, `roles`, `isApiToken`, `permissions`, and `apiTokenId`. The actual bearer-token guard shape (`api-token:<id>` with no human roles/email/name) is covered by controller tests.
+- API tokens can own, poll, and cancel their own jobs using the synthetic principal ID. JWT ORG_ADMIN actors use the execution organization snapshot; legacy human rows without a snapshot retain the prior User-organization fallback. SYSTEM_ADMIN JWT actors retain cross-organization access.
+- API token `admin` permission authorizes actions that accept ORG_ADMIN, but never SYSTEM_ADMIN-only actions. Service access also ignores role escalation attached to an API token principal.
+- Terminal notification queries exclude null and `api-token:` owners. Direct completion also skips API token principals before claiming a notification lease, so machine callers use `GET /api/ai/jobs/:id` polling and cannot enter an endless UserNotification FK retry loop.
+- Existing `POST /api/ai/execute` behavior remains synchronous for both JWT users and generally permitted API token actions.
+
+### TDD and Verification
+
+- Initial focused RED: `npm.cmd test -- --runInBand modules/ai/ai.controller.spec.ts modules/ai/ai-job.service.spec.ts` failed for actor field loss, string-only enqueue ownership, missing API-token admin mapping, and absent service actor fields.
+- Legacy compatibility RED: `npm.cmd test -- --runInBand modules/ai/ai-job.service.spec.ts` failed because ORG_ADMIN could not access pre-migration human executions with a null organization snapshot.
+- Focused GREEN: `npm.cmd test -- --runInBand modules/ai/ai.controller.spec.ts modules/ai/ai-job.service.spec.ts` passed `2/2` suites and `36/36` tests.
+- Prisma client: `npm.cmd run prisma:generate` succeeded with Prisma Client `5.22.0`.
+- Full API: `npm.cmd test -- --runInBand` passed `25/25` suites and `186/186` tests.
+- API build: `npm.cmd run build` exited 0.
+
+### Self-Review and Concerns
+
+The migration remains additive and modifies only the unreleased AI job migration. New access decisions avoid User lookups for API token IDs and organization-snapshotted jobs; only legacy human rows use the compatibility lookup. No blocker remains. Deployments must apply the updated migration before starting this API version. Existing mocked provider/notification warning logs are expected and non-failing. Unrelated worktree changes remain outside commit `8ef1293`.
+
 ---
 
 # Task 2 Harbor Trivy Scanning Report
