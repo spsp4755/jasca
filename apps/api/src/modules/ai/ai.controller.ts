@@ -1,11 +1,12 @@
-import { Controller, Post, Get, Delete, Body, Param, UseGuards, Query, BadRequestException, Req, ForbiddenException, HttpException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, UseGuards, Query, BadRequestException, Req, Res, ForbiddenException, HttpException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { AiService } from './ai.service';
+import { AiExportFormat, AiExportService } from './ai-export.service';
 import { AiActionType, AI_ACTION_METADATA } from './ai-actions';
-import { Request } from 'express';
+import type { Request, Response } from 'express';
 
 interface TestConnectionDto {
     provider: 'openai' | 'anthropic' | 'vllm' | 'ollama' | 'custom';
@@ -40,14 +41,17 @@ interface RequestWithUser extends Request {
         email: string;
         name: string;
         organizationId?: string;
-        roles: Array<{ role: string }>;
+        roles?: Array<{ role: string }>;
     };
 }
 
 @Controller('ai')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AiController {
-    constructor(private readonly aiService: AiService) { }
+    constructor(
+        private readonly aiService: AiService,
+        private readonly aiExportService: AiExportService,
+    ) { }
 
     /**
      * Execute AI action
@@ -89,6 +93,7 @@ export class AiController {
                 usedPrompt: result.usedPrompt,
                 isMock: result.isMock,
                 mockReason: result.mockReason,
+                isSaved: result.isSaved,
             };
         } catch (error) {
             if (error instanceof HttpException) {
@@ -117,6 +122,41 @@ export class AiController {
             limit: limit ? parseInt(limit, 10) : 50,
             offset: offset ? parseInt(offset, 10) : 0,
         });
+    }
+
+    /**
+     * Export one saved AI execution using the shared Korean report template.
+     */
+    @Get('history/:id/export')
+    async exportHistory(
+        @Param('id') id: string,
+        @Query('format') requestedFormat: string | undefined,
+        @Req() req: RequestWithUser,
+        @Res() res: Response,
+    ) {
+        const user = req.user;
+        if (!user) {
+            throw new BadRequestException('User not authenticated');
+        }
+
+        const format = requestedFormat?.toLowerCase();
+        if (format !== 'pdf' && format !== 'docx') {
+            throw new BadRequestException('format must be pdf or docx');
+        }
+
+        const exported = await this.aiExportService.exportExecution(id, format as AiExportFormat, {
+            id: user.id,
+            organizationId: user.organizationId,
+            roles: user.roles?.map(role => role.role) || [],
+        });
+        const encodedFileName = encodeURIComponent(exported.fileName);
+
+        res.set({
+            'Content-Type': exported.contentType,
+            'Content-Length': exported.content.length.toString(),
+            'Content-Disposition': `attachment; filename="${exported.fileName}"; filename*=UTF-8''${encodedFileName}`,
+        });
+        res.send(exported.content);
     }
 
     /**

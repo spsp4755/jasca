@@ -23,6 +23,7 @@ import {
     Zap,
 } from 'lucide-react';
 import { AiActionType, AI_ACTION_CONFIG } from './ai-button';
+import { AiExportButtons } from './ai-export-buttons';
 
 // ============================================
 // AI Result Interface
@@ -45,6 +46,8 @@ export interface AiResult {
     isMock?: boolean;
     /** Reason for using mock data (if applicable) */
     mockReason?: string;
+    /** Whether this result has a saved history record available for export */
+    isSaved?: boolean;
 }
 
 // ============================================
@@ -597,6 +600,9 @@ export function AiResultPanel({
                                 )}
                             </div>
                             <div className="flex items-center gap-2">
+                                {displayedResult.isSaved !== false && (
+                                    <AiExportButtons executionId={displayedResult.id} compact />
+                                )}
                                 {onSaveSnapshot && (
                                     <button
                                         onClick={handleSave}
