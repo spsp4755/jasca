@@ -256,7 +256,7 @@ export default function NewScanPage() {
     const handleUpload = async () => {
         if (isHarborScan) {
             if (!selectedProjectId || !harborDigest || !harborImageRef) {
-                setErrorMessage('Select a JASCA project and a Harbor artifact digest before starting the scan.');
+                setErrorMessage('검사를 시작하려면 JASCA 프로젝트와 Harbor 아티팩트 digest를 선택하세요.');
                 return;
             }
 
@@ -279,7 +279,7 @@ export default function NewScanPage() {
             } catch (error: any) {
                 if (!isPageActiveRef.current) return;
                 setUploadStatus('error');
-                setErrorMessage(error.message || 'Harbor image scan failed.');
+                setErrorMessage(`Harbor 이미지 검사에 실패했습니다. ${error.message || '잠시 후 다시 시도하세요.'}`);
             }
             return;
         }
@@ -516,8 +516,8 @@ export default function NewScanPage() {
                                                 : 'border-slate-700 text-slate-300 hover:border-slate-500'
                                         }`}
                                     >
-                                        <div className="font-semibold">Harbor image</div>
-                                        <div className="mt-1 text-xs text-slate-400">Select a Harbor project, repository, and immutable digest. No file upload is required.</div>
+                                        <div className="font-semibold">Harbor 이미지</div>
+                                        <div className="mt-1 text-xs text-slate-400">Harbor 프로젝트, 저장소, 변경되지 않는 digest를 선택합니다. 파일 업로드는 필요하지 않습니다.</div>
                                     </button>
                                     {[
                                         { value: 'trivy' as const, label: 'Trivy', description: '패키지 취약점, 라이선스, Secret, Misconfig 검사' },
@@ -642,40 +642,40 @@ export default function NewScanPage() {
 
                         {isHarborScan && (
                             <div className="mb-6 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4">
-                                <h2 className="text-lg font-semibold text-cyan-100">Harbor image selection</h2>
-                                <p className="mt-1 text-sm text-cyan-100/80">The digest is the scan target. A tag is retained only as supplementary metadata.</p>
+                                <h2 className="text-lg font-semibold text-cyan-100">Harbor 이미지 선택</h2>
+                                <p className="mt-1 text-sm text-cyan-100/80">digest를 검사 대상으로 사용하며, 태그는 참고용 메타데이터로만 저장합니다.</p>
                                 <div className="mt-4 grid gap-4">
-                                    <label className="text-sm font-medium text-cyan-100">JASCA project
+                                    <label className="text-sm font-medium text-cyan-100">JASCA 프로젝트
                                         <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white">
-                                            <option value="">Select a JASCA project</option>
+                                            <option value="">JASCA 프로젝트 선택</option>
                                             {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                                         </select>
                                     </label>
-                                    <label className="text-sm font-medium text-cyan-100">Harbor project
+                                    <label className="text-sm font-medium text-cyan-100">Harbor 프로젝트
                                         <select value={harborProject} onChange={(event) => { setHarborProject(event.target.value); setHarborRepository(''); setHarborDigest(''); setHarborTag(''); }} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white">
-                                            <option value="">Select a Harbor project</option>
+                                            <option value="">Harbor 프로젝트 선택</option>
                                             {harborProjects.map((project) => {
                                                 const name = project.name || project.project_name || String(project.project_id || '');
                                                 return <option key={name} value={name}>{name}</option>;
                                             })}
                                         </select>
                                     </label>
-                                    <label className="text-sm font-medium text-cyan-100">Repository
+                                    <label className="text-sm font-medium text-cyan-100">저장소
                                         <select value={harborRepository} disabled={!harborProject || harborRepositoriesQuery.isLoading} onChange={(event) => { setHarborRepository(event.target.value); setHarborDigest(''); setHarborTag(''); }} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white disabled:opacity-50">
-                                            <option value="">{harborRepositoriesQuery.isLoading ? 'Loading repositories...' : 'Select a repository'}</option>
+                                            <option value="">{harborRepositoriesQuery.isLoading ? '저장소 불러오는 중...' : '저장소 선택'}</option>
                                             {harborRepositories.map((repository) => <option key={repository.name} value={repository.name}>{repository.name}</option>)}
                                         </select>
                                     </label>
-                                    <label className="text-sm font-medium text-cyan-100">Artifact digest
+                                    <label className="text-sm font-medium text-cyan-100">아티팩트 digest
                                         <select value={harborDigest} disabled={!harborRepository || harborArtifactsQuery.isLoading} onChange={(event) => { const artifact = harborArtifacts.find((item) => item.digest === event.target.value); setHarborDigest(event.target.value); setHarborTag(artifact?.tags?.[0]?.name || ''); }} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 font-mono text-white disabled:opacity-50">
-                                            <option value="">{harborArtifactsQuery.isLoading ? 'Loading artifacts...' : 'Select an immutable digest'}</option>
+                                            <option value="">{harborArtifactsQuery.isLoading ? '아티팩트 불러오는 중...' : '변경되지 않는 digest 선택'}</option>
                                             {harborArtifacts.map((artifact) => <option key={artifact.digest} value={artifact.digest}>{artifact.digest}</option>)}
                                         </select>
                                     </label>
                                     {harborDigest && (
-                                        <label className="text-sm font-medium text-cyan-100">Tag (supplementary)
+                                        <label className="text-sm font-medium text-cyan-100">태그(참고용)
                                             <select value={harborTag} onChange={(event) => setHarborTag(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-white">
-                                                <option value="">No tag</option>
+                                                <option value="">태그 없음</option>
                                                 {(harborArtifacts.find((artifact) => artifact.digest === harborDigest)?.tags || []).map((tag) => tag.name ? <option key={tag.name} value={tag.name}>{tag.name}</option> : null)}
                                             </select>
                                         </label>
