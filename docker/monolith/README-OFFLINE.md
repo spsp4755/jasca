@@ -198,3 +198,80 @@ docker run -d \
   -v /root/.cache/trivy:/app/trivy-db:ro \
   jasca-offline:rollback-before-upgrade
 ```
+
+## Harbor image scanning operations
+
+Harbor is not included in the JASCA offline image. Deploy Harbor separately with a stable DNS name and HTTPS certificate, then deploy or restart JASCA. The monolith entrypoint runs `prisma migrate deploy`; confirm that the `20260715120000_add_harbor_scan_jobs` migration completes before enabling Harbor scans.
+
+### Network and TLS
+
+Open only these application paths through the firewall:
+
+| Source | Destination | Port | Purpose |
+| --- | --- | --- | --- |
+| JASCA container | Harbor FQDN | TCP 443 | Harbor v2 project/repository/artifact browsing and Trivy manifest/blob pulls |
+| Harbor | External JASCA FQDN | TCP 443 | `POST /api/harbor/webhook` for Artifact Push events |
+
+Do not expose the JASCA container API port `3001` to Harbor. Route the webhook through the normal HTTPS reverse proxy. Confirm DNS and HTTPS from the JASCA container:
+
+```bash
+docker exec jasca getent hosts harbor.example.internal
+docker exec jasca node -e "fetch('https://harbor.example.internal/api/v2.0/ping').then(r=>{console.log(r.status);process.exit(r.ok?0:1)}).catch(e=>{console.error(e.message);process.exit(1)})"
+```
+
+For an internal CA, set the host certificate path in `deploy-existing-layout.env`:
+
+```bash
+INTERNAL_CA_CERT=/app/jasca/certs/internal-ca.crt
+```
+
+The deployment script mounts it read-only at `/app/jasca-ca/internal-ca.crt` and sets `NODE_EXTRA_CA_CERTS` for the Harbor API client. Trivy is a separate binary and must also trust the Harbor registry certificate through the container OS trust store or a container-level `SSL_CERT_FILE` setting. A successful admin connection test proves Node API trust; complete one manual image scan to prove Trivy registry trust. Do not disable TLS verification as a permanent workaround.
+
+### Robot account
+
+Create a dedicated Harbor robot account for JASCA. Grant read/pull access only to every project listed in JASCA's allowed Harbor projects. Do not grant push, delete, project administration, replication, or scanner administration permissions. JASCA currently stores one Harbor credential, so use one robot whose scope covers exactly the configured projects.
+
+Store the exact robot username, including any `$` prefix, and its token in `Admin > Harbor`. Never place the token in an image reference, webhook URL, command line, or log. JASCA masks the saved token and webhook secret after configuration.
+
+Configure these values in `Admin > Harbor`:
+
+1. Enable the integration and enter the Harbor origin, for example `https://harbor.example.internal`, without `/api/v2.0`.
+2. Enter the robot username and token.
+3. Enter the exact Harbor project namespaces that JASCA may browse and scan.
+4. Select the default JASCA project used for webhook results.
+5. Enable automatic Push Artifact scanning and set a long random webhook secret.
+6. Save, then run the connection test and browse to one repository and immutable Digest.
+
+### Push Artifact webhook
+
+Create a webhook policy in each allowed Harbor project with these values:
+
+```text
+Event type: Artifact pushed
+Endpoint URL: https://jasca.example.internal/api/harbor/webhook
+Auth Header: Bearer <Webhook Secret from JASCA>
+```
+
+Harbor's `auth_header` value is `Bearer <secret>`; Harbor sends it as the HTTP `Authorization` header. The resulting request must contain exactly:
+
+```http
+Authorization: Bearer <Webhook Secret from JASCA>
+```
+
+Do not configure an HMAC signature header. JASCA accepts Harbor's default `PUSH_ARTIFACT` JSON and compares this Bearer secret. A valid request returns `201` with `{"accepted":true}`. A recent repeated Digest returns `201` with `{"accepted":true,"duplicate":true}` and does not start a second Trivy scan. An invalid or missing secret returns `401`.
+
+### QA checklist
+
+1. Restart JASCA and confirm `docker logs jasca` shows the Harbor scan-job migration and no migration error.
+2. In `Admin > Harbor`, save the settings, run the connection test, and browse Harbor project, repository, and artifact lists.
+3. In `New Scan > Harbor Image`, select a JASCA project and the test artifact Digest. Run the scan and confirm a new persisted scan result with the selected `imageDigest`; this result is attributed to the authenticated user and has Harbor trigger `manual` in the raw evidence.
+4. Push a different test Digest to the configured Harbor project. In Harbor's webhook delivery history, confirm HTTP `201` and `{"accepted":true}`. In JASCA, confirm a second persisted scan result in the default JASCA project with Harbor trigger `webhook`.
+5. Redeliver the same Push Artifact event without changing the Digest. Confirm `{"accepted":true,"duplicate":true}`, no additional scan result, and no second Trivy process for that Digest.
+6. Temporarily change the Harbor webhook Auth Header to `Bearer invalid`, redeliver the event, and confirm HTTP `401` with no scan result. Restore the correct secret immediately.
+7. Review durable job state when diagnosing persistence or duplicate behavior:
+
+```bash
+docker exec jasca su - postgres -c "psql -d jasca -c 'SELECT \"imageDigest\", trigger, status, \"scanResultId\", \"completedAt\" FROM \"HarborScanJob\" ORDER BY \"updatedAt\" DESC LIMIT 10;'"
+```
+
+A successful scan has `COMPLETED` status and a non-null `scanResultId`. A recent repeated Digest reuses that job without changing the scan result. Failed pulls or persistence operations have `FAILED` status and may be retried; credentials are redacted from the stored error.
