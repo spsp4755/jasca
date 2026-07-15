@@ -1,10 +1,11 @@
-import { Controller, Post, Get, Delete, Body, Param, UseGuards, Query, BadRequestException, Req, Res, ForbiddenException, HttpException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, UseGuards, Query, BadRequestException, Req, Res, ForbiddenException, HttpCode, HttpException, HttpStatus } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { AiService } from './ai.service';
 import { AiExportFormat, AiExportService } from './ai-export.service';
+import { AiJobActor, AiJobService } from './ai-job.service';
 import { AiActionType, AI_ACTION_METADATA } from './ai-actions';
 import type { Request, Response } from 'express';
 
@@ -36,13 +37,15 @@ interface OllamaListResponse {
 }
 
 interface RequestWithUser extends Request {
-    user?: {
-        id: string;
-        email: string;
-        name: string;
-        organizationId?: string;
-        roles?: Array<{ role: string }>;
-    };
+    user?: AuthenticatedUser;
+}
+
+interface AuthenticatedUser {
+    id: string;
+    email: string;
+    name: string;
+    organizationId?: string;
+    roles?: Array<{ role: string }>;
 }
 
 @Controller('ai')
@@ -51,29 +54,44 @@ export class AiController {
     constructor(
         private readonly aiService: AiService,
         private readonly aiExportService: AiExportService,
+        private readonly aiJobService: AiJobService,
     ) { }
+
+    @Post('jobs')
+    @HttpCode(HttpStatus.ACCEPTED)
+    async createJob(@Body() dto: ExecuteAiDto, @Req() req: RequestWithUser) {
+        const user = this.requireUser(req);
+        const actor = this.toActor(user);
+
+        if (!dto || !Object.prototype.hasOwnProperty.call(AI_ACTION_METADATA, dto.action)) {
+            throw new BadRequestException('Invalid AI action');
+        }
+        if (!dto.context || typeof dto.context !== 'object' || Array.isArray(dto.context)) {
+            throw new BadRequestException('AI context must be an object');
+        }
+        this.assertActionAllowed(dto.action, actor.roles);
+
+        const job = await this.aiJobService.enqueue(dto.action, dto.context, user.id);
+        return { id: job.id, status: job.status };
+    }
+
+    @Get('jobs/:id')
+    async getJob(@Param('id') id: string, @Req() req: RequestWithUser) {
+        return this.aiJobService.getJob(id, this.toActor(this.requireUser(req)));
+    }
+
+    @Delete('jobs/:id')
+    async cancelJob(@Param('id') id: string, @Req() req: RequestWithUser) {
+        return this.aiJobService.cancel(id, this.toActor(this.requireUser(req)));
+    }
 
     /**
      * Execute AI action
      */
     @Post('execute')
     async executeAi(@Body() dto: ExecuteAiDto, @Req() req: RequestWithUser) {
-        const user = req.user;
-        if (!user) {
-            throw new BadRequestException('User not authenticated');
-        }
-
-        // Get user roles as string array
-        const userRoles = user.roles?.map(r => r.role) || [];
-
-        // Check role-based access
-        const metadata = AI_ACTION_METADATA[dto.action];
-        if (metadata?.requiredRoles && metadata.requiredRoles.length > 0) {
-            const hasRequiredRole = metadata.requiredRoles.some(role => userRoles.includes(role));
-            if (!hasRequiredRole && !userRoles.includes('SYSTEM_ADMIN')) {
-                throw new ForbiddenException('Insufficient permissions for this AI action');
-            }
-        }
+        const user = this.requireUser(req);
+        this.assertActionAllowed(dto.action, this.toActor(user).roles);
 
         const startTime = Date.now();
 
@@ -134,21 +152,18 @@ export class AiController {
         @Req() req: RequestWithUser,
         @Res() res: Response,
     ) {
-        const user = req.user;
-        if (!user) {
-            throw new BadRequestException('User not authenticated');
-        }
+        const user = this.requireUser(req);
 
         const format = requestedFormat?.toLowerCase();
         if (format !== 'pdf' && format !== 'docx') {
             throw new BadRequestException('format must be pdf or docx');
         }
 
-        const exported = await this.aiExportService.exportExecution(id, format as AiExportFormat, {
-            id: user.id,
-            organizationId: user.organizationId,
-            roles: user.roles?.map(role => role.role) || [],
-        });
+        const exported = await this.aiExportService.exportExecution(
+            id,
+            format as AiExportFormat,
+            this.toActor(user),
+        );
         const encodedFileName = encodeURIComponent(exported.fileName);
 
         res.set({
@@ -345,6 +360,29 @@ export class AiController {
                 return await this.testAnthropicConnection(settings.apiUrl, settings.apiKey);
             default:
                 return await this.testCustomConnection(settings.apiUrl, settings.apiKey);
+        }
+    }
+
+    private requireUser(req: RequestWithUser): AuthenticatedUser {
+        if (!req.user) throw new BadRequestException('User not authenticated');
+        return req.user;
+    }
+
+    private toActor(user: AuthenticatedUser): AiJobActor {
+        return {
+            id: user.id,
+            organizationId: user.organizationId,
+            roles: user.roles?.map(role => role.role) || [],
+        };
+    }
+
+    private assertActionAllowed(action: AiActionType, userRoles: string[]): void {
+        const requiredRoles = AI_ACTION_METADATA[action]?.requiredRoles;
+        if (!requiredRoles?.length) return;
+
+        const hasRequiredRole = requiredRoles.some(role => userRoles.includes(role));
+        if (!hasRequiredRole && !userRoles.includes('SYSTEM_ADMIN')) {
+            throw new ForbiddenException('Insufficient permissions for this AI action');
         }
     }
 
