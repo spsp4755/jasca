@@ -33,6 +33,11 @@ export interface TrivyScanOptions {
     timeout?: string;
 }
 
+export interface TrivyImageReferenceScanOptions extends TrivyScanOptions {
+    registryUsername?: string;
+    registryPassword?: string;
+}
+
 type ArchiveType = 'zip' | 'tar' | 'tar.gz';
 type TrivyScanMode = 'fs' | 'rootfs' | 'image' | 'repo' | 'sbom' | 'vm' | 'rpm';
 
@@ -40,6 +45,7 @@ interface PreparedScanTarget {
     mode: TrivyScanMode;
     targetPath: string;
     archiveType?: ArchiveType | null;
+    targetKind?: 'image-reference';
 }
 
 interface TrivyScanExecution {
@@ -115,6 +121,117 @@ export class TrivyScanService {
     private readonly savedScanResults = new Map<string, { scanId: string; savedAt: number }>();
 
     constructor(private readonly settingsService: SettingsService) { }
+
+    async scanImageReference(
+        imageRef: string,
+        options: TrivyImageReferenceScanOptions = {},
+        operationId?: string,
+    ): Promise<TrivyScanOutput> {
+        const normalizedImageRef = imageRef?.trim();
+        if (!normalizedImageRef || /\s/.test(normalizedImageRef)) {
+            throw new BadRequestException('A valid image reference is required');
+        }
+
+        const { registryUsername, registryPassword, ...scanOptions } = options;
+        const sensitiveValues = [registryUsername, registryPassword].filter((value): value is string => Boolean(value));
+
+        try {
+            this.assertNotCancelled(operationId);
+
+            const startedAt = Date.now();
+            const startedAtIso = new Date(startedAt).toISOString();
+            const settings = await this.getTrivySettings();
+            const normalizedOptions = this.normalizeScanOptions({
+                ...scanOptions,
+                scanMode: 'image',
+                offlineScan: true,
+                skipDbUpdate: true,
+                skipJavaDbUpdate: true,
+            });
+            const target: PreparedScanTarget = {
+                mode: 'image',
+                targetPath: normalizedImageRef,
+                targetKind: 'image-reference',
+            };
+            const effectiveTimeout = normalizedOptions.timeout || settings.timeout;
+            const timeoutMs = this.parseTimeoutMs(effectiveTimeout);
+            const commands: TrivyExecutionEvidence['commands'] = [];
+            const processEnv: NodeJS.ProcessEnv = {
+                ...(registryUsername ? { TRIVY_USERNAME: registryUsername } : {}),
+                ...(registryPassword ? { TRIVY_PASSWORD: registryPassword } : {}),
+            };
+
+            this.logger.log(`Trivy image reference scan prepared. operationId=${operationId || 'n/a'} image=${normalizedImageRef}`);
+            const stdout = await this.runTrivy(
+                this.trackCommand(commands, 'trivy-image-reference-scan', this.buildTrivyArgs(settings, target, normalizedOptions), target),
+                timeoutMs,
+                operationId,
+                processEnv,
+            );
+
+            this.assertNotCancelled(operationId);
+            const completedAt = Date.now();
+            const result = JSON.parse(stdout);
+            this.attachExecutionEvidence(result, {
+                executedBy: 'jasca',
+                completed: true,
+                startedAt: startedAtIso,
+                completedAt: new Date(completedAt).toISOString(),
+                durationMs: completedAt - startedAt,
+                originalFileName: normalizedImageRef,
+                fileSizeBytes: 0,
+                scanMode: 'image',
+                targetKind: this.getTargetKind(target),
+                cacheDir: settings.cacheDir,
+                options: {
+                    scanners: this.effectiveScanners(settings, normalizedOptions),
+                    severities: this.effectiveSeverities(settings, normalizedOptions),
+                    offlineScan: true,
+                    skipDbUpdate: true,
+                    skipJavaDbUpdate: true,
+                    ignoreUnfixed: normalizedOptions.ignoreUnfixed ?? settings.ignoreUnfixed,
+                    timeout: effectiveTimeout,
+                    analysisStrategy: normalizedOptions.analysisStrategy || 'auto',
+                    rpmOsFamily: normalizedOptions.rpmOsFamily,
+                    rpmOsVersion: normalizedOptions.rpmOsVersion,
+                },
+                commands,
+                resultSummary: this.summarizeTrivyResult(result),
+            });
+
+            return { rawResult: result };
+        } catch (error) {
+            const stdout = (error as any)?.stdout;
+            if (stdout) {
+                try {
+                    return { rawResult: JSON.parse(stdout) };
+                } catch {
+                    // Fall through to the same safe Trivy error mapping as uploaded scans.
+                }
+            }
+
+            if (error instanceof BadRequestException || error instanceof RequestTimeoutException) {
+                throw error;
+            }
+
+            const message = this.redactSensitiveText((error as Error).message, sensitiveValues);
+            const details = this.redactSensitiveText([
+                (error as any)?.stderr,
+                (error as any)?.stdout,
+                (error as Error).message,
+            ].filter(Boolean).join('\n'), sensitiveValues);
+
+            if (details.includes('first run cannot skip downloading DB') || details.includes('DB error')) {
+                throw new ServiceUnavailableException(
+                    'Trivy vulnerability DB is not available. Import or bundle trivy-db before running offline scans.',
+                );
+            }
+
+            const stack = this.redactSensitiveText((error as Error).stack || '', sensitiveValues);
+            this.logger.error(`Trivy scan failed: ${message}${details ? `\n${this.truncateLog(details)}` : ''}`, stack);
+            throw new ServiceUnavailableException(`Trivy scan failed: ${message}${details ? `: ${this.truncateLog(details)}` : ''}`);
+        }
+    }
 
     async scanUploadedFile(filePath: string, options: TrivyScanOptions = {}, operationId?: string): Promise<TrivyScanOutput> {
         const uploadDir = path.dirname(filePath);
@@ -809,6 +926,10 @@ export class TrivyScanService {
     }
 
     private redactCommandArgs(args: string[], target: PreparedScanTarget): string[] {
+        if (target.targetKind === 'image-reference') {
+            return args.map((arg) => /\s/.test(arg) ? JSON.stringify(arg) : arg);
+        }
+
         const targetPath = path.resolve(target.targetPath);
         const uploadDir = path.dirname(targetPath);
         return args.map((arg) => {
@@ -1074,7 +1195,7 @@ export class TrivyScanService {
             settings.cacheDir,
         ];
 
-        if (target.mode === 'image') {
+        if (target.mode === 'image' && target.targetKind !== 'image-reference') {
             args.push('--input', target.targetPath);
         }
 
@@ -1103,10 +1224,17 @@ export class TrivyScanService {
             args.push('--ignore-unfixed');
         }
 
-        if (target.mode !== 'image') {
+        if (target.mode !== 'image' || target.targetKind === 'image-reference') {
             args.push(target.targetPath);
         }
         return args;
+    }
+
+    private redactSensitiveText(value: string, sensitiveValues: string[]): string {
+        return sensitiveValues.reduce(
+            (redacted, sensitiveValue) => redacted.split(sensitiveValue).join('[REDACTED]'),
+            value,
+        );
     }
 
     private normalizeScanOptions(options: TrivyScanOptions): TrivyScanOptions {
@@ -1143,6 +1271,7 @@ export class TrivyScanService {
     }
 
     private getTargetKind(target: PreparedScanTarget): string {
+        if (target.targetKind === 'image-reference') return 'container-image-reference';
         if (target.mode === 'image') return 'container-image-archive';
         if (target.mode === 'repo') return 'source-repository-archive';
         if (target.mode === 'sbom') return 'sbom-file';
