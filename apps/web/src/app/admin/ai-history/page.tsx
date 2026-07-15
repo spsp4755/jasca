@@ -19,6 +19,7 @@ import {
     Loader2,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
+import { AiExportButtons } from '@/components/ai';
 
 interface AiExecution {
     id: string;
@@ -338,12 +339,15 @@ export default function AiHistoryPage() {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                     일시
                                 </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    내보내기
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             {filteredExecutions.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         실행 기록이 없습니다
                                     </td>
                                 </tr>
@@ -390,6 +394,9 @@ export default function AiHistoryPage() {
                                         </td>
                                         <td className="px-6 py-4 text-sm text-slate-500">
                                             {formatDate(exec.createdAt)}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <AiExportButtons executionId={exec.id} compact />
                                         </td>
                                     </tr>
                                 ))

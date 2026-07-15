@@ -190,6 +190,7 @@ export function useAiExecution(
                 createdAt: new Date(),
                 isMock: data.isMock,
                 mockReason: data.mockReason,
+                isSaved: data.isSaved !== false,
             };
 
             setProgress(contextKey, 100);

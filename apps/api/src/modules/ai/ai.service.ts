@@ -36,6 +36,8 @@ export interface AiExecutionResult {
     isMock?: boolean;
     /** Reason for using mock data (if applicable) */
     mockReason?: string;
+    /** Whether the result was persisted and can be exported from history */
+    isSaved?: boolean;
 }
 
 export interface TokenEstimate {
@@ -341,6 +343,7 @@ export class AiService {
                             durationMs,
                             status: errorMessage.includes('timed out') ? 'TIMEOUT' : 'ERROR',
                             error: errorMessage,
+                            context: JSON.parse(maskedContext),
                             result: '',
                         },
                     }).catch((dbError) => {
@@ -369,8 +372,9 @@ export class AiService {
         const durationMs = Date.now() - startTime;
 
         // Log execution to database
+        let savedExecutionId: string | undefined;
         try {
-            await this.prisma.aiExecution.create({
+            const savedExecution = await this.prisma.aiExecution.create({
                 data: {
                     userId,
                     action,
@@ -382,9 +386,11 @@ export class AiService {
                     durationMs,
                     status,
                     error: errorMessage,
-                    result: content.substring(0, 5000), // Limit result size
+                    context: JSON.parse(maskedContext),
+                    result: content,
                 },
             });
+            savedExecutionId = savedExecution.id;
         } catch (dbError) {
             this.logger.warn('Failed to log AI execution to database:', dbError);
         }
@@ -393,7 +399,7 @@ export class AiService {
         this.logger.log(`AI execution completed. Model: ${modelName}, Duration: ${durationMs}ms, Tokens: ${estimate.inputTokens}/${estimate.outputTokens}`);
 
         return {
-            id: crypto.randomUUID(),
+            id: savedExecutionId || crypto.randomUUID(),
             action,
             content,
             summary: this.generateSummaryFromContent(content),
@@ -403,6 +409,7 @@ export class AiService {
             usedPrompt: promptTemplate,
             isMock,
             mockReason,
+            isSaved: Boolean(savedExecutionId),
         };
     }
 
