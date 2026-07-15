@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { SourceType } from '@prisma/client';
 import { createHash, timingSafeEqual } from 'crypto';
+import { assertProjectAccess, RequestUser } from '../../common/authz/access-control';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ScansService } from '../scans/scans.service';
 import { TrivyScanService } from '../scans/services/trivy-scan.service';
@@ -14,13 +15,15 @@ import { HarborSettings, normalizeHarborSettings } from './harbor.service';
 
 export type HarborScanTrigger = 'manual' | 'webhook';
 
-export interface HarborScanInput {
+export interface HarborManualScanInput {
     projectId: string;
     imageRef: string;
     imageDigest: string;
     tag?: string;
+}
+
+interface HarborScanInput extends HarborManualScanInput {
     trigger: HarborScanTrigger;
-    requestedById?: string;
 }
 
 export interface HarborPushArtifactPayload {
@@ -58,6 +61,7 @@ const configuredRecentWindowMs = Number(process.env.HARBOR_SCAN_DEDUP_TTL_MS);
 const RECENT_SCAN_WINDOW_MS = Number.isFinite(configuredRecentWindowMs) && configuredRecentWindowMs > 0
     ? configuredRecentWindowMs
     : 10 * 60 * 1000;
+const ADVISORY_LOCK_TRANSACTION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class HarborScanService {
@@ -122,11 +126,19 @@ export class HarborScanService {
             : { accepted: true };
     }
 
-    async scan(input: HarborScanInput): Promise<HarborScanResult> {
-        return this.scanWithSettings(input, await this.getSettings());
+    async scan(input: HarborManualScanInput, currentUser: RequestUser): Promise<HarborScanResult> {
+        return this.scanWithSettings(
+            { ...input, trigger: 'manual' },
+            await this.getSettings(),
+            currentUser,
+        );
     }
 
-    private async scanWithSettings(input: HarborScanInput, settings: HarborSettings): Promise<HarborScanResult> {
+    private async scanWithSettings(
+        input: HarborScanInput,
+        settings: HarborSettings,
+        currentUser?: RequestUser,
+    ): Promise<HarborScanResult> {
         if (!settings.enabled) {
             throw new ForbiddenException('Harbor integration is disabled');
         }
@@ -143,57 +155,85 @@ export class HarborScanService {
 
         const project = await this.prisma.project.findUnique({
             where: { id: projectId },
-            select: { id: true },
+            select: { id: true, organizationId: true },
         });
         if (!project) {
             throw new BadRequestException(`Project with ID ${projectId} not found`);
         }
-
-        const deduplicationKey = `${projectId}\u0000${imageRef}\u0000${imageDigest}`;
-        if (this.activeScans.has(deduplicationKey)) {
-            return { duplicate: true };
+        if (input.trigger === 'manual') {
+            assertProjectAccess(currentUser, project);
         }
 
-        const recentScan = await this.prisma.scanResult.findFirst({
-            where: {
-                projectId,
-                imageRef,
-                imageDigest,
-                scannedAt: { gte: new Date(Date.now() - RECENT_SCAN_WINDOW_MS) },
-            },
-            select: { id: true },
-        });
-        if (recentScan || this.activeScans.has(deduplicationKey)) {
+        const immutableImageRef = `${this.repositoryReference(imageRef)}@${imageDigest}`;
+        const deduplicationKey = `${projectId}\u0000${immutableImageRef}`;
+        if (this.activeScans.has(deduplicationKey)) {
             return { duplicate: true };
         }
 
         this.activeScans.add(deduplicationKey);
         try {
-            const immutableImageRef = `${this.repositoryReference(imageRef)}@${imageDigest}`;
-            const { rawResult } = await this.trivyScanService.scanImageReference(immutableImageRef, {
-                registryUsername: settings.username,
-                registryPassword: settings.password,
-            });
-            rawResult.Metadata = rawResult.Metadata || {};
-            rawResult.Metadata.JascaScanEvidence = rawResult.Metadata.JascaScanEvidence || {};
-            rawResult.Metadata.JascaScanEvidence.harbor = {
-                trigger: input.trigger,
-                imageRef,
-                imageDigest,
-                ...(input.tag ? { tag: input.tag } : {}),
-            };
+            const [lockKeyHigh, lockKeyLow] = this.advisoryLockKey(projectId, immutableImageRef);
+            return await this.prisma.$transaction(async (transaction) => {
+                let lockAcquired = false;
+                try {
+                    const lockRows = await transaction.$queryRaw<Array<{ acquired: boolean }>>`
+                        SELECT pg_try_advisory_lock(${lockKeyHigh}, ${lockKeyLow}) AS "acquired"
+                    `;
+                    lockAcquired = lockRows[0]?.acquired === true;
+                    if (!lockAcquired) {
+                        return { duplicate: true };
+                    }
 
-            const scan = await this.scansService.uploadScan(projectId, {
-                sourceType: SourceType.TRIVY_JSON,
-                imageRef,
-                imageDigest,
-                tag: input.tag,
-            }, rawResult, {
-                uploadedById: input.requestedById,
-                userAgent: `Harbor ${input.trigger} scan`,
-            });
+                    const recentScan = await transaction.scanResult.findFirst({
+                        where: {
+                            projectId,
+                            imageRef,
+                            imageDigest,
+                            summary: { isNot: null },
+                            scannedAt: { gte: new Date(Date.now() - RECENT_SCAN_WINDOW_MS) },
+                        },
+                        select: { id: true },
+                    });
+                    if (recentScan) {
+                        return { duplicate: true };
+                    }
 
-            return { duplicate: false, scan };
+                    const { rawResult } = await this.trivyScanService.scanImageReference(immutableImageRef, {
+                        registryUsername: settings.username,
+                        registryPassword: settings.password,
+                    });
+                    rawResult.Metadata = rawResult.Metadata || {};
+                    rawResult.Metadata.JascaScanEvidence = rawResult.Metadata.JascaScanEvidence || {};
+                    rawResult.Metadata.JascaScanEvidence.harbor = {
+                        trigger: input.trigger,
+                        imageRef,
+                        imageDigest,
+                        ...(input.tag ? { tag: input.tag } : {}),
+                    };
+
+                    const uploadDto = {
+                        sourceType: SourceType.TRIVY_JSON,
+                        imageRef,
+                        imageDigest,
+                        tag: input.tag,
+                    };
+                    const sourceInfo = {
+                        ...(currentUser ? { uploadedById: currentUser.id } : {}),
+                        userAgent: `Harbor ${input.trigger} scan`,
+                    };
+                    const scan = currentUser
+                        ? await this.scansService.uploadScan(projectId, uploadDto, rawResult, sourceInfo, currentUser)
+                        : await this.scansService.uploadScan(projectId, uploadDto, rawResult, sourceInfo);
+
+                    return { duplicate: false, scan };
+                } finally {
+                    if (lockAcquired) {
+                        await transaction.$queryRaw<Array<{ released: boolean }>>`
+                            SELECT pg_advisory_unlock(${lockKeyHigh}, ${lockKeyLow}) AS "released"
+                        `;
+                    }
+                }
+            }, { timeout: ADVISORY_LOCK_TRANSACTION_TIMEOUT_MS });
         } finally {
             this.activeScans.delete(deduplicationKey);
         }
@@ -290,6 +330,15 @@ export class HarborScanService {
         const lastSlash = withoutDigest.lastIndexOf('/');
         const tagSeparator = withoutDigest.lastIndexOf(':');
         return tagSeparator > lastSlash ? withoutDigest.slice(0, tagSeparator) : withoutDigest;
+    }
+
+    private advisoryLockKey(projectId: string, immutableImageRef: string): [number, number] {
+        const digest = createHash('sha256')
+            .update(projectId)
+            .update('\u0000')
+            .update(immutableImageRef)
+            .digest();
+        return [digest.readInt32BE(0), digest.readInt32BE(4)];
     }
 
     private normalizeDigest(value: string | undefined): string {

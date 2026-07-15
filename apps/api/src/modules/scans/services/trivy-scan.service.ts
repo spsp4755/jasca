@@ -157,9 +157,11 @@ export class TrivyScanService {
             const timeoutMs = this.parseTimeoutMs(effectiveTimeout);
             const commands: TrivyExecutionEvidence['commands'] = [];
             const processEnv: NodeJS.ProcessEnv = {
-                ...(registryUsername ? { TRIVY_USERNAME: registryUsername } : {}),
-                ...(registryPassword ? { TRIVY_PASSWORD: registryPassword } : {}),
+                TRIVY_USERNAME: undefined,
+                TRIVY_PASSWORD: undefined,
             };
+            if (registryUsername) processEnv.TRIVY_USERNAME = registryUsername;
+            if (registryPassword) processEnv.TRIVY_PASSWORD = registryPassword;
 
             this.logger.log(`Trivy image reference scan prepared. operationId=${operationId || 'n/a'} image=${normalizedImageRef}`);
             const stdout = await this.runTrivy(
@@ -387,8 +389,17 @@ export class TrivyScanService {
                 return;
             }
 
+            const processEnv = { ...process.env };
+            for (const [name, value] of Object.entries(extraEnv)) {
+                if (value === undefined) {
+                    delete processEnv[name];
+                } else {
+                    processEnv[name] = value;
+                }
+            }
+
             const child = spawn(this.trivyBinary, args, {
-                env: { ...process.env, ...extraEnv },
+                env: processEnv,
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
             const stdoutChunks: Buffer[] = [];

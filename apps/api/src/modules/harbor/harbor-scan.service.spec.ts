@@ -7,6 +7,17 @@ import { HarborScanService } from './harbor-scan.service';
 
 describe('HarborScanService', () => {
     const imageDigest = `sha256:${'a'.repeat(64)}`;
+    const requestUser = {
+        id: 'user-1',
+        organizationId: 'org-1',
+        roles: [{ role: 'DEVELOPER', scope: 'ORGANIZATION', scopeId: 'org-1' }],
+    };
+    const manualScanInput = {
+        projectId: 'jasca-project',
+        imageRef: 'harbor.example.test/platform/backend:latest',
+        imageDigest,
+        tag: 'latest',
+    };
     const settings = {
         enabled: true,
         baseUrl: 'https://harbor.example.test',
@@ -40,7 +51,11 @@ describe('HarborScanService', () => {
     function createService(overrides: {
         harborSettings?: Partial<typeof settings>;
         recentScan?: { id: string } | null;
+        findRecentScan?: jest.Mock;
+        project?: { id: string; organizationId: string } | null;
         scanResult?: Promise<any>;
+        tryAdvisoryLock?: () => boolean | Promise<boolean>;
+        releaseAdvisoryLock?: () => void | Promise<void>;
     } = {}) {
         const settingsService = {
             getRaw: jest.fn().mockResolvedValue({ ...settings, ...overrides.harborSettings }),
@@ -58,13 +73,37 @@ describe('HarborScanService', () => {
         const scansService = {
             uploadScan: jest.fn().mockResolvedValue({ id: 'scan-1' }),
         };
+        const findRecentScan = overrides.findRecentScan || jest.fn().mockResolvedValue(overrides.recentScan ?? null);
+        const queryRaw = jest.fn(async (query: TemplateStringsArray) => {
+            const sql = query.join('');
+            if (sql.includes('pg_try_advisory_lock')) {
+                const acquired = overrides.tryAdvisoryLock
+                    ? await overrides.tryAdvisoryLock()
+                    : true;
+                return [{ acquired }];
+            }
+            if (sql.includes('pg_advisory_unlock')) {
+                await overrides.releaseAdvisoryLock?.();
+                return [{ released: true }];
+            }
+            throw new Error(`Unexpected raw query: ${sql}`);
+        });
+        const transactionClient = {
+            scanResult: { findFirst: findRecentScan },
+            $queryRaw: queryRaw,
+        };
         const prisma = {
             project: {
-                findUnique: jest.fn().mockResolvedValue({ id: 'jasca-project' }),
+                findUnique: jest.fn().mockResolvedValue(
+                    overrides.project === undefined
+                        ? { id: 'jasca-project', organizationId: 'org-1' }
+                        : overrides.project,
+                ),
             },
             scanResult: {
-                findFirst: jest.fn().mockResolvedValue(overrides.recentScan || null),
+                findFirst: findRecentScan,
             },
+            $transaction: jest.fn((callback: (tx: typeof transactionClient) => Promise<any>) => callback(transactionClient)),
         };
 
         return {
@@ -78,6 +117,7 @@ describe('HarborScanService', () => {
             trivyScanService,
             scansService,
             prisma,
+            queryRaw,
         };
     }
 
@@ -144,11 +184,27 @@ describe('HarborScanService', () => {
     });
 
     it('returns an accepted duplicate response for a recently completed image digest', async () => {
-        const { service, trivyScanService } = createService({ recentScan: { id: 'existing-scan' } });
+        const { service, trivyScanService, prisma } = createService({ recentScan: { id: 'existing-scan' } });
 
         await expect(service.handleWebhook('Bearer webhook-secret', pushPayload))
             .resolves.toEqual({ accepted: true, duplicate: true });
         expect(trivyScanService.scanImageReference).not.toHaveBeenCalled();
+        expect(prisma.scanResult.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                summary: { isNot: null },
+            }),
+        }));
+    });
+
+    it('retries a digest when a prior scan row never reached completed persistence', async () => {
+        const findRecentScan = jest.fn().mockImplementation(({ where }) => Promise.resolve(
+            where.summary?.isNot === null ? null : { id: 'incomplete-scan' },
+        ));
+        const { service, trivyScanService } = createService({ findRecentScan });
+
+        await expect(service.handleWebhook('Bearer webhook-secret', pushPayload))
+            .resolves.toEqual({ accepted: true });
+        expect(trivyScanService.scanImageReference).toHaveBeenCalledTimes(1);
     });
 
     it('deduplicates the same image reference and digest while its first scan is active', async () => {
@@ -157,35 +213,24 @@ describe('HarborScanService', () => {
             finishScan = resolve;
         });
         const { service, trivyScanService } = createService({ scanResult });
-        const input = {
-            projectId: 'jasca-project',
-            imageRef: 'harbor.example.test/platform/backend:latest',
-            imageDigest,
-            tag: 'latest',
-            trigger: 'manual' as const,
-        };
 
-        const firstScan = service.scan(input);
+        const firstScan = (service as any).scan(manualScanInput, requestUser);
         await Promise.resolve();
         await Promise.resolve();
-        await expect(service.scan(input)).resolves.toEqual({ duplicate: true });
+        await expect((service as any).scan(manualScanInput, requestUser)).resolves.toEqual({ duplicate: true });
         expect(trivyScanService.scanImageReference).toHaveBeenCalledTimes(1);
 
         finishScan?.({ rawResult: { Metadata: {}, Results: [] } });
         await firstScan;
     });
 
-    it('preserves manual trigger evidence and requester attribution', async () => {
+    it('uses the authenticated user for manual project access and requester attribution', async () => {
         const { service, scansService } = createService();
 
-        await service.scan({
-            projectId: 'jasca-project',
-            imageRef: 'harbor.example.test/platform/backend:latest',
-            imageDigest,
-            tag: 'latest',
-            trigger: 'manual',
-            requestedById: 'user-1',
-        });
+        await (service as any).scan({
+            ...manualScanInput,
+            requestedById: 'impersonated-user',
+        }, requestUser);
 
         expect(scansService.uploadScan).toHaveBeenCalledWith(
             'jasca-project',
@@ -201,7 +246,83 @@ describe('HarborScanService', () => {
                 uploadedById: 'user-1',
                 userAgent: 'Harbor manual scan',
             }),
+            requestUser,
         );
+    });
+
+    it('rejects a manual scan when the authenticated user cannot access the project', async () => {
+        const { service, trivyScanService } = createService({
+            project: { id: 'jasca-project', organizationId: 'org-2' },
+        });
+
+        await expect((service as any).scan(manualScanInput, requestUser))
+            .rejects.toBeInstanceOf(ForbiddenException);
+        expect(trivyScanService.scanImageReference).not.toHaveBeenCalled();
+    });
+
+    it('uses a Postgres advisory lock to deduplicate active scans across service instances', async () => {
+        let finishScan: ((result: any) => void) | undefined;
+        const scanResult = new Promise((resolve) => {
+            finishScan = resolve;
+        });
+        let lockHeld = false;
+        const tryAdvisoryLock = jest.fn(() => {
+            if (lockHeld) return false;
+            lockHeld = true;
+            return true;
+        });
+        const releaseAdvisoryLock = jest.fn(() => {
+            lockHeld = false;
+        });
+        const first = createService({ scanResult, tryAdvisoryLock, releaseAdvisoryLock });
+        const secondService = new HarborScanService(
+            first.settingsService as any,
+            first.trivyScanService as any,
+            first.scansService as any,
+            first.prisma as any,
+        );
+
+        const firstScan = (first.service as any).scan(manualScanInput, requestUser);
+        await Promise.resolve();
+        await Promise.resolve();
+        const secondScan = (secondService as any).scan(manualScanInput, requestUser);
+        try {
+            const secondOutcome = await Promise.race([
+                secondScan,
+                new Promise((resolve) => setTimeout(() => resolve('still-running'), 50)),
+            ]);
+            expect(secondOutcome).toEqual({ duplicate: true });
+            expect(first.trivyScanService.scanImageReference).toHaveBeenCalledTimes(1);
+        } finally {
+            finishScan?.({ rawResult: { Metadata: {}, Results: [] } });
+        }
+
+        await firstScan;
+        expect(tryAdvisoryLock).toHaveBeenCalledTimes(2);
+        const lockQueries = first.queryRaw.mock.calls.filter(([query]) =>
+            query.join('').includes('pg_try_advisory_lock'),
+        );
+        expect(lockQueries[0].slice(1)).toEqual(lockQueries[1].slice(1));
+    });
+
+    it('releases the advisory lock when Trivy execution fails', async () => {
+        let lockHeld = false;
+        const releaseAdvisoryLock = jest.fn(() => {
+            lockHeld = false;
+        });
+        const { service, queryRaw } = createService({
+            scanResult: Promise.reject(new Error('Trivy failed')),
+            tryAdvisoryLock: () => {
+                lockHeld = true;
+                return true;
+            },
+            releaseAdvisoryLock,
+        });
+
+        await expect((service as any).scan(manualScanInput, requestUser)).rejects.toThrow('Trivy failed');
+        expect(releaseAdvisoryLock).toHaveBeenCalledTimes(1);
+        expect(lockHeld).toBe(false);
+        expect(queryRaw.mock.calls.some(([query]) => query.join('').includes('pg_advisory_unlock'))).toBe(true);
     });
 
     it('rejects webhooks when the Harbor integration or automatic push scanning is disabled', async () => {

@@ -1,9 +1,15 @@
 import { Body, Controller, Get, Headers, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { RequestUser } from '../../common/authz/access-control';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { HarborPushArtifactPayload, HarborScanService } from './harbor-scan.service';
+import {
+    HarborManualScanInput,
+    HarborPushArtifactPayload,
+    HarborScanService,
+} from './harbor-scan.service';
 import { HarborService, HarborSettings } from './harbor.service';
 
 @ApiTags('Harbor')
@@ -27,7 +33,22 @@ export class HarborWebhookController {
 @Roles('SYSTEM_ADMIN')
 @Controller('harbor')
 export class HarborController {
-    constructor(private readonly harborService: HarborService) {}
+    constructor(
+        private readonly harborService: HarborService,
+        private readonly harborScanService: HarborScanService,
+    ) {}
+
+    @Post('scan')
+    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
+    @ApiOperation({ summary: 'Scan a Harbor image by immutable Digest' })
+    scan(@Body() input: HarborManualScanInput, @CurrentUser() user: RequestUser) {
+        return this.harborScanService.scan({
+            projectId: input.projectId,
+            imageRef: input.imageRef,
+            imageDigest: input.imageDigest,
+            tag: input.tag,
+        }, user);
+    }
 
     @Get('settings')
     @ApiOperation({ summary: 'Get Harbor settings without secrets' })
