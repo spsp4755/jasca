@@ -2,210 +2,153 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { AiResult } from '@/components/ai/ai-result-panel';
-import { AiActionType } from '@/components/ai/ai-button';
+import type { AiResult } from '@/components/ai/ai-result-panel';
+import type { AiActionType } from '@/components/ai/ai-button';
+import {
+    buildAiResult,
+    partializeAiState,
+    type AiJobResponse,
+    type PendingAiJob,
+} from '@/lib/ai-job-utils';
 
-// ============================================
-// AI Store State
-// ============================================
 interface AiState {
-    // Results history per context key
     results: Record<string, AiResult[]>;
-
-    // Active panel state
-    activePanel: {
-        key: string;
-        action: AiActionType;
-    } | null;
-
-    // Loading state per context key
+    activePanel: { key: string; action: AiActionType } | null;
     loadingStates: Record<string, boolean>;
-
-    // Execution progress per context key
     progressStates: Record<string, number>;
-
-    // Abort controllers for cancellation
-    abortControllers: Record<string, AbortController>;
+    pendingJobs: Record<string, PendingAiJob>;
+    jobErrors: Record<string, string>;
 }
 
-// ============================================
-// AI Store Actions
-// ============================================
 interface AiActions {
-    // Result management
     addResult: (key: string, result: AiResult) => void;
     getHistory: (key: string) => AiResult[];
     clearHistory: (key: string) => void;
-
-    // Panel management
     openPanel: (key: string, action: AiActionType) => void;
     closePanel: () => void;
-
-    // Loading state
     setLoading: (key: string, loading: boolean) => void;
     isLoading: (key: string) => boolean;
-
-    // Progress state
     setProgress: (key: string, progress: number) => void;
     getProgress: (key: string) => number;
-
-    // Execution control
-    registerAbortController: (key: string, controller: AbortController) => void;
-    cancelExecution: (key: string) => void;
-
-    // Get latest result
     getLatestResult: (key: string) => AiResult | null;
-
-    // Get previous results (excluding latest)
     getPreviousResults: (key: string) => AiResult[];
+    addPendingJob: (job: PendingAiJob) => void;
+    updatePendingJob: (id: string, status: PendingAiJob['status']) => void;
+    settleJob: (job: AiJobResponse) => void;
+    removePendingJob: (id: string) => void;
+    setJobError: (contextKey: string, message: string | null) => void;
+    getPendingJob: (contextKey: string) => PendingAiJob | null;
 }
 
-// ============================================
-// Maximum results to keep per context
-// ============================================
 const MAX_RESULTS_PER_CONTEXT = 10;
 
-// ============================================
-// AI Store
-// ============================================
 export const useAiStore = create<AiState & AiActions>()(
     persist(
         (set, get) => ({
-            // Initial state
             results: {},
             activePanel: null,
             loadingStates: {},
             progressStates: {},
-            abortControllers: {},
+            pendingJobs: {},
+            jobErrors: {},
 
-            // Add result to history
-            addResult: (key, result) => {
-                set((state) => {
-                    const existing = state.results[key] || [];
-                    const updated = [result, ...existing].slice(0, MAX_RESULTS_PER_CONTEXT);
-                    return {
-                        results: {
-                            ...state.results,
-                            [key]: updated,
-                        },
-                    };
-                });
-            },
-
-            // Get history for a key
-            getHistory: (key) => {
-                return get().results[key] || [];
-            },
-
-            // Clear history for a key
-            clearHistory: (key) => {
-                set((state) => {
-                    const { [key]: _, ...rest } = state.results;
-                    return { results: rest };
-                });
-            },
-
-            // Open result panel
-            openPanel: (key, action) => {
-                set({ activePanel: { key, action } });
-            },
-
-            // Close result panel
-            closePanel: () => {
-                set({ activePanel: null });
-            },
-
-            // Set loading state
-            setLoading: (key, loading) => {
-                set((state) => ({
-                    loadingStates: {
-                        ...state.loadingStates,
-                        [key]: loading,
-                    },
-                }));
-            },
-
-            // Check if loading
-            isLoading: (key) => {
-                return get().loadingStates[key] || false;
-            },
-
-            // Set progress
-            setProgress: (key, progress) => {
-                set((state) => ({
-                    progressStates: {
-                        ...state.progressStates,
-                        [key]: progress,
-                    },
-                }));
-            },
-
-            // Get progress
-            getProgress: (key) => {
+            addResult: (key, result) => set((state) => ({
+                results: {
+                    ...state.results,
+                    [key]: [
+                        result,
+                        ...(state.results[key] || []).filter(existing => existing.id !== result.id),
+                    ].slice(0, MAX_RESULTS_PER_CONTEXT),
+                },
+            })),
+            getHistory: key => get().results[key] || [],
+            clearHistory: key => set((state) => {
+                const { [key]: _removed, ...results } = state.results;
+                return { results };
+            }),
+            openPanel: (key, action) => set({ activePanel: { key, action } }),
+            closePanel: () => set({ activePanel: null }),
+            setLoading: (key, loading) => set((state) => ({
+                loadingStates: { ...state.loadingStates, [key]: loading },
+            })),
+            isLoading: key => get().loadingStates[key]
+                || Object.values(get().pendingJobs).some(job => job.contextKey === key),
+            setProgress: (key, progress) => set((state) => ({
+                progressStates: { ...state.progressStates, [key]: progress },
+            })),
+            getProgress: key => {
+                const pending = Object.values(get().pendingJobs).find(job => job.contextKey === key);
+                if (pending) return pending.status === 'RUNNING' ? 65 : 15;
                 return get().progressStates[key] || 0;
             },
+            getLatestResult: key => get().results[key]?.[0] || null,
+            getPreviousResults: key => (get().results[key] || []).slice(1),
 
-            // Register abort controller
-            registerAbortController: (key, controller) => {
-                set((state) => ({
-                    abortControllers: {
-                        ...state.abortControllers,
-                        [key]: controller,
+            addPendingJob: job => set((state) => ({
+                pendingJobs: { ...state.pendingJobs, [job.id]: job },
+                loadingStates: { ...state.loadingStates, [job.contextKey]: true },
+                progressStates: { ...state.progressStates, [job.contextKey]: 15 },
+                jobErrors: { ...state.jobErrors, [job.contextKey]: '' },
+            })),
+            updatePendingJob: (id, status) => set((state) => {
+                const job = state.pendingJobs[id];
+                if (!job) return state;
+                return {
+                    pendingJobs: {
+                        ...state.pendingJobs,
+                        [id]: { ...job, status, updatedAt: new Date().toISOString() },
                     },
-                }));
-            },
-
-            // Cancel execution
-            cancelExecution: (key) => {
-                const controller = get().abortControllers[key];
-                if (controller) {
-                    controller.abort();
-                    set((state) => {
-                        const { [key]: _, ...rest } = state.abortControllers;
-                        return {
-                            abortControllers: rest,
-                            loadingStates: {
-                                ...state.loadingStates,
-                                [key]: false,
-                            },
-                            progressStates: {
-                                ...state.progressStates,
-                                [key]: 0,
-                            },
-                        };
-                    });
-                }
-            },
-
-            // Get latest result
-            getLatestResult: (key) => {
-                const history = get().results[key];
-                return history?.[0] || null;
-            },
-
-            // Get previous results
-            getPreviousResults: (key) => {
-                const history = get().results[key] || [];
-                return history.slice(1);
-            },
+                    progressStates: {
+                        ...state.progressStates,
+                        [job.contextKey]: status === 'RUNNING' ? 65 : 15,
+                    },
+                };
+            }),
+            settleJob: job => set((state) => {
+                const pending = state.pendingJobs[job.id];
+                if (!pending) return state;
+                const { [job.id]: _removed, ...pendingJobs } = state.pendingJobs;
+                const result = buildAiResult(job);
+                const message = job.status === 'SUCCESS'
+                    ? ''
+                    : job.error || (job.status === 'CANCELLED' ? 'AI 분석이 취소되었습니다.' : 'AI 분석에 실패했습니다.');
+                return {
+                    pendingJobs,
+                    results: result ? {
+                        ...state.results,
+                        [pending.contextKey]: [
+                            result,
+                            ...(state.results[pending.contextKey] || []).filter(existing => existing.id !== result.id),
+                        ].slice(0, MAX_RESULTS_PER_CONTEXT),
+                    } : state.results,
+                    loadingStates: { ...state.loadingStates, [pending.contextKey]: false },
+                    progressStates: { ...state.progressStates, [pending.contextKey]: result ? 100 : 0 },
+                    jobErrors: { ...state.jobErrors, [pending.contextKey]: message },
+                };
+            }),
+            removePendingJob: id => set((state) => {
+                const job = state.pendingJobs[id];
+                if (!job) return state;
+                const { [id]: _removed, ...pendingJobs } = state.pendingJobs;
+                return {
+                    pendingJobs,
+                    loadingStates: { ...state.loadingStates, [job.contextKey]: false },
+                };
+            }),
+            setJobError: (contextKey, message) => set((state) => ({
+                jobErrors: { ...state.jobErrors, [contextKey]: message || '' },
+            })),
+            getPendingJob: contextKey => Object.values(get().pendingJobs)
+                .find(job => job.contextKey === contextKey) || null,
         }),
         {
             name: 'ai-store',
             storage: createJSONStorage(() => localStorage),
-            partialize: (state) => ({
-                // Only persist results, not loading states or controllers
-                results: state.results,
-            }),
-        }
-    )
+            partialize: partializeAiState,
+        },
+    ),
 );
 
-// ============================================
-// Helper to generate context key
-// ============================================
 export function generateAiContextKey(action: AiActionType, entityId?: string): string {
-    if (entityId) {
-        return `${action}:${entityId}`;
-    }
-    return action;
+    return entityId ? `${action}:${entityId}` : action;
 }

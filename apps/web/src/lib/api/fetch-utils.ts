@@ -2,6 +2,7 @@
  * Fetch utilities with authentication support
  */
 import { useAuthStore } from '@/stores/auth-store';
+import { getDownloadFileName, validateDownloadPayload } from '@/lib/ai-job-utils';
 
 /**
  * Fetch with authentication token automatically added
@@ -50,7 +51,7 @@ export async function fetchJsonWithAuth<T>(
  * (so the Bearer token is sent) and triggers a browser download. The filename is
  * taken from the Content-Disposition header when available, else fallbackName.
  */
-export async function downloadWithAuth(url: string, fallbackName: string): Promise<void> {
+export async function downloadWithAuth(url: string, fallbackName: string): Promise<string> {
     const res = await fetchWithAuth(url);
     if (!res.ok) {
         const error = await res.text();
@@ -58,24 +59,9 @@ export async function downloadWithAuth(url: string, fallbackName: string): Promi
     }
 
     const fileName = getDownloadFileName(res.headers.get('Content-Disposition'), fallbackName);
-
-    triggerBlobDownload(await res.blob(), fileName);
-}
-
-function getDownloadFileName(disposition: string | null, fallbackName: string): string {
-    if (!disposition) return fallbackName;
-
-    const encodedMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
-    if (encodedMatch?.[1]) {
-        try {
-            return decodeURIComponent(encodedMatch[1]);
-        } catch {
-            return encodedMatch[1];
-        }
-    }
-
-    const match = /filename="?([^";]+)"?/i.exec(disposition);
-    return match?.[1] || fallbackName;
+    const blob = await validateDownloadPayload(await res.blob(), res.headers.get('Content-Type') || '');
+    triggerBlobDownload(blob, fileName);
+    return fileName;
 }
 
 /**
