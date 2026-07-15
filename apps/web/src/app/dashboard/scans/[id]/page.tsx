@@ -206,6 +206,10 @@ export default function ScanDetailPage() {
     // Build a compact context for AI analysis (cap vuln list to keep tokens sane).
     const buildAiContext = () => ({
         screen: 'scanDetail',
+        scanId: id,
+        scanner: evidence?.scanner || scannerLabel,
+        location: scanLocation || evidence?.targetUrl || targetName,
+        reference: (scan as any).imageDigest || (scan as any).imageRef || targetName,
         target: targetName,
         project: (scan as any).project?.name,
         summary,
