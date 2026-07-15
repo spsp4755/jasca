@@ -223,6 +223,33 @@ describe('AI execution exports', () => {
         expect(exported.content.length).toBeGreaterThan(1_000);
     });
 
+    it('keeps report tables canonical and evidence concise in PDF exports', async () => {
+        const { service } = createExportService({
+            ...savedExecution,
+            result: [
+                '## 상세 분석',
+                '패치 우선순위를 확인하십시오.',
+                '| ID | 이름 | 심각도 |',
+                '| --- | --- | --- |',
+                '| CVE-DUPLICATE | 중복 표 | HIGH |',
+            ].join('\n'),
+        });
+        const textSpy = jest.spyOn((PDFDocument as any).prototype, 'text');
+
+        await (service as any).exportExecution('execution-1', 'pdf', {
+            id: 'user-1',
+            roles: ['DEVELOPER'],
+            isApiToken: false,
+        }, 'summary');
+
+        const rendered = textSpy.mock.calls.map(call => String(call[0])).join('\n');
+        expect(rendered).toContain('패치 우선순위를 확인하십시오.');
+        expect(rendered).not.toContain('CVE-DUPLICATE');
+        expect(rendered).toContain('스캐너: Trivy');
+        expect(rendered).not.toContain('저장된 입력 컨텍스트');
+        textSpy.mockRestore();
+    });
+
     it('renders a real six-column DOCX table with Korean text and no reasoning', async () => {
         const { service } = createExportService();
 
