@@ -52,6 +52,7 @@ model Project {
   
   registries     Registry[]
   scanResults    ScanResult[]
+  harborScanJobs HarborScanJob[]
   policies       Policy[]
   manualAdvisories ManualAdvisory[]
   assetCriticality AssetCriticality?
@@ -227,6 +228,7 @@ model ScanResult {
   packageLicenses PackageLicense[]
   clustaraDeliveries ClustaraDelivery[]
   artifacts       ScanArtifact[]
+  harborScanJobs  HarborScanJob[]
   
   scannedAt       DateTime  @default(now())
   createdAt       DateTime  @default(now())
@@ -234,6 +236,34 @@ model ScanResult {
   @@index([projectId, createdAt])
   @@index([imageRef])
   @@index([imageDigest])
+}
+
+enum HarborScanJobStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model HarborScanJob {
+  id           String              @id @default(uuid())
+  projectId    String
+  project      Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  imageRef     String
+  imageDigest  String
+  tag          String?
+  trigger      String
+  status       HarborScanJobStatus
+  scanResultId String?
+  scanResult   ScanResult?         @relation(fields: [scanResultId], references: [id], onDelete: SetNull)
+  error        String?             @db.Text
+  startedAt    DateTime            @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@unique([projectId, imageDigest])
+  @@index([status, startedAt])
+  @@index([scanResultId])
 }
 
 model ScanSummary {

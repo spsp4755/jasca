@@ -4,7 +4,7 @@ import {
     Injectable,
     UnauthorizedException,
 } from '@nestjs/common';
-import { SourceType } from '@prisma/client';
+import { HarborScanJobStatus, SourceType } from '@prisma/client';
 import { createHash, timingSafeEqual } from 'crypto';
 import { assertProjectAccess, RequestUser } from '../../common/authz/access-control';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -61,12 +61,14 @@ const configuredRecentWindowMs = Number(process.env.HARBOR_SCAN_DEDUP_TTL_MS);
 const RECENT_SCAN_WINDOW_MS = Number.isFinite(configuredRecentWindowMs) && configuredRecentWindowMs > 0
     ? configuredRecentWindowMs
     : 10 * 60 * 1000;
-const ADVISORY_LOCK_TRANSACTION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const configuredStaleJobTtlMs = Number(process.env.HARBOR_SCAN_JOB_STALE_TTL_MS);
+const STALE_JOB_TTL_MS = Number.isFinite(configuredStaleJobTtlMs) && configuredStaleJobTtlMs > 0
+    ? configuredStaleJobTtlMs
+    : 24 * 60 * 60 * 1000;
+const STALE_JOB_ERROR = 'Harbor scan job exceeded its stale TTL';
 
 @Injectable()
 export class HarborScanService {
-    private readonly activeScans = new Set<string>();
-
     constructor(
         private readonly settingsService: SettingsService,
         private readonly trivyScanService: TrivyScanService,
@@ -165,78 +167,165 @@ export class HarborScanService {
         }
 
         const immutableImageRef = `${this.repositoryReference(imageRef)}@${imageDigest}`;
-        const deduplicationKey = `${projectId}\u0000${immutableImageRef}`;
-        if (this.activeScans.has(deduplicationKey)) {
+        const job = await this.claimJob({
+            projectId,
+            imageRef,
+            imageDigest,
+            tag: input.tag,
+            trigger: input.trigger,
+        });
+        if (!job) {
             return { duplicate: true };
         }
 
-        this.activeScans.add(deduplicationKey);
         try {
-            const [lockKeyHigh, lockKeyLow] = this.advisoryLockKey(projectId, immutableImageRef);
-            return await this.prisma.$transaction(async (transaction) => {
-                let lockAcquired = false;
-                try {
-                    const lockRows = await transaction.$queryRaw<Array<{ acquired: boolean }>>`
-                        SELECT pg_try_advisory_lock(${lockKeyHigh}, ${lockKeyLow}) AS "acquired"
-                    `;
-                    lockAcquired = lockRows[0]?.acquired === true;
-                    if (!lockAcquired) {
-                        return { duplicate: true };
-                    }
+            const { rawResult } = await this.trivyScanService.scanImageReference(immutableImageRef, {
+                registryUsername: settings.username,
+                registryPassword: settings.password,
+            });
+            rawResult.Metadata = rawResult.Metadata || {};
+            rawResult.Metadata.JascaScanEvidence = rawResult.Metadata.JascaScanEvidence || {};
+            rawResult.Metadata.JascaScanEvidence.harbor = {
+                trigger: input.trigger,
+                imageRef,
+                imageDigest,
+                ...(input.tag ? { tag: input.tag } : {}),
+            };
 
-                    const recentScan = await transaction.scanResult.findFirst({
-                        where: {
-                            projectId,
-                            imageRef,
-                            imageDigest,
-                            summary: { isNot: null },
-                            scannedAt: { gte: new Date(Date.now() - RECENT_SCAN_WINDOW_MS) },
-                        },
-                        select: { id: true },
-                    });
-                    if (recentScan) {
-                        return { duplicate: true };
-                    }
+            const uploadDto = {
+                sourceType: SourceType.TRIVY_JSON,
+                imageRef,
+                imageDigest,
+                tag: input.tag,
+            };
+            const sourceInfo = {
+                ...(currentUser ? { uploadedById: currentUser.id } : {}),
+                userAgent: `Harbor ${input.trigger} scan`,
+            };
+            const scan = currentUser
+                ? await this.scansService.uploadScan(projectId, uploadDto, rawResult, sourceInfo, currentUser)
+                : await this.scansService.uploadScan(projectId, uploadDto, rawResult, sourceInfo);
 
-                    const { rawResult } = await this.trivyScanService.scanImageReference(immutableImageRef, {
-                        registryUsername: settings.username,
-                        registryPassword: settings.password,
-                    });
-                    rawResult.Metadata = rawResult.Metadata || {};
-                    rawResult.Metadata.JascaScanEvidence = rawResult.Metadata.JascaScanEvidence || {};
-                    rawResult.Metadata.JascaScanEvidence.harbor = {
-                        trigger: input.trigger,
-                        imageRef,
-                        imageDigest,
-                        ...(input.tag ? { tag: input.tag } : {}),
-                    };
+            const completed = await this.prisma.harborScanJob.updateMany({
+                where: {
+                    projectId,
+                    imageDigest,
+                    status: HarborScanJobStatus.RUNNING,
+                    startedAt: job.startedAt,
+                },
+                data: {
+                    status: HarborScanJobStatus.COMPLETED,
+                    scanResultId: scan?.id || null,
+                    error: null,
+                    completedAt: new Date(),
+                },
+            });
+            if (completed.count !== 1) {
+                throw new Error('Harbor scan job ownership was lost before completion');
+            }
 
-                    const uploadDto = {
-                        sourceType: SourceType.TRIVY_JSON,
-                        imageRef,
-                        imageDigest,
-                        tag: input.tag,
-                    };
-                    const sourceInfo = {
-                        ...(currentUser ? { uploadedById: currentUser.id } : {}),
-                        userAgent: `Harbor ${input.trigger} scan`,
-                    };
-                    const scan = currentUser
-                        ? await this.scansService.uploadScan(projectId, uploadDto, rawResult, sourceInfo, currentUser)
-                        : await this.scansService.uploadScan(projectId, uploadDto, rawResult, sourceInfo);
-
-                    return { duplicate: false, scan };
-                } finally {
-                    if (lockAcquired) {
-                        await transaction.$queryRaw<Array<{ released: boolean }>>`
-                            SELECT pg_advisory_unlock(${lockKeyHigh}, ${lockKeyLow}) AS "released"
-                        `;
-                    }
-                }
-            }, { timeout: ADVISORY_LOCK_TRANSACTION_TIMEOUT_MS });
-        } finally {
-            this.activeScans.delete(deduplicationKey);
+            return { duplicate: false, scan };
+        } catch (error) {
+            await this.prisma.harborScanJob.updateMany({
+                where: {
+                    projectId,
+                    imageDigest,
+                    status: HarborScanJobStatus.RUNNING,
+                    startedAt: job.startedAt,
+                },
+                data: {
+                    status: HarborScanJobStatus.FAILED,
+                    error: this.redactJobError(error, settings),
+                    completedAt: new Date(),
+                },
+            });
+            throw error;
         }
+    }
+
+    private async claimJob(input: HarborScanInput): Promise<{ startedAt: Date } | null> {
+        const startedAt = new Date();
+        const runningJob = {
+            imageRef: input.imageRef,
+            tag: input.tag || null,
+            trigger: input.trigger,
+            status: HarborScanJobStatus.RUNNING,
+            scanResultId: null,
+            error: null,
+            startedAt,
+            completedAt: null,
+        };
+
+        try {
+            await this.prisma.harborScanJob.create({
+                data: {
+                    projectId: input.projectId,
+                    imageDigest: input.imageDigest,
+                    ...runningJob,
+                },
+                select: { id: true },
+            });
+            return { startedAt };
+        } catch (error) {
+            if (!this.isUniqueConstraintError(error)) {
+                throw error;
+            }
+        }
+
+        const now = new Date();
+        await this.prisma.harborScanJob.updateMany({
+            where: {
+                projectId: input.projectId,
+                imageDigest: input.imageDigest,
+                status: HarborScanJobStatus.RUNNING,
+                startedAt: { lte: new Date(now.getTime() - STALE_JOB_TTL_MS) },
+            },
+            data: {
+                status: HarborScanJobStatus.FAILED,
+                error: STALE_JOB_ERROR,
+                completedAt: now,
+            },
+        });
+
+        const claimed = await this.prisma.harborScanJob.updateMany({
+            where: {
+                projectId: input.projectId,
+                imageDigest: input.imageDigest,
+                OR: [
+                    { status: HarborScanJobStatus.FAILED },
+                    {
+                        status: HarborScanJobStatus.COMPLETED,
+                        completedAt: { lte: new Date(now.getTime() - RECENT_SCAN_WINDOW_MS) },
+                    },
+                ],
+            },
+            data: runningJob,
+        });
+
+        return claimed.count === 1 ? { startedAt } : null;
+    }
+
+    private isUniqueConstraintError(error: unknown): boolean {
+        return typeof error === 'object'
+            && error !== null
+            && 'code' in error
+            && error.code === 'P2002';
+    }
+
+    private redactJobError(error: unknown, settings: HarborSettings): string {
+        let message = error instanceof Error && error.message
+            ? error.message
+            : 'Harbor scan failed';
+        const credentials = [settings.username, settings.password]
+            .filter((value): value is string => Boolean(value));
+        for (const credential of credentials) {
+            message = message.split(credential).join('[REDACTED]');
+            const encodedCredential = encodeURIComponent(credential);
+            if (encodedCredential !== credential) {
+                message = message.split(encodedCredential).join('[REDACTED]');
+            }
+        }
+        return message.slice(0, 2000);
     }
 
     private async getSettings(): Promise<HarborSettings> {
@@ -330,15 +419,6 @@ export class HarborScanService {
         const lastSlash = withoutDigest.lastIndexOf('/');
         const tagSeparator = withoutDigest.lastIndexOf(':');
         return tagSeparator > lastSlash ? withoutDigest.slice(0, tagSeparator) : withoutDigest;
-    }
-
-    private advisoryLockKey(projectId: string, immutableImageRef: string): [number, number] {
-        const digest = createHash('sha256')
-            .update(projectId)
-            .update('\u0000')
-            .update(immutableImageRef)
-            .digest();
-        return [digest.readInt32BE(0), digest.readInt32BE(4)];
     }
 
     private normalizeDigest(value: string | undefined): string {
