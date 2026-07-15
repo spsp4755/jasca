@@ -6,6 +6,7 @@ ALTER TABLE "AiExecution"
     ADD COLUMN "attempts" INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN "startedAt" TIMESTAMP(3),
     ADD COLUMN "completedAt" TIMESTAMP(3),
+    ADD COLUMN "notificationClaimedAt" TIMESTAMP(3),
     ADD COLUMN "notificationSentAt" TIMESTAMP(3),
     ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 

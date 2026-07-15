@@ -1353,6 +1353,7 @@ model AiExecution {
   attempts          Int       @default(0)
   startedAt         DateTime?
   completedAt       DateTime?
+  notificationClaimedAt DateTime?
   notificationSentAt DateTime?
   
   createdAt     DateTime  @default(now())

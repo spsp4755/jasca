@@ -7,7 +7,6 @@ import {
     NotFoundException,
     OnModuleDestroy,
     OnModuleInit,
-    Optional,
 } from '@nestjs/common';
 import { AiExecution, AiExecutionStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -35,7 +34,9 @@ const TERMINAL_NOTIFICATION_STATUSES: AiExecutionStatus[] = [
     AiExecutionStatus.TIMEOUT,
 ];
 const WORKER_INTERVAL_MS = 5_000;
+const HEARTBEAT_INTERVAL_MS = 30_000;
 const STALE_JOB_MS = 15 * 60_000;
+const NOTIFICATION_LEASE_MS = 60_000;
 
 @Injectable()
 export class AiJobService implements OnModuleInit, OnModuleDestroy {
@@ -45,23 +46,12 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
     constructor(
         private readonly prisma: PrismaService,
         private readonly notifications: NotificationsService,
-        @Optional()
         @Inject(AI_JOB_EXECUTOR)
-        private readonly executor?: AiJobExecutor,
+        private readonly executor: AiJobExecutor,
     ) {}
 
     async onModuleInit(): Promise<void> {
-        await this.prisma.aiExecution.updateMany({
-            where: {
-                status: AiExecutionStatus.RUNNING,
-                startedAt: { lt: new Date(Date.now() - STALE_JOB_MS) },
-            },
-            data: {
-                status: AiExecutionStatus.QUEUED,
-                startedAt: null,
-            },
-        });
-
+        await this.recoverStaleJobs();
         this.worker = setInterval(() => {
             this.processNextJob().catch((error: Error) => {
                 this.logger.warn(`AI job worker failed: ${error.message}`);
@@ -87,9 +77,7 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
 
     async getJob(id: string, actor: AiJobActor): Promise<AiExecution> {
         const execution = await this.prisma.aiExecution.findUnique({ where: { id } });
-        if (!execution) {
-            throw new NotFoundException('AI execution not found');
-        }
+        if (!execution) throw new NotFoundException('AI execution not found');
 
         await this.assertCanAccess(execution, actor);
         return execution;
@@ -106,9 +94,7 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
             where: { id, status: { in: ACTIVE_STATUSES } },
             data: { status: AiExecutionStatus.CANCELLED, completedAt },
         });
-        if (cancelled.count !== 1) {
-            return this.getJob(id, actor);
-        }
+        if (cancelled.count !== 1) return this.getJob(id, actor);
 
         return {
             ...execution,
@@ -118,7 +104,8 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
     }
 
     async processNextJob(): Promise<AiExecution | null> {
-        if (!this.executor) return null;
+        await this.recoverStaleJobs();
+        await this.processPendingNotification();
 
         const queued = await this.prisma.aiExecution.findFirst({
             where: { status: AiExecutionStatus.QUEUED },
@@ -132,11 +119,13 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
             data: {
                 status: AiExecutionStatus.RUNNING,
                 startedAt: new Date(),
+                updatedAt: new Date(),
                 attempts: { increment: 1 },
             },
         });
         if (claimed.count !== 1) return null;
 
+        const heartbeat = this.startHeartbeat(queued.id);
         try {
             await this.executor.runQueuedExecution(queued.id);
         } catch (error) {
@@ -148,6 +137,8 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
                     completedAt: new Date(),
                 },
             });
+        } finally {
+            clearInterval(heartbeat);
         }
 
         const execution = await this.prisma.aiExecution.findUnique({ where: { id: queued.id } });
@@ -155,6 +146,49 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
 
         await this.createTerminalNotification(execution);
         return execution;
+    }
+
+    private recoverStaleJobs() {
+        return this.prisma.aiExecution.updateMany({
+            where: {
+                status: AiExecutionStatus.RUNNING,
+                updatedAt: { lt: new Date(Date.now() - STALE_JOB_MS) },
+            },
+            data: {
+                status: AiExecutionStatus.QUEUED,
+                startedAt: null,
+            },
+        });
+    }
+
+    private startHeartbeat(id: string): NodeJS.Timeout {
+        const heartbeat = setInterval(() => {
+            this.prisma.aiExecution.updateMany({
+                where: { id, status: AiExecutionStatus.RUNNING },
+                data: { updatedAt: new Date() },
+            }).catch((error: Error) => {
+                this.logger.warn(`Failed to heartbeat AI job ${id}: ${error.message}`);
+            });
+        }, HEARTBEAT_INTERVAL_MS);
+        heartbeat.unref?.();
+        return heartbeat;
+    }
+
+    private async processPendingNotification(): Promise<void> {
+        const leaseExpiredAt = new Date(Date.now() - NOTIFICATION_LEASE_MS);
+        const pending = await this.prisma.aiExecution.findFirst({
+            where: {
+                attempts: { gt: 0 },
+                status: { in: TERMINAL_NOTIFICATION_STATUSES },
+                notificationSentAt: null,
+                OR: [
+                    { notificationClaimedAt: null },
+                    { notificationClaimedAt: { lt: leaseExpiredAt } },
+                ],
+            },
+            orderBy: { completedAt: 'asc' },
+        });
+        if (pending) await this.createTerminalNotification(pending);
     }
 
     private async assertCanAccess(execution: Pick<AiExecution, 'userId'>, actor: AiJobActor): Promise<void> {
@@ -174,15 +208,21 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
     private async createTerminalNotification(execution: AiExecution): Promise<void> {
         if (!execution.userId || !TERMINAL_NOTIFICATION_STATUSES.includes(execution.status)) return;
 
-        const reserved = await this.prisma.aiExecution.updateMany({
+        const claimedAt = new Date();
+        const leaseExpiredAt = new Date(claimedAt.getTime() - NOTIFICATION_LEASE_MS);
+        const claimed = await this.prisma.aiExecution.updateMany({
             where: {
                 id: execution.id,
+                attempts: { gt: 0 },
                 notificationSentAt: null,
-                status: { in: TERMINAL_NOTIFICATION_STATUSES },
+                OR: [
+                    { notificationClaimedAt: null },
+                    { notificationClaimedAt: { lt: leaseExpiredAt } },
+                ],
             },
-            data: { notificationSentAt: new Date() },
+            data: { notificationClaimedAt: claimedAt },
         });
-        if (reserved.count !== 1) return;
+        if (claimed.count !== 1) return;
 
         const succeeded = execution.status === AiExecutionStatus.SUCCESS;
         const title = succeeded ? 'AI 분석이 완료되었습니다' : 'AI 분석에 실패했습니다';
@@ -198,7 +238,26 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
                 message,
                 `/dashboard/ai-results/${execution.id}`,
             );
+            await this.prisma.aiExecution.updateMany({
+                where: {
+                    id: execution.id,
+                    notificationSentAt: null,
+                    notificationClaimedAt: claimedAt,
+                },
+                data: {
+                    notificationClaimedAt: null,
+                    notificationSentAt: new Date(),
+                },
+            });
         } catch (error) {
+            await this.prisma.aiExecution.updateMany({
+                where: {
+                    id: execution.id,
+                    notificationSentAt: null,
+                    notificationClaimedAt: claimedAt,
+                },
+                data: { notificationClaimedAt: null },
+            });
             this.logger.warn(`Failed to create AI job notification: ${(error as Error).message}`);
         }
     }

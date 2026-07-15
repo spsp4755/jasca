@@ -1,4 +1,5 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { AiExecutionStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AiActionType, AI_PROMPTS, AI_ACTION_METADATA } from './ai-actions';
 
@@ -286,10 +287,39 @@ export class AiService {
     /**
      * Execute AI action with given context
      */
+    async runQueuedExecution(executionId: string): Promise<void> {
+        const execution = await this.prisma.aiExecution.findUnique({ where: { id: executionId } });
+        if (!execution) throw new Error(`AI execution not found: ${executionId}`);
+        if (execution.status !== AiExecutionStatus.RUNNING) return;
+        if (!execution.userId) throw new Error(`AI execution has no owner: ${executionId}`);
+        if (!Object.values(AiActionType).includes(execution.action as AiActionType)) {
+            throw new Error(`Unsupported AI action: ${execution.action}`);
+        }
+
+        const context = execution.context && typeof execution.context === 'object' && !Array.isArray(execution.context)
+            ? execution.context as Record<string, unknown>
+            : {};
+        await this.executeActionInternal(
+            execution.action as AiActionType,
+            context,
+            execution.userId,
+            executionId,
+        );
+    }
+
     async executeAction(
         action: AiActionType,
         context: Record<string, unknown>,
         userId: string,
+    ): Promise<AiExecutionResult> {
+        return this.executeActionInternal(action, context, userId);
+    }
+
+    private async executeActionInternal(
+        action: AiActionType,
+        context: Record<string, unknown>,
+        userId: string,
+        queuedExecutionId?: string,
     ): Promise<AiExecutionResult> {
         this.logger.log(`Executing AI action: ${action} for user: ${userId}`);
         const startTime = Date.now();
@@ -331,22 +361,20 @@ export class AiService {
                 if (!aiSettings.allowMockFallback) {
                     const estimate = this.estimateTokens(action, context);
                     const durationMs = Date.now() - startTime;
-                    await this.prisma.aiExecution.create({
-                        data: {
-                            userId,
-                            action,
-                            actionLabel: metadata?.label || action,
-                            provider: providerName,
-                            model: aiSettings.model,
-                            inputTokens: estimate.inputTokens,
-                            outputTokens: 0,
-                            durationMs,
-                            status: errorMessage.includes('timed out') ? 'TIMEOUT' : 'ERROR',
-                            error: errorMessage,
-                            context: JSON.parse(maskedContext),
-                            result: '',
-                        },
-                    }).catch((dbError) => {
+                    await this.persistExecution({
+                        userId,
+                        action,
+                        actionLabel: metadata?.label || action,
+                        provider: providerName,
+                        model: aiSettings.model,
+                        inputTokens: estimate.inputTokens,
+                        outputTokens: 0,
+                        durationMs,
+                        status: errorMessage.includes('timed out') ? 'TIMEOUT' : 'ERROR',
+                        error: errorMessage,
+                        context: JSON.parse(maskedContext),
+                        result: '',
+                    }, queuedExecutionId).catch((dbError) => {
                         this.logger.warn('Failed to log AI execution error to database:', dbError);
                     });
                     throw new ServiceUnavailableException(`AI provider call failed: ${errorMessage}`);
@@ -374,23 +402,20 @@ export class AiService {
         // Log execution to database
         let savedExecutionId: string | undefined;
         try {
-            const savedExecution = await this.prisma.aiExecution.create({
-                data: {
-                    userId,
-                    action,
-                    actionLabel: metadata?.label || action,
-                    provider: providerName,
-                    model: modelName,
-                    inputTokens: estimate.inputTokens,
-                    outputTokens: estimate.outputTokens,
-                    durationMs,
-                    status,
-                    error: errorMessage,
-                    context: JSON.parse(maskedContext),
-                    result: content,
-                },
-            });
-            savedExecutionId = savedExecution.id;
+            savedExecutionId = await this.persistExecution({
+                userId,
+                action,
+                actionLabel: metadata?.label || action,
+                provider: providerName,
+                model: modelName,
+                inputTokens: estimate.inputTokens,
+                outputTokens: estimate.outputTokens,
+                durationMs,
+                status,
+                error: errorMessage,
+                context: JSON.parse(maskedContext),
+                result: content,
+            }, queuedExecutionId);
         } catch (dbError) {
             this.logger.warn('Failed to log AI execution to database:', dbError);
         }
@@ -399,7 +424,7 @@ export class AiService {
         this.logger.log(`AI execution completed. Model: ${modelName}, Duration: ${durationMs}ms, Tokens: ${estimate.inputTokens}/${estimate.outputTokens}`);
 
         return {
-            id: savedExecutionId || crypto.randomUUID(),
+            id: savedExecutionId || queuedExecutionId || crypto.randomUUID(),
             action,
             content,
             summary: this.generateSummaryFromContent(content),
@@ -411,6 +436,28 @@ export class AiService {
             mockReason,
             isSaved: Boolean(savedExecutionId),
         };
+    }
+
+    private async persistExecution(
+        data: Prisma.AiExecutionUncheckedCreateInput,
+        queuedExecutionId?: string,
+    ): Promise<string | undefined> {
+        if (!queuedExecutionId) {
+            const savedExecution = await this.prisma.aiExecution.create({ data });
+            return savedExecution.id;
+        }
+
+        const saved = await this.prisma.aiExecution.updateMany({
+            where: {
+                id: queuedExecutionId,
+                status: AiExecutionStatus.RUNNING,
+            },
+            data: {
+                ...data,
+                completedAt: new Date(),
+            },
+        });
+        return saved.count === 1 ? queuedExecutionId : undefined;
     }
 
     /**
