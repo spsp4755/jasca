@@ -11,6 +11,12 @@ import {
 import { AiExecution, AiExecutionStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import {
+    AiExecutionAccessActor,
+    API_TOKEN_USER_ID_PREFIX,
+    canAccessAiExecution,
+    isApiTokenExecutionOwner,
+} from './ai-execution-access';
 
 export const AI_JOB_EXECUTOR = Symbol('AI_JOB_EXECUTOR');
 
@@ -18,11 +24,7 @@ export interface AiJobExecutor {
     runExecution(executionId: string): Promise<void>;
 }
 
-export interface AiJobActor {
-    id: string;
-    organizationId?: string;
-    roles: string[];
-    isApiToken: boolean;
+export interface AiJobActor extends AiExecutionAccessActor {
     permissions: string[];
     apiTokenId?: string;
 }
@@ -40,7 +42,6 @@ const WORKER_INTERVAL_MS = 5_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const STALE_JOB_MS = 15 * 60_000;
 const NOTIFICATION_LEASE_MS = 60_000;
-const API_TOKEN_USER_ID_PREFIX = 'api-token:';
 
 @Injectable()
 export class AiJobService implements OnModuleInit, OnModuleDestroy {
@@ -202,28 +203,13 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
         execution: Pick<AiExecution, 'userId' | 'organizationId'>,
         actor: AiJobActor,
     ): Promise<void> {
-        if (execution.userId === actor.id) return;
-        if (!actor.isApiToken && actor.roles.includes('SYSTEM_ADMIN')) return;
-
-        if (
-            !actor.isApiToken
-            && actor.roles.includes('ORG_ADMIN')
-            && actor.organizationId
-        ) {
-            if (execution.organizationId === actor.organizationId) return;
-
-            if (
-                !execution.organizationId
-                && execution.userId
-                && !execution.userId.startsWith(API_TOKEN_USER_ID_PREFIX)
-            ) {
-                const owner = await this.prisma.user.findUnique({
-                    where: { id: execution.userId },
-                    select: { organizationId: true },
-                });
-                if (owner?.organizationId === actor.organizationId) return;
-            }
-        }
+        const allowed = await canAccessAiExecution(execution, actor, userId => (
+            this.prisma.user.findUnique({
+                where: { id: userId },
+                select: { organizationId: true },
+            })
+        ));
+        if (allowed) return;
 
         throw new ForbiddenException('You cannot access this AI execution');
     }
@@ -231,7 +217,7 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
     private async createTerminalNotification(execution: AiExecution): Promise<void> {
         if (
             !execution.userId
-            || execution.userId.startsWith(API_TOKEN_USER_ID_PREFIX)
+            || isApiTokenExecutionOwner(execution.userId)
             || !TERMINAL_NOTIFICATION_STATUSES.includes(execution.status)
         ) return;
 

@@ -62,11 +62,6 @@ export class RolesGuard implements CanActivate {
                 }
             }
             
-            // For API tokens, also check if 'admin' permission is present
-            if (user.permissions.includes('admin')) {
-                return true;
-            }
-            
             return false;
         }
 

@@ -11,18 +11,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as PDFDocument from 'pdfkit';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AiExecutionAccessActor, canAccessAiExecution } from './ai-execution-access';
 
 export type AiExportFormat = 'pdf' | 'docx';
 
-export interface AiExportActor {
-    id: string;
-    organizationId?: string;
-    roles: string[];
-}
+export type AiExportActor = AiExecutionAccessActor;
 
 export interface AiExportExecution {
     id: string;
     userId: string | null;
+    organizationId: string | null;
     action: string;
     actionLabel: string | null;
     provider: string | null;
@@ -132,19 +130,13 @@ export class AiExportService {
     }
 
     private async assertCanExport(execution: AiExportExecution, actor: AiExportActor): Promise<void> {
-        if (execution.userId === actor.id || actor.roles.includes('SYSTEM_ADMIN')) {
-            return;
-        }
-
-        if (actor.roles.includes('ORG_ADMIN') && actor.organizationId && execution.userId) {
-            const owner = await this.prisma.user.findUnique({
-                where: { id: execution.userId },
+        const allowed = await canAccessAiExecution(execution, actor, userId => (
+            this.prisma.user.findUnique({
+                where: { id: userId },
                 select: { organizationId: true },
-            });
-            if (owner?.organizationId === actor.organizationId) {
-                return;
-            }
-        }
+            })
+        ));
+        if (allowed) return;
 
         throw new ForbiddenException('You cannot export this AI execution');
     }
