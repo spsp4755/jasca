@@ -2,11 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useProjects, useScans, useVulnerabilities } from '@/lib/api-hooks';
 import {
     Search,
     X,
     FileSearch,
-    Package,
     Shield,
     FolderKanban,
     Clock,
@@ -17,27 +17,16 @@ import {
 } from 'lucide-react';
 
 interface SearchResult {
-    type: 'vulnerability' | 'package' | 'project' | 'scan';
+    type: 'vulnerability' | 'project' | 'scan';
     id: string;
     title: string;
     subtitle: string;
     severity?: string;
 }
 
-const mockResults: SearchResult[] = [
-    { type: 'vulnerability', id: 'CVE-2024-1234', title: 'CVE-2024-1234', subtitle: 'Prototype Pollution in lodash', severity: 'critical' },
-    { type: 'vulnerability', id: 'CVE-2024-5678', title: 'CVE-2024-5678', subtitle: 'SSRF in axios', severity: 'high' },
-    { type: 'package', id: 'lodash', title: 'lodash@4.17.20', subtitle: '12 vulnerabilities' },
-    { type: 'package', id: 'express', title: 'express@4.18.2', subtitle: '3 vulnerabilities' },
-    { type: 'project', id: 'backend-api', title: 'backend-api', subtitle: 'ACME Corp' },
-    { type: 'project', id: 'frontend-web', title: 'frontend-web', subtitle: 'ACME Corp' },
-    { type: 'scan', id: 'scan-001', title: 'backend-api:v2.4.0', subtitle: '2024-12-17 10:30' },
-];
-
 const categories = [
     { key: 'all', label: '전체' },
     { key: 'vulnerability', label: '취약점' },
-    { key: 'package', label: '패키지' },
     { key: 'project', label: '프로젝트' },
     { key: 'scan', label: '스캔' },
 ];
@@ -46,8 +35,6 @@ function getIcon(type: string) {
     switch (type) {
         case 'vulnerability':
             return <Shield className="h-4 w-4 text-red-500" />;
-        case 'package':
-            return <Package className="h-4 w-4 text-blue-500" />;
         case 'project':
             return <FolderKanban className="h-4 w-4 text-purple-500" />;
         case 'scan':
@@ -61,8 +48,6 @@ function getPath(result: SearchResult): string {
     switch (result.type) {
         case 'vulnerability':
             return `/dashboard/vulnerabilities/${result.id}`;
-        case 'package':
-            return `/dashboard/packages/${result.id}`;
         case 'project':
             return `/dashboard/projects/${result.id}`;
         case 'scan':
@@ -86,6 +71,11 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
     const [activeCategory, setActiveCategory] = useState('all');
     const [recentSearches, setRecentSearches] = useState<string[]>([]);
     const [favorites, setFavorites] = useState<string[]>([]);
+    const normalizedQuery = query.trim();
+    const isSearchReady = isOpen && normalizedQuery.length >= 2;
+    const { data: projectsData } = useProjects({ search: normalizedQuery, pageSize: 5, enabled: isSearchReady });
+    const { data: vulnerabilitiesData } = useVulnerabilities({ search: normalizedQuery, pageSize: 5, enabled: isSearchReady });
+    const { data: scansData } = useScans(undefined, { search: normalizedQuery, limit: 5, enabled: isSearchReady });
 
     // Load recent searches and favorites from localStorage
     useEffect(() => {
@@ -103,20 +93,36 @@ export default function GlobalSearch({ isOpen, onClose }: GlobalSearchProps) {
     }, [isOpen]);
 
     useEffect(() => {
-        if (query.length > 0) {
-            let filtered = mockResults.filter(r =>
-                r.title.toLowerCase().includes(query.toLowerCase()) ||
-                r.subtitle.toLowerCase().includes(query.toLowerCase())
-            );
-            if (activeCategory !== 'all') {
-                filtered = filtered.filter(r => r.type === activeCategory);
-            }
-            setResults(filtered);
-            setSelectedIndex(0);
-        } else {
+        if (normalizedQuery.length < 2) {
             setResults([]);
+            return;
         }
-    }, [query, activeCategory]);
+
+        const liveResults: SearchResult[] = [
+            ...(vulnerabilitiesData?.results || []).map((vulnerability) => ({
+                type: 'vulnerability' as const,
+                id: vulnerability.id,
+                title: vulnerability.cveId || vulnerability.title || 'Unknown finding',
+                subtitle: [vulnerability.pkgName, vulnerability.title].filter(Boolean).join(' - '),
+                severity: vulnerability.severity?.toLowerCase(),
+            })),
+            ...(projectsData?.data || []).map((project) => ({
+                type: 'project' as const,
+                id: project.id,
+                title: project.name,
+                subtitle: project.organization?.name || project.slug || 'Project',
+            })),
+            ...(scansData?.results || []).map((scan) => ({
+                type: 'scan' as const,
+                id: scan.id,
+                title: scan.targetName || scan.artifactName || 'Scan result',
+                subtitle: scan.project?.name || scan.createdAt || 'Scan result',
+            })),
+        ];
+
+        setResults(activeCategory === 'all' ? liveResults : liveResults.filter((result) => result.type === activeCategory));
+        setSelectedIndex(0);
+    }, [activeCategory, normalizedQuery, projectsData, scansData, vulnerabilitiesData]);
 
     const saveRecentSearch = useCallback((searchTerm: string) => {
         const updated = [searchTerm, ...recentSearches.filter(s => s !== searchTerm)].slice(0, 5);

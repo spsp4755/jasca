@@ -29,6 +29,7 @@ export class VulnerabilitiesController {
     @ApiQuery({ name: 'status', required: false, isArray: true })
     @ApiQuery({ name: 'cveId', required: false })
     @ApiQuery({ name: 'pkgName', required: false })
+    @ApiQuery({ name: 'search', required: false, description: 'Search CVE, package, or finding title' })
     @ApiQuery({ name: 'limit', required: false, type: Number })
     @ApiQuery({ name: 'offset', required: false, type: Number })
     @ApiQuery({ name: 'sortBy', required: false, enum: ['severity', 'cveId', 'pkgName', 'status', 'createdAt'] })
@@ -40,6 +41,7 @@ export class VulnerabilitiesController {
         @Query('status') status?: VulnStatus | VulnStatus[],
         @Query('cveId') cveId?: string,
         @Query('pkgName') pkgName?: string,
+        @Query('search') search?: string,
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
         @Query('sortBy') sortBy?: 'severity' | 'cveId' | 'pkgName' | 'status' | 'createdAt',
@@ -59,7 +61,7 @@ export class VulnerabilitiesController {
             : undefined;
 
         return this.vulnService.findAll(
-            { projectId, severity: severityArr, status: statusArr, cveId, pkgName },
+            { projectId, severity: severityArr, status: statusArr, cveId, pkgName, search },
             {
                 limit: limit ? parseInt(limit, 10) : undefined,
                 offset: offset ? parseInt(offset, 10) : undefined,

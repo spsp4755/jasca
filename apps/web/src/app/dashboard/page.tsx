@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
     BarChart,
     Bar,
@@ -72,6 +72,7 @@ export default function DashboardPage() {
     const router = useRouter();
     const [chartView, setChartView] = useChartView();
     const [trendPeriod, setTrendPeriod] = useTrendPeriod();
+    const [scannerPeriod, setScannerPeriod] = useState<1 | 7 | 30 | 90>(30);
     const { visibility: widgetVisibility } = useWidgetVisibility();
 
     // Fetch real data from API
@@ -80,7 +81,7 @@ export default function DashboardPage() {
     const { data: trendData, isLoading: trendLoading } = useStatsTrend(undefined, trendPeriod);
     const { data: notifications = [] } = useNotifications();
     const { data: licenseStats } = useLicenseStats();
-    const { data: scansData } = useScans();
+    const { data: scansData } = useScans(undefined, { days: scannerPeriod, limit: 50 });
 
     const isLoading = overviewLoading || projectLoading || trendLoading;
     const unreadNotifications = notifications.filter(n => !n.isRead).length;
@@ -439,9 +440,19 @@ export default function DashboardPage() {
                         상단 취약점 카드는 취약점 관리 기준이고, 이 영역은 최근 스캔에서 나온 취약점·정책 위반·웹 보안 알림을 스캐너별로 분리해 보여줍니다.
                     </p>
                     </div>
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            조회 기간
+                            <select value={scannerPeriod} onChange={(event) => setScannerPeriod(Number(event.target.value) as 1 | 7 | 30 | 90)} className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                <option value={1}>최근 24시간</option>
+                                <option value={7}>최근 7일</option>
+                                <option value={30}>최근 30일</option>
+                                <option value={90}>최근 90일</option>
+                            </select>
+                        </label>
                     <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-900/60">
                         <div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">최근 50건</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">스캔 수</p>
                             <p className="text-lg font-bold text-slate-900 dark:text-white">{scannerTotals.scans}</p>
                         </div>
                         <div>
@@ -452,6 +463,7 @@ export default function DashboardPage() {
                             <p className="text-xs text-slate-500 dark:text-slate-400">실패</p>
                             <p className="text-lg font-bold text-red-600">{scannerTotals.failed}</p>
                         </div>
+                    </div>
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -371,13 +371,16 @@ export interface Scan {
     }>;
 }
 
-export function useScans(projectId?: string) {
+export function useScans(projectId?: string, options?: { search?: string; days?: number; limit?: number; enabled?: boolean }) {
     return useQuery<{ results: Scan[]; total: number }>({
-        queryKey: ['scans', projectId],
+        queryKey: ['scans', projectId, options],
+        enabled: options?.enabled !== false,
         queryFn: () => {
             const params = new URLSearchParams();
             if (projectId) params.set('projectId', projectId);
-            params.set('limit', '50');
+            if (options?.search) params.set('search', options.search);
+            if (options?.days) params.set('days', String(options.days));
+            params.set('limit', String(options?.limit || 50));
             return authFetch(`${API_BASE}/scans?${params.toString()}`);
         },
     });
@@ -607,11 +610,13 @@ export interface VulnerabilitiesFilter {
     sortBy?: 'severity' | 'cveId' | 'pkgName' | 'status' | 'createdAt';
     sortOrder?: 'asc' | 'desc';
     latestScanOnly?: boolean;
+    enabled?: boolean;
 }
 
 export function useVulnerabilities(filters?: VulnerabilitiesFilter) {
     return useQuery<{ results: Vulnerability[]; total: number }>({
         queryKey: ['vulnerabilities', filters],
+        enabled: filters?.enabled !== false,
         queryFn: async () => {
             const params = new URLSearchParams();
             if (filters?.projectId) params.set('projectId', filters.projectId);
@@ -621,10 +626,9 @@ export function useVulnerabilities(filters?: VulnerabilitiesFilter) {
             if (filters?.status?.length) {
                 filters.status.forEach(s => params.append('status', s));
             }
-            // Server-side search: use cveId and pkgName filters
+            // The API searches CVE, package, and finding title as a single OR filter.
             if (filters?.search) {
-                params.set('cveId', filters.search);
-                params.set('pkgName', filters.search);
+                params.set('search', filters.search);
             }
             // Server-side pagination
             const page = filters?.page || 1;
@@ -1107,11 +1111,13 @@ export interface ProjectsFilter {
     pageSize?: number;
     sortBy?: 'name' | 'createdAt' | 'riskLevel';
     sortOrder?: 'asc' | 'desc';
+    enabled?: boolean;
 }
 
 export function useProjects(filters?: ProjectsFilter) {
     return useQuery<{ data: Project[]; total: number }>({
         queryKey: ['projects', filters],
+        enabled: filters?.enabled !== false,
         queryFn: () => {
             const params = new URLSearchParams();
             if (filters?.organizationId) params.set('organizationId', filters.organizationId);
@@ -2586,6 +2592,23 @@ export function useZapConnectionTest() {
 
 export function useAiSettings() {
     return useSettings<AiSettings>('ai');
+}
+
+export interface AiExecutionStats {
+    total: number;
+    totalTokens: number;
+    avgDuration: number;
+    successRate: number;
+    byAction: Record<string, number>;
+    byStatus: Record<string, number>;
+    trend: Array<{ date: string; count: number }>;
+}
+
+export function useAiExecutionStats(days = 30) {
+    return useQuery<AiExecutionStats>({
+        queryKey: ['ai-execution-stats', days],
+        queryFn: () => authFetch(`${API_BASE}/ai/stats?days=${days}`),
+    });
 }
 
 // ============ Profile API ============

@@ -19,6 +19,9 @@ TRIVY_RPM_OS_FAMILY="${TRIVY_RPM_OS_FAMILY:-redhat}"
 TRIVY_RPM_OS_VERSION="${TRIVY_RPM_OS_VERSION:-}"
 SCAN_RESULT_DIR="${SCAN_RESULT_DIR:-/app/jasca/scan-results}"
 SCAN_RESULT_RETENTION_DAYS="${SCAN_RESULT_RETENTION_DAYS:-0}"
+JASCA_DEMO_SEED="${JASCA_DEMO_SEED:-0}"
+INITIAL_ADMIN_EMAIL="${INITIAL_ADMIN_EMAIL:-}"
+INITIAL_ADMIN_PASSWORD="${INITIAL_ADMIN_PASSWORD:-}"
 
 # Ensure the persistent scan-result directory exists (feature: raw result download).
 mkdir -p "$SCAN_RESULT_DIR"
@@ -39,13 +42,24 @@ export DB_PASSWORD DATABASE_URL REDIS_URL CORS_ORIGIN TRIVY_CACHE_DIR JWT_SECRET
 export TRIVY_UPLOAD_MAX_BYTES SYFT_BINARY_PATH TRIVY_RPM_OS_FAMILY TRIVY_RPM_OS_VERSION
 export CHECKOV_BINARY_PATH
 export SCAN_RESULT_DIR SCAN_RESULT_RETENTION_DAYS
+export JASCA_DEMO_SEED INITIAL_ADMIN_EMAIL INITIAL_ADMIN_PASSWORD
 
 # Ensure permissions
+mkdir -p "$PG_DATA" "$REDIS_DATA"
 chown -R postgres:postgres "$PG_DATA"
 chown -R redis:redis "$REDIS_DATA"
 chmod 0700 "$PG_DATA"
 
 FRESH_INSTALL=0
+
+# Fail before creating a database directory when production bootstrap is incomplete.
+if [ -z "$(ls -A "$PG_DATA")" ] && [ "$JASCA_DEMO_SEED" != "1" ]; then
+    if [ -z "$INITIAL_ADMIN_EMAIL" ] || [ -z "$INITIAL_ADMIN_PASSWORD" ]; then
+        echo "Error: INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD are required for a fresh production database."
+        echo "Set JASCA_DEMO_SEED=1 only for a disposable local demo database."
+        exit 1
+    fi
+fi
 
 # Initialize Postgres if empty
 if [ -z "$(ls -A "$PG_DATA")" ]; then

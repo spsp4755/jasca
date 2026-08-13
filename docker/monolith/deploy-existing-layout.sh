@@ -179,6 +179,7 @@ DOCKER_RUN_ARGS=(
   -e "PORT=${API_PORT}"
   -e "JWT_SECRET=${JWT_SECRET}"
   -e "DB_PASSWORD=${DB_PASSWORD}"
+  -e "JASCA_DEMO_SEED=${JASCA_DEMO_SEED}"
   -e "REDIS_URL=${REDIS_URL}"
   -e "DATABASE_URL=${DATABASE_URL}"
   -e "SCAN_RESULT_DIR=/app/jasca/scan-results"
@@ -187,6 +188,15 @@ DOCKER_RUN_ARGS=(
   -v "${APP_DIR}/redis:/var/lib/redis"
   -v "${APP_DIR}/scan-results:/app/jasca/scan-results"
 )
+
+# These are evaluated only while bootstrapping an empty PostgreSQL directory.
+if [ -n "$INITIAL_ADMIN_EMAIL" ]; then
+    DOCKER_RUN_ARGS+=(-e "INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL}")
+fi
+
+if [ -n "$INITIAL_ADMIN_PASSWORD" ]; then
+    DOCKER_RUN_ARGS+=(-e "INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}")
+fi
 
 if [ -n "$DOCKER_NETWORK" ]; then
     DOCKER_RUN_ARGS+=(--network "$DOCKER_NETWORK")

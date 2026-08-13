@@ -243,13 +243,14 @@ export class AiService {
     /**
      * Get AI usage statistics
      */
-    async getExecutionStats(days = 7) {
+    async getExecutionStats(days = 7, organizationId?: string | null) {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
         const executions = await this.prisma.aiExecution.findMany({
             where: {
                 createdAt: { gte: startDate },
+                ...(organizationId ? { organizationId } : {}),
             },
             orderBy: { createdAt: 'desc' },
         });

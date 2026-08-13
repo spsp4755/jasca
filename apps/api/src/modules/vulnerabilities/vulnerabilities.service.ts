@@ -16,6 +16,7 @@ export interface VulnFilter {
     projectId?: string;
     cveId?: string;
     pkgName?: string;
+    search?: string;
     assigneeId?: string;
 }
 
@@ -94,7 +95,13 @@ export class VulnerabilitiesService {
             where.scanResult = { ...(where.scanResult || {}), ...scanResultAccessWhere };
         }
 
-        if (filter.cveId) {
+        if (filter.search) {
+            where.OR = [
+                { vulnerability: { cveId: { contains: filter.search, mode: 'insensitive' } } },
+                { vulnerability: { title: { contains: filter.search, mode: 'insensitive' } } },
+                { pkgName: { contains: filter.search, mode: 'insensitive' } },
+            ];
+        } else if (filter.cveId) {
             where.vulnerability = { ...where.vulnerability, cveId: { contains: filter.cveId, mode: 'insensitive' } };
         }
 

@@ -194,8 +194,10 @@ export class AiController {
      */
     @Get('stats')
     @Roles(Role.SYSTEM_ADMIN, Role.ORG_ADMIN)
-    async getStats(@Query('days') days?: string) {
-        return this.aiService.getExecutionStats(days ? parseInt(days, 10) : 7);
+    async getStats(@Req() req: RequestWithUser, @Query('days') days?: string) {
+        const user = this.requireUser(req);
+        const isSystemAdmin = user.roles?.some((role) => role.role === Role.SYSTEM_ADMIN);
+        return this.aiService.getExecutionStats(days ? parseInt(days, 10) : 7, isSystemAdmin ? undefined : user.organizationId);
     }
 
     /**

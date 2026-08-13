@@ -5,28 +5,35 @@ const prisma = new PrismaClient();
 
 async function main() {
     console.log('🌱 Seeding database...');
+    const isDemoSeed = process.env.JASCA_DEMO_SEED === '1';
+    const initialAdminEmail = isDemoSeed ? 'admin@acme.com' : process.env.INITIAL_ADMIN_EMAIL;
+    const initialAdminPassword = isDemoSeed ? 'admin123' : process.env.INITIAL_ADMIN_PASSWORD;
+
+    if (!initialAdminEmail || !initialAdminPassword) {
+        throw new Error('INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD are required unless JASCA_DEMO_SEED=1.');
+    }
 
     // Create organization
     const org = await prisma.organization.upsert({
-        where: { slug: 'acme-corp' },
+        where: { slug: isDemoSeed ? 'acme-corp' : 'jasca' },
         update: {},
         create: {
-            name: 'Acme Corporation',
-            slug: 'acme-corp',
-            description: 'Main organization for testing',
+            name: isDemoSeed ? 'Acme Corporation' : 'JASCA Organization',
+            slug: isDemoSeed ? 'acme-corp' : 'jasca',
+            description: isDemoSeed ? 'Main organization for testing' : 'Initial JASCA organization',
         },
     });
 
     console.log('✅ Created organization:', org.name);
 
     // Create admin user
-    const adminPassword = await bcrypt.hash('admin123', 10);
+    const adminPassword = await bcrypt.hash(initialAdminPassword, 12);
     const admin = await prisma.user.upsert({
-        where: { email: 'admin@acme.com' },
+        where: { email: initialAdminEmail },
         update: {},
         create: {
-            email: 'admin@acme.com',
-            name: 'Admin User',
+            email: initialAdminEmail,
+            name: isDemoSeed ? 'Admin User' : 'Initial Administrator',
             passwordHash: adminPassword,
             organizationId: org.id,
             roles: {
@@ -39,6 +46,27 @@ async function main() {
     });
 
     console.log('✅ Created admin user:', admin.email);
+
+    if (!isDemoSeed) {
+        await prisma.passwordPolicy.upsert({
+            where: { organizationId: org.id },
+            update: {},
+            create: {
+                organizationId: org.id,
+                minLength: 8,
+                requireUppercase: true,
+                requireLowercase: true,
+                requireNumbers: true,
+                requireSpecial: false,
+                maxAgeDays: 90,
+                historyCount: 5,
+                lockoutThreshold: 5,
+                lockoutDurationMin: 30,
+            },
+        });
+        console.log('Production bootstrap completed with the configured initial administrator.');
+        return;
+    }
 
     // Create developer user
     const devPassword = await bcrypt.hash('dev123', 10);
