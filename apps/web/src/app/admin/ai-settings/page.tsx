@@ -22,7 +22,7 @@ import {
     Stethoscope,
     AlertCircle,
 } from 'lucide-react';
-import { useAiSettings, useUpdateSettings, type AiSettings } from '@/lib/api-hooks';
+import { useAiExecutionStats, useAiSettings, useUpdateSettings, type AiSettings } from '@/lib/api-hooks';
 import { useAuthStore } from '@/stores/auth-store';
 
 const defaultConfig: AiSettings = {
@@ -71,16 +71,9 @@ interface DynamicModel {
     modifiedAt?: string;
 }
 
-interface AiUsageStats {
-    totalCalls: number;
-    totalTokens: number;
-    avgResponseTime: number;
-    lastUsed: string | null;
-    callsByAction: Record<string, number>;
-}
-
 export default function AiSettingsPage() {
     const { data: settings, isLoading, error } = useAiSettings();
+    const { data: executionStats, isLoading: isLoadingExecutionStats } = useAiExecutionStats(30);
     const updateMutation = useUpdateSettings();
 
     const [config, setConfig] = useState<AiSettings>(defaultConfig);
@@ -100,15 +93,6 @@ export default function AiSettingsPage() {
 
     // Cache URLs per provider to prevent reset when switching
     const [providerUrls, setProviderUrls] = useState<Record<string, string>>({});
-
-    // AI Usage stats (mock for now)
-    const [usageStats, setUsageStats] = useState<AiUsageStats>({
-        totalCalls: 0,
-        totalTokens: 0,
-        avgResponseTime: 0,
-        lastUsed: null,
-        callsByAction: {},
-    });
 
     // Quick test prompt
     const [quickTestPrompt, setQuickTestPrompt] = useState('안녕하세요. 이 취약점의 간단한 요약을 제공해주세요.');
@@ -915,6 +899,38 @@ export default function AiSettingsPage() {
                 {/* Test Tab */}
                 {activeTab === 'stats' && (
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 space-y-6">
+                        <section className="border-b border-slate-200 pb-6 dark:border-slate-700">
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                                <div>
+                                    <h4 className="font-medium text-slate-900 dark:text-white">최근 30일 AI 사용량</h4>
+                                    <p className="mt-1 text-sm text-slate-500">현재 관리자 권한 범위의 실제 AI 실행 이력입니다.</p>
+                                </div>
+                                {isLoadingExecutionStats && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                {[
+                                    { label: '실행 수', value: executionStats?.total ?? 0, suffix: '건' },
+                                    { label: '사용 토큰', value: (executionStats?.totalTokens ?? 0).toLocaleString(), suffix: '' },
+                                    { label: '평균 응답 시간', value: executionStats?.avgDuration ?? 0, suffix: 'ms' },
+                                    { label: '성공률', value: executionStats?.successRate ?? 0, suffix: '%' },
+                                ].map((stat) => (
+                                    <div key={stat.label} className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900">
+                                        <p className="text-xs text-slate-500">{stat.label}</p>
+                                        <p className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">{stat.value}{stat.suffix}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            {executionStats && Object.keys(executionStats.byAction).length > 0 && (
+                                <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-900">
+                                    <p className="font-medium text-slate-700 dark:text-slate-200">기능별 실행</p>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {Object.entries(executionStats.byAction).map(([action, count]) => (
+                                            <span key={action} className="rounded bg-white px-2 py-1 text-xs text-slate-600 shadow-sm dark:bg-slate-800 dark:text-slate-300">{action}: {count}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </section>
                         <div>
                             <h4 className="font-medium text-slate-900 dark:text-white mb-3">빠른 테스트</h4>
                             <p className="text-sm text-slate-500 mb-4">

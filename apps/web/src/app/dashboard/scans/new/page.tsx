@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Archive, ArrowLeft, CheckCircle, FileJson, Globe, Loader2, ShieldCheck, Upload, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useCancelTrivyScan, useHarborArtifacts, useHarborProjects, useHarborRepositories, useHarborScan, useHarborSettings, useOrganizations, useProjects, useUploadScan, useZapScan, useZapSettings } from '@/lib/api-hooks';
+import { useCancelTrivyScan, useHarborArtifacts, useHarborProjects, useHarborRepositories, useHarborScan, useHarborSettings, useOrganizations, useProjects, useUploadScan, useZapConnectionTest, useZapScan, useZapSettings } from '@/lib/api-hooks';
 import type { CheckovScanOptions, TrivyScanOptions } from '@/lib/api-hooks';
 
 type UploadMode = 'scan-target' | 'result-file';
@@ -109,6 +109,7 @@ export default function NewScanPage() {
     const { data: orgsData } = useOrganizations();
     const uploadMutation = useUploadScan();
     const zapScanMutation = useZapScan();
+    const zapConnectionMutation = useZapConnectionTest();
     const { data: zapSettings } = useZapSettings();
     const harborSettingsQuery = useHarborSettings(scannerProvider === 'harbor');
     const harborProjectsQuery = useHarborProjects(scannerProvider === 'harbor');
@@ -145,7 +146,8 @@ export default function NewScanPage() {
     const scanProgressLabel = isZapScan ? 'ZAP 검사 중...' : isCheckovScan ? 'Checkov 검사 중...' : isSemgrepScan ? 'Semgrep 검사 중...' : 'Trivy 검사 중...';
     const zapProfiles = (zapSettings?.targetProfiles || []).filter((profile) => profile.enabled);
     const missingZapRequiredInput = isZapScan && (!zapTargetUrl.trim() || !zapTargetProfileId || (zapAuthType !== 'none' && !zapAuthValue.trim()) || (zapScanMode === 'active' && !zapActiveConfirmed));
-    const isSubmitDisabled = uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (isHarborScan ? !selectedProjectId || !harborDigest : isZapScan ? missingZapRequiredInput : !file);
+    const isZapReady = !isZapScan || zapConnectionMutation.isSuccess;
+    const isSubmitDisabled = uploadStatus === 'uploading' || uploadStatus === 'cancelling' || uploadStatus === 'success' || (isHarborScan ? !selectedProjectId || !harborDigest : isZapScan ? missingZapRequiredInput || !isZapReady : !file);
     const acceptedFiles = isScanningTarget
         ? '.zip,.tar,.tar.gz,.tgz,.rpm,.deb,.apk,.jar,.war,.ear,.gem,.whl,.egg,.nupkg,.json,.spdx,.cdx,.cyclonedx,.lock,.txt,.xml,.gradle,.pom,.csproj,.sln,.yaml,.yml,.toml,.qcow2,.vmdk,.vhd,.vhdx,.img,Dockerfile'
         : '.json,.sarif';
@@ -179,6 +181,8 @@ export default function NewScanPage() {
         setScannerProvider(scanner);
         if (scanner === 'zap') {
             setFile(null);
+            setErrorMessage('');
+            zapConnectionMutation.mutate();
         }
         if (scanner === 'harbor') {
             setFile(null);
@@ -285,6 +289,11 @@ export default function NewScanPage() {
         }
 
         if (isZapScan) {
+            if (!zapConnectionMutation.isSuccess) {
+                setErrorMessage('ZAP 서버 연결 확인이 완료되지 않아 검사를 시작할 수 없습니다. 연결 상태를 다시 확인하세요.');
+                return;
+            }
+
             if (!zapTargetUrl.trim()) {
                 setErrorMessage('ZAP으로 검사할 URL을 입력해주세요.');
                 return;
@@ -550,6 +559,25 @@ export default function NewScanPage() {
                                     <span className="font-semibold">ZAP 웹 URL 스캔</span>
                                 </div>
                                 <label className="mb-2 block text-sm font-medium text-orange-100">검사 대상 URL</label>
+                                {zapConnectionMutation.isPending && (
+                                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-orange-300/30 bg-slate-950/30 p-3 text-sm text-orange-100">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        ZAP 서버 연결 상태를 확인하는 중입니다. 확인이 끝나면 검사를 실행할 수 있습니다.
+                                    </div>
+                                )}
+                                {zapConnectionMutation.isSuccess && (
+                                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+                                        <CheckCircle className="h-4 w-4" />
+                                        ZAP 서버 연결이 확인되었습니다. 버전: {zapConnectionMutation.data.version}
+                                    </div>
+                                )}
+                                {zapConnectionMutation.isError && (
+                                    <div className="mb-4 rounded-lg border border-red-400/40 bg-red-950/30 p-3 text-sm text-red-100">
+                                        <p className="font-medium">ZAP 서버에 연결할 수 없어 검사를 시작하지 않습니다.</p>
+                                        <p className="mt-1 text-red-100/80">관리자에게 ZAP 컨테이너 또는 ZAP_BASE_URL 설정을 확인해 달라고 요청하세요. {zapConnectionMutation.error.message}</p>
+                                        <button type="button" onClick={() => zapConnectionMutation.mutate()} className="mt-3 rounded-md border border-red-300/40 px-3 py-1.5 text-xs font-medium hover:bg-red-500/10">연결 다시 확인</button>
+                                    </div>
+                                )}
                                 <input
                                     type="url"
                                     value={zapTargetUrl}

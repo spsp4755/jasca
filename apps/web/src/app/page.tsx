@@ -147,7 +147,7 @@ export default function HomePage() {
                             </span>
                         </h1>
                         <p className="text-xl text-slate-300 mb-10 max-w-2xl mx-auto">
-                            Trivy 스캔 결과를 중앙에서 수집, 분석, 추적하여
+                            Trivy, Checkov, ZAP, Semgrep 결과를 한 곳에서 수집, 분석, 추적하여
                             <br />
                             체계적인 보안 취약점 관리를 실현하세요.
                         </p>
@@ -185,7 +185,7 @@ export default function HomePage() {
                         {
                             icon: <FileSearch className="h-8 w-8" />,
                             title: '스캔 결과 수집',
-                            description: 'Trivy JSON/SARIF 결과를 CI/CD와 연동하여 자동 수집',
+                            description: 'Trivy, Checkov, ZAP, Semgrep 결과를 직접 검사·업로드·CI 연동으로 수집',
                             delay: 0,
                         },
                         {
@@ -240,7 +240,7 @@ export default function HomePage() {
             {/* Footer */}
             <footer className="relative z-10 border-t border-slate-700/50 py-8 mt-20">
                 <div className="container mx-auto px-6 text-center text-slate-500">
-                    <p>© 2024 JASCA. 모든 권리 보유.</p>
+                    <p>© {new Date().getFullYear()} JASCA. 모든 권리 보유.</p>
                 </div>
             </footer>
         </div>

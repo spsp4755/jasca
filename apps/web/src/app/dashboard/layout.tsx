@@ -24,6 +24,7 @@ import {
     Book,
     Menu,
     X,
+    Search,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { authApi } from '@/lib/auth-api';
@@ -32,6 +33,7 @@ import { Breadcrumb } from '@/components/breadcrumb';
 import { RecentProjects } from '@/components/recent-projects';
 import { ToastProvider } from '@/components/ui/toast';
 import { NotificationCenter } from '@/components/notification-center';
+import GlobalSearch from '@/components/global-search';
 import { useMarkNotificationRead, useNotifications } from '@/lib/api-hooks';
 
 // Role types for navigation
@@ -78,6 +80,7 @@ export default function DashboardLayout({
     const searchParams = useSearchParams();
     const [collapsed, setCollapsed] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
     const { user, isAuthenticated, refreshToken, logout, setTokens, setUser } = useAuthStore();
     const hasMounted = useHasMounted();
     const { data: notifications = [] } = useNotifications();
@@ -143,6 +146,17 @@ export default function DashboardLayout({
         });
     }, [pathname, notifications, markNotificationRead]);
 
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+                event.preventDefault();
+                setGlobalSearchOpen(true);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
     const handleLogout = async () => {
         try {
             if (refreshToken) {
@@ -196,6 +210,7 @@ export default function DashboardLayout({
     return (
         <ToastProvider>
             <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
+                <GlobalSearch isOpen={globalSearchOpen} onClose={() => setGlobalSearchOpen(false)} />
                 {/* Sidebar */}
                 <aside
                     className={`${collapsed ? 'w-20' : 'w-64'
@@ -289,6 +304,16 @@ export default function DashboardLayout({
                             </div>
                         </div>
                         <div className="flex flex-shrink-0 items-center gap-2 sm:gap-4">
+                            <button
+                                type="button"
+                                onClick={() => setGlobalSearchOpen(true)}
+                                className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700 sm:flex"
+                                aria-label="전체 검색"
+                            >
+                                <Search className="h-4 w-4" />
+                                <span>검색</span>
+                                <kbd className="rounded border border-slate-200 px-1 text-[10px] dark:border-slate-600">Ctrl K</kbd>
+                            </button>
                             <NotificationCenter />
                             {/* User info */}
                             {user && (

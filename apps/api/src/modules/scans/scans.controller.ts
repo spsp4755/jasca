@@ -176,15 +176,21 @@ export class ScansController {
     @ApiQuery({ name: 'projectId', required: false, description: 'Project ID - if not provided, projectName and organizationId in body will be used to find/create project' })
     @ApiQuery({ name: 'limit', required: false, type: Number })
     @ApiQuery({ name: 'offset', required: false, type: Number })
+    @ApiQuery({ name: 'search', required: false, description: 'Search target, artifact, image, or project name' })
+    @ApiQuery({ name: 'days', required: false, type: Number, description: 'Restrict results to the most recent number of days' })
     async findAll(
         @Req() req: Request,
         @Query('projectId') projectId?: string,
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
+        @Query('search') search?: string,
+        @Query('days') days?: string,
     ) {
         return this.scansService.findAll(projectId, {
             limit: limit ? parseInt(limit, 10) : undefined,
             offset: offset ? parseInt(offset, 10) : undefined,
+            search: search?.trim() || undefined,
+            days: days ? parseInt(days, 10) : undefined,
         }, (req as any).user);
     }
 
@@ -513,7 +519,7 @@ export class ScansController {
 
     @Post('zap/test-connection')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('SECURITY_ADMIN')
+    @Roles('DEVELOPER', 'PROJECT_ADMIN', 'ORG_ADMIN', 'SECURITY_ADMIN')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Test the configured OWASP ZAP server connection' })
     async testZapConnection() {

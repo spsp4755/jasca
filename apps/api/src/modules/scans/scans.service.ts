@@ -291,14 +291,33 @@ export class ScansService {
         return filters.length > 0 ? { OR: filters } : { id: '__no_access__' };
     }
 
-    async findAll(projectId?: string, options?: { limit?: number; offset?: number }, currentUser?: RequestUser) {
+    async findAll(projectId?: string, options?: { limit?: number; offset?: number; search?: string; days?: number }, currentUser?: RequestUser) {
         if (projectId && currentUser) {
             const project = await this.prisma.project.findUnique({ where: { id: projectId } });
             if (!project) throw new NotFoundException('Project not found');
             assertProjectAccess(currentUser, project);
         }
 
-        const where = this.buildScanAccessWhere(currentUser, projectId);
+        const where: any = this.buildScanAccessWhere(currentUser, projectId);
+        const andFilters: any[] = [];
+        if (options?.search) {
+            andFilters.push({
+                OR: [
+                    { artifactName: { contains: options.search, mode: 'insensitive' } },
+                    { imageRef: { contains: options.search, mode: 'insensitive' } },
+                    { tag: { contains: options.search, mode: 'insensitive' } },
+                    { project: { name: { contains: options.search, mode: 'insensitive' } } },
+                ],
+            });
+        }
+        if (options?.days && [1, 7, 30, 90].includes(options.days)) {
+            const from = new Date();
+            from.setDate(from.getDate() - options.days);
+            andFilters.push({ createdAt: { gte: from } });
+        }
+        if (andFilters.length > 0) {
+            where.AND = [...(where.AND || []), ...andFilters];
+        }
 
         const [results, total] = await Promise.all([
             this.prisma.scanResult.findMany({
