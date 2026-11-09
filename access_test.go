@@ -173,3 +173,39 @@ func TestVisibleProjectsSQL(t *testing.T) {
 		t.Errorf("nil user: %q", got)
 	}
 }
+
+// groupsFor (display split, /me) and memberPaths (access) must apply the same rule.
+func TestMembershipRuleSingleSource(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	u := mkUser(t, s, "kim", "")
+	sqlExec(t, s, `insert into kc_groups(path) values('/g'), ('/개발본부'), ('/d2')`)
+	sqlExec(t, s, `insert into kc_groups(path, deleted) values('/old', true)`)
+	sqlExec(t, s, `insert into user_groups(user_id, path) values($1, '/g/h/i')`, u.ID) // nested group
+	sqlExec(t, s, `insert into user_depts(user_id, path) values($1, '/p/q/r'), ($1, '/d2'), ($1, '/개발본부/팀/소'), ($1, '/old/x'), ($1, '/g/x')`, u.ID)
+	// nested dept; dept == kc path; dept under kc path; dept under deleted kc group
+	groups, depts, err := s.groupsFor(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := s.memberPaths(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// union as a set (no duplicate hiding) must equal memberPaths
+	union := slices.Compact(slices.Sorted(slices.Values(append(slices.Clone(groups), depts...))))
+	if !slices.Equal(union, paths) {
+		t.Errorf("groupsFor %q + %q != memberPaths %q", groups, depts, paths)
+	}
+	if wg := []string{"/g", "/g/h", "/g/h/i"}; !slices.Equal(groups, wg) {
+		t.Errorf("groups = %q, want %q", groups, wg)
+	}
+	// /g is a kc group: the dept /g/x must not list it under depts even though a group path gives it
+	if wd := []string{"/g/x", "/old/x", "/p", "/p/q", "/p/q/r", "/개발본부/팀", "/개발본부/팀/소"}; !slices.Equal(depts, wd) {
+		t.Errorf("depts = %q, want %q", depts, wd)
+	}
+	want := []string{"/g", "/g/h", "/g/h/i", "/g/x", "/old/x", "/p", "/p/q", "/p/q/r", "/개발본부/팀", "/개발본부/팀/소"}
+	if !slices.Equal(paths, want) {
+		t.Errorf("memberPaths = %q, want %q", paths, want)
+	}
+}

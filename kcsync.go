@@ -126,9 +126,10 @@ func expandGroups(own []string) []string {
 	return out
 }
 
-// groupsFor is the user's Keycloak groups and departments, parents included. A department path (or parent) that a
-// Keycloak group has, live or deleted, is left out (R4a): "/개발본부/X" from the attribute never grants "/개발본부".
-// Decided at read time, so a path that later turns out to be a Keycloak group stops counting at once.
+// groupsFor is the user's Keycloak groups and departments, parents included, split for display. The rule itself
+// (R4a: a department path or parent that a Keycloak group has, live or deleted, grants nothing) lives only in
+// memberPathsSQL; the dept side is repeated here only to keep groups and depts separate, and
+// TestMembershipRuleSingleSource pins both to memberPaths.
 func (s *server) groupsFor(ctx context.Context, userID int64) (groups, depts []string, err error) {
 	var gs, ds []string
 	err = s.db.QueryRow(ctx, `select array(select path from user_groups where user_id=$1), array(select path from user_depts where user_id=$1)`,
@@ -136,6 +137,7 @@ func (s *server) groupsFor(ctx context.Context, userID int64) (groups, depts []s
 	if err != nil {
 		return nil, nil, err
 	}
+	// dept side of the rule: parents of user_depts minus every kc_groups path (same as memberPathsSQL's dept branch)
 	all := expandGroups(ds)
 	var known []string
 	if len(all) > 0 {
