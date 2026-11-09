@@ -9,7 +9,7 @@ import StatusBadge from "../components/StatusBadge";
 import { useToast } from "../components/Toast";
 import { API_BASE, ApiError, api, loginUrl } from "../api/client";
 import { isAdmin, useApi, useMe } from "../api/hooks";
-import { copyText } from "../lib/clipboard";
+import CiSnippet from "../components/CiSnippet";
 import type { Project, Scan, ScanJobCreated } from "../api/types";
 import { Panel } from "./admin/parts";
 import "../styles/t17.css";
@@ -124,34 +124,17 @@ function UploadTab({ projects }: { projects: Project[] }) {
   );
 }
 
-export function CiSnippet({ projects }: { projects: Project[] }) {
-  const toast = useToast();
+/** Project picker in front of the shared CI snippet (components/CiSnippet). */
+function CiTab({ projects }: { projects: Project[] }) {
   const [key, setKey] = useState("");
-  const [kind, setKind] = useState<"fs" | "image">("fs");
-  const k = key || "<프로젝트-키>";
-  const scan = kind === "fs" ? "trivy fs --format json -o report.json ." : "trivy image --format json -o report.json $IMAGE";
-  const text = `# JASCA_TOKEN: 프로젝트 설정 > 토큰에서 만든 upload 권한 토큰 (CI 비밀 변수로 저장)
-${scan}
-gzip -kf report.json
-curl -fsS -X POST \\
-  -H "Authorization: Bearer $JASCA_TOKEN" \\
-  -H "Content-Encoding: gzip" \\
-  --data-binary @report.json.gz \\
-  "${location.origin}${API_BASE}/projects/${k}/scans?target=$TARGET_NAME&kind=${kind}"`;
   return (
     <Panel title="CI 연동" meta="Trivy JSON 보고서를 CI에서 직접 올립니다">
       <div className="stack">
-        <div className="row-gap">
-          <select className="input" style={{ width: 240 }} aria-label="프로젝트" value={key} onChange={(e) => setKey(e.target.value)}>
-            <option value="">프로젝트 선택</option>{projects.map((p) => <option key={p.key} value={p.key}>{p.name} ({p.key})</option>)}
-          </select>
-          <select className="input" style={{ width: 160 }} aria-label="종류" value={kind} onChange={(e) => setKind(e.target.value as "fs" | "image")}>
-            <option value="fs">fs</option><option value="image">image</option>
-          </select>
-          <Button icon="copy" onClick={async () => toast((await copyText(text)) ? "복사했습니다." : "복사하지 못했습니다. 직접 선택해 복사하세요.", "info")}>복사</Button>
-        </div>
-        <pre className="code-block">{text}</pre>
-        <p className="muted">정책 통과 여부는 응답의 <code>policy.passed</code>로 확인할 수 있습니다. 같은 보고서를 다시 올리면 <code>duplicate: true</code>로 응답하고 새 스캔을 만들지 않습니다.</p>
+        <select className="input" style={{ width: 280 }} aria-label="프로젝트" value={key} onChange={(e) => setKey(e.target.value)}>
+          <option value="">프로젝트 선택</option>{projects.map((p) => <option key={p.key} value={p.key}>{p.name} ({p.key})</option>)}
+        </select>
+        <CiSnippet projectKey={key || "<프로젝트-키>"} />
+        <p className="muted">같은 보고서를 다시 올리면 <code>duplicate: true</code>로 응답하고 새 스캔을 만들지 않습니다.</p>
       </div>
     </Panel>
   );
@@ -188,7 +171,7 @@ export default function ScanNew() {
           tabs={[{ id: "upload", label: "파일 업로드" }, { id: "ci", label: "CI 연동" }, { id: "harbor", label: "Harbor" }]} />
         {projects.error && <div className="alert alert-danger" role="alert">{projects.error.message}</div>}
         <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
-          {tab === "ci" ? <CiSnippet projects={list} /> : tab === "harbor" ? <HarborTab /> : <UploadTab projects={list} />}
+          {tab === "ci" ? <CiTab projects={list} /> : tab === "harbor" ? <HarborTab /> : <UploadTab projects={list} />}
         </div>
       </div>
     </>
