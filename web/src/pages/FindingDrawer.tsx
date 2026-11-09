@@ -2,7 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { ExceptionCreate, ExceptionResolution, Finding } from "../api/types";
+import { isSecurity, useMe } from "../api/hooks";
+import type { ExceptionCreate, ExceptionResolution, ExceptionScope, Finding } from "../api/types";
 import Button from "../components/Button";
 import Dialog from "../components/Dialog";
 import Field from "../components/Field";
@@ -74,15 +75,22 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * Asks for a finding-scope exception. POST /exceptions takes one project per request, so a selection spanning projects
- * is sent as one request per project.
+ * Asks for an exception. Scope "finding" covers the chosen findings; when they are all one vulnerability the user may
+ * instead cover that vulnerability in their project(s) (project_vuln) or, as a security user, everywhere (global_vuln).
+ * POST /exceptions takes one project per request, so a selection spanning projects is sent as one request per project.
  */
 export function ExceptionRequestDialog({ open, findings, onClose, onDone }: {
   open: boolean; findings: Finding[]; onClose: () => void; onDone?: () => void;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const me = useMe();
   const [resolution, setResolution] = useState<ExceptionResolution>("accepted");
+  const [scope, setScope] = useState<ExceptionScope>("finding");
+  const rules = new Set(findings.map((f) => f.rule_id));
+  const vulnID = rules.size === 1 && findings.every((f) => f.kind === "vuln") ? findings[0].rule_id : "";
+  const scopes: ExceptionScope[] = vulnID ? ["finding", "project_vuln", ...(isSecurity(me.data) ? ["global_vuln" as const] : [])] : ["finding"];
+  const sc = scopes.includes(scope) ? scope : "finding";
   const [reason, setReason] = useState("");
   const [expires, setExpires] = useState(dateInput(90));
   const [touched, setTouched] = useState(false);
@@ -92,17 +100,19 @@ export function ExceptionRequestDialog({ open, findings, onClose, onDone }: {
   for (const f of findings) byProject.set(f.project_key, [...(byProject.get(f.project_key) ?? []), f.id]);
   const reasonErr = touched && reason.trim().length < 5 ? "사유를 5자 이상 적어 주세요. 승인자가 판단할 근거가 됩니다." : undefined;
   const dateErr = !expires || expires < dateInput(1) || expires > dateInput(364) ? "내일부터 1년 안의 날짜를 고르세요." : undefined;
-  const close = () => { onClose(); setReason(""); setTouched(false); setErr(""); setResolution("accepted"); setExpires(dateInput(90)); };
+  const close = () => { onClose(); setReason(""); setTouched(false); setErr(""); setResolution("accepted"); setScope("finding"); setExpires(dateInput(90)); };
   const submit = async () => {
     setTouched(true);
     if (reason.trim().length < 5 || dateErr) return;
     setBusy(true); setErr("");
-    const results = await Promise.allSettled([...byProject].map(([project_key, finding_ids]) => api.post("/exceptions", {
-      scope: "finding", project_key, finding_ids, resolution, reason: reason.trim(), expires_at: endOfDayISO(expires),
-    } satisfies ExceptionCreate)));
+    const common = { resolution, reason: reason.trim(), expires_at: endOfDayISO(expires) };
+    const bodies: [string, ExceptionCreate][] = sc === "global_vuln" ? [["전체", { scope: sc, vuln_id: vulnID, ...common }]]
+      : [...byProject].map(([project_key, finding_ids]) => [project_key, sc === "finding"
+        ? { scope: sc, project_key, finding_ids, ...common } : { scope: sc, project_key, vuln_id: vulnID, ...common }]);
+    const results = await Promise.allSettled(bodies.map(([, b]) => api.post("/exceptions", b)));
     setBusy(false);
     qc.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/exceptions") });
-    const failed = results.flatMap((r, i) => (r.status === "rejected" ? [`${[...byProject.keys()][i]}: ${(r.reason as Error).message}`] : []));
+    const failed = results.flatMap((r, i) => (r.status === "rejected" ? [`${bodies[i][0]}: ${(r.reason as Error).message}`] : []));
     if (failed.length === results.length) { setErr(failed.join("\n")); return; }
     toast(failed.length ? `일부 프로젝트만 요청했습니다. 실패: ${failed.join(", ")}` : "예외를 요청했습니다. 보안 담당자가 승인하면 상태가 바뀝니다.", failed.length ? "error" : "ok");
     close();
@@ -112,6 +122,22 @@ export function ExceptionRequestDialog({ open, findings, onClose, onDone }: {
     <Dialog open={open} onClose={close} title="예외 요청"
       description={`${findings.length}건${byProject.size > 1 ? ` (프로젝트 ${byProject.size}개)` : ""}을 보안 담당자 승인 후 예외로 처리합니다. 만료되면 다시 열립니다.`}
       footer={<><Button onClick={close}>취소</Button><Button variant="primary" loading={busy} onClick={submit}>요청 보내기</Button></>}>
+      {scopes.length > 1 && (
+        <fieldset className="field">
+          <legend className="field-label">범위</legend>
+          <div className="choice-list">
+            {scopes.map((s) => (
+              <label key={s} className="choice">
+                <input type="radio" name="scope" checked={sc === s} onChange={() => setScope(s)} />
+                <span><b>{{ finding: "고른 결과만", project_vuln: "이 프로젝트의 같은 취약점 전체", global_vuln: "모든 프로젝트의 같은 취약점" }[s]}</b>
+                  <span className="muted">{{ finding: `${findings.length}건에만 적용합니다.`,
+                    project_vuln: `${vulnID}: 앞으로 이 프로젝트에서 새로 발견되는 것도 포함합니다.`,
+                    global_vuln: `${vulnID}: 모든 프로젝트에 적용합니다(보안 담당자 전용).` }[s]}</span></span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
       <fieldset className="field">
         <legend className="field-label">처리</legend>
         <div className="choice-list choice-row">

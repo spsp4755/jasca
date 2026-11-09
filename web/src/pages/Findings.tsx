@@ -30,7 +30,7 @@ export default function Findings() {
 
 /** Filter bar + findings table + drawer + bulk exception request. With `project`, scoped to that project. */
 export function FindingsView({ project, projects, targets }: { project?: string; projects?: Project[]; targets?: Target[] }) {
-  const [sp] = useSearchParams();
+  const [sp, setSp] = useSearchParams();
   const filters = { ...readFilters(sp), ...(project ? { project } : {}) };
   const query = qs(filters);
   const q = useInfiniteQuery<FindingPage, ApiError, { pages: FindingPage[] }, unknown[], number | undefined>({
@@ -41,10 +41,18 @@ export function FindingsView({ project, projects, targets }: { project?: string;
   const rows = useMemo(() => q.data?.pages.flatMap((p) => p.items ?? []) ?? [], [q.data]);
   const total = q.data?.pages[0]?.total;
   const [selected, setSelected] = useState<Set<Key>>(new Set());
-  const [open, setOpen] = useState<Finding | null>(null);
+  // the open drawer lives in the URL (?finding=<id>) so a link opens it; the list filters ignore that key
+  const openId = Number(sp.get("finding")) || null;
+  const fetched = useApi<Finding>(openId && !rows.some((r) => r.id === openId) ? `/findings/${openId}` : null);
+  const open = (openId && (rows.find((r) => r.id === openId) ?? fetched.data)) || null;
+  const setOpen = (f: Finding | null) => setSp((p) => {
+    const n = new URLSearchParams(p);
+    if (f) n.set("finding", String(f.id)); else n.delete("finding");
+    return n;
+  }, { replace: true });
   const [ask, setAsk] = useState(false);
   useEffect(() => setSelected(new Set()), [query]);
-  const picked = rows.filter((r) => selected.has(r.id));
+  const picked = rows.filter((r) => selected.has(r.id) && r.status === "open"); // only open findings can get an exception
 
   const columns: Column<Finding>[] = [
     { key: "sev", header: "심각도", width: 92, render: (r) => <SeverityBadge severity={r.severity} /> },
@@ -75,8 +83,8 @@ export function FindingsView({ project, projects, targets }: { project?: string;
         </span>
         {selected.size > 0 && (
           <span className="bulk">
-            <span className="num">{selected.size}건 선택</span>
-            <Button size="sm" variant="primary" icon="shield" onClick={() => setAsk(true)}>예외 요청</Button>
+            <span className="num">{selected.size}건 선택{picked.length < selected.size && ` (열린 결과 ${picked.length}건)`}</span>
+            <Button size="sm" variant="primary" icon="shield" disabled={picked.length === 0} onClick={() => setAsk(true)}>예외 요청</Button>
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>선택 해제</Button>
           </span>
         )}
