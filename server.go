@@ -12,8 +12,10 @@ import (
 	"net/url"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,6 +27,11 @@ type server struct {
 	routes  []routeInfo // every registered route with its perm, for tests
 	objs    map[string]func(ctx context.Context, id string) (projectID int64, err error)
 	limiter *limiter // local login attempts per IP
+
+	oidcMu     sync.Mutex
+	providers  map[string]*oidc.Provider // discovered Keycloak per issuer
+	syncMu     sync.Mutex                // one Keycloak sync at a time
+	loginDepts deptLog                   // the last 20 SSO logins' department outcomes
 }
 
 // reqCtx is what the middleware learned about the caller. User and Token are never both set.
@@ -67,6 +74,8 @@ func newServer(ctx context.Context, cfg config, db *pgxpool.Pool) (*server, erro
 	s.projectRoutes()
 	s.tokenRoutes()
 	s.principalRoutes()
+	s.ssoRoutes()
+	s.syncRoutes()
 	s.handle("GET /", permPublic, s.serveWeb)
 	return s, nil
 }

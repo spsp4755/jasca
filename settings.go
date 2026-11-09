@@ -32,6 +32,18 @@ func (s *server) putSetting(ctx context.Context, key string, v any) error {
 	return err
 }
 
+// mergeSetting sets only the top-level fields fields marshals to, keeping the other stored ones (a secret the
+// request left out, or a sync result written meanwhile).
+func (s *server) mergeSetting(ctx context.Context, key string, fields any) error {
+	b, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(ctx, `insert into settings(key, value) values($1, $2)
+		on conflict (key) do update set value=settings.value || excluded.value, updated_at=now()`, key, json.RawMessage(b))
+	return err
+}
+
 // loadSecret returns settings['hmac_secret'], creating 32 random bytes on first start.
 func (s *server) loadSecret(ctx context.Context) ([]byte, error) {
 	b := make([]byte, 32)
