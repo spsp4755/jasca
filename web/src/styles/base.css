@@ -26,7 +26,7 @@ img, svg { display: block; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 2px; }
 /* a link inside running text is underlined: colour alone is not enough to tell it from the text (WCAG 1.4.1) */
-:where(p, li, dd, .field-hint, .alert) > a:not(.btn), .steps a, .md a { text-decoration: underline; text-underline-offset: 2px; }
+:where(p, dd, .field-hint, .alert) > a:not(.btn), .steps a, .md a { text-decoration: underline; text-underline-offset: 2px; }
 kbd {
   display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px;
   border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--surface);
