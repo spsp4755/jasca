@@ -1,0 +1,179 @@
+// Mirrors the API contract in .superpowers/sdd/2026-11-09-jasca-v1/common.md (snake_case, times are RFC3339 strings).
+// Where the contract only names a field (e.g. dashboard lists, scan rows) the shape follows the DB schema columns.
+
+export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN";
+export const SEVERITIES: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
+export type FindingStatus = "open" | "fixed" | "accepted" | "false_positive";
+export type FindingKind = "vuln" | "misconfig" | "secret" | "sast";
+export type FindingOrigin = "scan" | "recheck" | "advisory";
+export type SystemRole = "" | "admin" | "security";
+export type ProjectRole = "owner" | "member" | "viewer";
+export type TargetKind = "image" | "repo" | "fs" | "sbom";
+export type ScanSource = "upload" | "server" | "harbor" | "recheck";
+export type JobState = "queued" | "running" | "done" | "failed" | "canceled";
+export type ExceptionScope = "finding" | "project_vuln" | "global_vuln";
+export type ExceptionResolution = "accepted" | "false_positive";
+export type ExceptionStatus = "pending" | "approved" | "rejected" | "expired" | "revoked";
+export type TokenScope = "upload" | "read";
+export type ChannelKind = "mattermost" | "email";
+
+/** Error body: `{"error":"<code>","message":"<Korean text>"}`. */
+export interface ApiErrorBody { error: string; message: string }
+
+/** Severity counts used by projects, targets, scan summaries and dashboard totals. */
+export interface Counts { critical: number; high: number; medium: number; low: number; unknown: number; open: number }
+
+// --- auth / me ---
+/** tz: IANA zone from JASCA_TZ; the UI shows times in it. */
+export interface AuthConfig { sso_enabled: boolean; tz?: string }
+export interface LocalLoginRequest { username: string; password: string }
+export interface LocalLoginResponse { user: Me }
+export interface Me {
+  id: number; username: string; name: string; email: string; system_role: SystemRole; depts: string[]; groups: string[];
+}
+export interface Principal { kind: "user" | "group"; principal: string; display: string }
+
+// --- projects ---
+export interface Project {
+  id: number; key: string; name: string; description: string; my_role: ProjectRole; counts: Counts; last_scan_at: string | null;
+}
+export interface ProjectCreate { key: string; name: string; description: string }
+export type ProjectPatch = Partial<Omit<ProjectCreate, "key">>;
+export interface Member { principal_kind: "user" | "group"; principal: string; role: ProjectRole; display: string }
+export interface ApiToken {
+  id: number; name: string; prefix: string; scopes: TokenScope[]; expires_at: string; last_used_at: string | null;
+  created_at: string; revoked_at: string | null;
+}
+export interface TokenCreate { name: string; scopes: TokenScope[]; expires_at: string }
+/** `token` is plaintext and only ever returned here. */
+export interface TokenCreated { id: number; token: string }
+export interface Policy { enabled: boolean; min_severity: Severity; max_count: number; new_only: boolean; fixable_only: boolean }
+export interface NotifySub { channel_id: number; events: string[] }
+export interface Target {
+  id: number; kind: TargetKind; name: string; last_scan_at: string | null; counts: Counts; recheck_excluded: boolean;
+}
+
+// --- scans ---
+export interface PolicyResult { passed: boolean; reasons: string[] }
+export interface UploadResult { scan_id: number; target_id: number; summary: Counts; policy: PolicyResult; duplicate: boolean }
+export interface Scan {
+  id: number; project_id: number; target_id: number; source: ScanSource; format: string; ref: string; status: JobState;
+  error: string; summary: Partial<Counts>; policy: PolicyResult | null; created_at: string; finished_at: string | null;
+}
+export interface ScanPage { items: Scan[]; next_before: string | null }
+export interface ScanDetail extends Scan { diff: { new: number; fixed: number; unchanged: number } }
+export interface ScanJobCreated { scan_id: number }
+
+// --- findings / vulns ---
+export interface Finding {
+  id: number; project_id: number; target_id: number; kind: FindingKind; tool: string; rule_id: string; title: string;
+  severity: Severity; pkg_name: string; pkg_version: string; fixed_version: string; pkg_path: string; location: string;
+  status: FindingStatus; origin: FindingOrigin; first_seen_at: string; last_seen_at: string; fixed_at: string | null;
+  reopened_count: number; exception_id: number | null; details: Record<string, unknown>;
+  project_key?: string; target?: string; // joined names, when the endpoint includes them
+}
+export interface FindingFilters {
+  project?: string; target_id?: number; severity?: Severity | ""; status?: FindingStatus | ""; kind?: FindingKind | "";
+  origin?: FindingOrigin | ""; fixable?: boolean; q?: string; limit?: number; cursor?: string;
+}
+export interface FindingPage { items: Finding[]; next_cursor: string | null; total: number }
+export interface VulnAffected {
+  project_key: string; target: string; finding_id: number; severity: Severity; status: FindingStatus;
+  pkg_name: string; pkg_version: string; fixed_version: string;
+}
+export interface Vuln {
+  id: string; title: string; description: string; cvss_score: number | null; cvss_vector: string; refs: string[];
+  cwe_ids: string[]; published_at: string | null; last_modified_at: string | null; ai_guide: string; ai_guide_at: string | null;
+  affected: VulnAffected[];
+}
+
+// --- AI ---
+export interface RunRef { run_id: number }
+export interface AiRun {
+  id: number; kind: "vuln_guide" | "project_report"; project_id: number | null; vuln_id: string | null;
+  state: "queued" | "running" | "done" | "failed"; output: string; error: string; created_at: string; finished_at: string | null;
+}
+
+// --- exceptions / advisories ---
+export interface ExceptionItem {
+  id: number; scope: ExceptionScope; project_id: number | null; finding_id: number | null; vuln_id: string | null;
+  resolution: ExceptionResolution; reason: string; status: ExceptionStatus; requested_by: number | null;
+  decided_by: number | null; decided_at: string | null; decision_note: string; expires_at: string; created_at: string;
+  project_key?: string;
+}
+export interface ExceptionCreate {
+  scope: ExceptionScope; project_key?: string; finding_ids?: number[]; vuln_id?: string;
+  resolution: ExceptionResolution; reason: string; expires_at: string;
+}
+export interface Decision { note: string }
+export interface AdvisoryAffected { ecosystem: string; package: string; range: string; fixed: string }
+export interface Advisory {
+  id: string; title: string; description: string; severity: Severity; affected: AdvisoryAffected[]; refs: string[];
+  active: boolean; created_at: string; updated_at: string;
+}
+export interface AdvisoryPreviewRow { project_key: string; target: string; pkg: string; version: string }
+
+// --- dashboard ---
+export interface TrendPoint { date: string; critical: number; high: number; medium: number; low: number }
+export interface DashboardFinding {
+  id: number; project_key: string; target: string; rule_id: string; title: string; severity: Severity;
+  pkg_name: string; pkg_version: string; fixed_version: string; origin: FindingOrigin; first_seen_at: string;
+}
+export interface DashboardException {
+  id: number; project_key: string | null; scope: ExceptionScope; vuln_id: string | null; resolution: ExceptionResolution;
+  expires_at: string;
+}
+export interface DashboardScan {
+  id: number; project_key: string; target: string; source: ScanSource; status: JobState; summary: Partial<Counts>;
+  policy: PolicyResult | null; created_at: string;
+}
+export interface Dashboard {
+  totals: Counts; trend: TrendPoint[]; oldest_critical: DashboardFinding[]; expiring_exceptions: DashboardException[];
+  recent_scans: DashboardScan[]; newly_known: DashboardFinding[];
+}
+
+// --- audit / channels ---
+export interface AuditEntry {
+  id: number; at: string; actor_user: number | null; actor_token: number | null; ip: string; action: string;
+  project_id: number | null; target: string; details: Record<string, unknown>; actor?: string;
+}
+export interface AuditPage { items: AuditEntry[]; next_cursor: string | null }
+export interface Channel { id: number; name: string; kind: ChannelKind }
+
+// --- admin ---
+export interface AdminUser {
+  id: number; username: string; name: string; email: string; source: "local" | "sso"; system_role: SystemRole;
+  role_from_sso: boolean; active: boolean; last_login_at: string | null; created_at: string; depts: string[]; groups: string[];
+}
+export interface AdminUserPatch { system_role?: SystemRole; active?: boolean }
+export interface SSOSettings {
+  issuer: string; client_id: string; client_secret_set: boolean; admin_role: string; security_role: string;
+  public_url: string; enabled: boolean;
+}
+/** PUT body: an empty or omitted client_secret keeps the stored one. */
+export type SSOSettingsPut = Omit<SSOSettings, "client_secret_set"> & { client_secret?: string };
+export interface SyncSettings {
+  client_id: string; client_secret_set: boolean; interval_min: number; dept_attribute: string; dept_off: boolean;
+  last_run: string | null; last_error: string;
+}
+export type SyncSettingsPut = Omit<SyncSettings, "client_secret_set" | "last_run" | "last_error"> & { client_secret?: string };
+export interface TrivyStatus {
+  db_version: string; updated_at: string | null; next_update: string | null; java_db: unknown; scanners: string[]; trivy_version: string;
+}
+export interface RecheckRun {
+  id: number; reason: "trivydb" | "manual"; state: "running" | "done" | "failed" | "canceled"; total: number; done: number;
+  new_findings: number; started_at: string; finished_at: string | null; error: string;
+}
+export interface HarborLink { id: number; name: string; base_url: string; robot_user: string; robot_secret_set: boolean; created_at: string }
+/** webhook_secret is shown once, right after creation. */
+export interface HarborLinkCreated { id: number; webhook_url: string; webhook_secret: string }
+export interface HarborMapping { harbor_project: string; repo_pattern: string; project_id: number }
+export interface HarborUnmapped {
+  id: number; link_id: number; harbor_project: string; repository: string; digest: string; tag: string; received_at: string;
+}
+export interface AISettings {
+  base_url: string; model: string; api_key_set: boolean; timeout_sec: number; max_input_tokens: number; enabled: boolean;
+}
+export type AISettingsPut = Omit<AISettings, "api_key_set"> & { api_key?: string };
+export interface NotifyChannel { id: number; kind: ChannelKind; name: string; config: Record<string, unknown>; enabled: boolean; created_at: string }
+export interface Retention { raw_per_target: number; raw_days: number }

@@ -1,0 +1,152 @@
+/* JASCA design tokens. Neutral cool greys, one indigo accent (kept away from the severity hues).
+   Severity: --sev-* is the swatch/line colour (light theme = the exact spec hex), --sev-*-ink is text on --sev-*-bg.
+   Every text pair is >= 4.5:1 and every swatch >= 3:1 against --surface, in both themes (checked when chosen). */
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --surface-3: #e7eaef;
+  --line: #e2e5ea;
+  --line-strong: #cbd0d8;
+  --text: #161a21;
+  --text-2: #353c48;
+  --muted: #5f6775;
+  --accent: #3e47c4;
+  --accent-ink: #ffffff;
+  --accent-soft: #eceefd;
+  --primary: #232a36; /* primary buttons: graphite, so colour stays reserved for meaning */
+  --primary-hover: #343d4c;
+  --primary-ink: #ffffff;
+  --ok: #1d7044;
+  --ok-bg: #e7f4ec;
+  --warn: #7f5300;
+  --warn-bg: #fbf1dc;
+  --danger: #b42318;
+  --danger-ink: #ffffff;
+  --danger-bg: #fdeeec;
+  --overlay: rgba(14, 17, 22, 0.42);
+
+  --sev-critical: #b42318;
+  --sev-high: #d9480f;
+  --sev-medium: #b08800;
+  --sev-low: #2f6f9f;
+  --sev-unknown: #6b7280;
+  --sev-critical-ink: #b42318;
+  --sev-high-ink: #b03a0b;
+  --sev-medium-ink: #755a00;
+  --sev-low-ink: #2a6592;
+  --sev-unknown-ink: #555c69;
+  --sev-critical-bg: #fdeeec;
+  --sev-high-bg: #fdefe6;
+  --sev-medium-bg: #faf2d6;
+  --sev-low-bg: #e8f0f7;
+  --sev-unknown-bg: #eef0f2;
+
+  --font: "Pretendard Variable", Pretendard, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", "D2Coding", Menlo, Consolas, monospace;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --shadow-1: 0 1px 2px rgba(22, 26, 33, 0.05);
+  --shadow-2: 0 12px 32px rgba(22, 26, 33, 0.14), 0 2px 6px rgba(22, 26, 33, 0.06);
+  --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+  --dur: 120ms;
+  --sidebar: 228px;
+  --topbar: 56px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1014;
+  --surface: #161a20;
+  --surface-2: #1d222a;
+  --surface-3: #252b34;
+  --line: #262c35;
+  --line-strong: #353c47;
+  --text: #e6e9ee;
+  --text-2: #c3c9d2;
+  --muted: #959dab;
+  --accent: #9ea6ff;
+  --accent-ink: #0e1014;
+  --accent-soft: #232848;
+  --primary: #e6e9ee;
+  --primary-hover: #ffffff;
+  --primary-ink: #0e1014;
+  --ok: #6fcf97;
+  --ok-bg: #15301f;
+  --warn: #e8b860;
+  --warn-bg: #33280f;
+  --danger: #ff8a7a;
+  --danger-ink: #0e1014;
+  --danger-bg: #3a1a17;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --sev-critical: #ff8a7a;
+  --sev-high: #ff9a5c;
+  --sev-medium: #e3bd4a;
+  --sev-low: #7db5e0;
+  --sev-unknown: #a3aab6;
+  --sev-critical-ink: #ff8a7a;
+  --sev-high-ink: #ff9a5c;
+  --sev-medium-ink: #e3bd4a;
+  --sev-low-ink: #7db5e0;
+  --sev-unknown-ink: #a3aab6;
+  --sev-critical-bg: #3a1a17;
+  --sev-high-bg: #3a2213;
+  --sev-medium-bg: #342b10;
+  --sev-low-bg: #15283a;
+  --sev-unknown-bg: #252930;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 14px 36px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Same values as [data-theme="dark"]: "system" (no data-theme) follows the OS. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1014;
+    --surface: #161a20;
+    --surface-2: #1d222a;
+    --surface-3: #252b34;
+    --line: #262c35;
+    --line-strong: #353c47;
+    --text: #e6e9ee;
+    --text-2: #c3c9d2;
+    --muted: #959dab;
+    --accent: #9ea6ff;
+    --accent-ink: #0e1014;
+    --accent-soft: #232848;
+    --primary: #e6e9ee;
+    --primary-hover: #ffffff;
+    --primary-ink: #0e1014;
+    --ok: #6fcf97;
+    --ok-bg: #15301f;
+    --warn: #e8b860;
+    --warn-bg: #33280f;
+    --danger: #ff8a7a;
+    --danger-ink: #0e1014;
+    --danger-bg: #3a1a17;
+    --overlay: rgba(0, 0, 0, 0.6);
+    --sev-critical: #ff8a7a;
+    --sev-high: #ff9a5c;
+    --sev-medium: #e3bd4a;
+    --sev-low: #7db5e0;
+    --sev-unknown: #a3aab6;
+    --sev-critical-ink: #ff8a7a;
+    --sev-high-ink: #ff9a5c;
+    --sev-medium-ink: #e3bd4a;
+    --sev-low-ink: #7db5e0;
+    --sev-unknown-ink: #a3aab6;
+    --sev-critical-bg: #3a1a17;
+    --sev-high-bg: #3a2213;
+    --sev-medium-bg: #342b10;
+    --sev-low-bg: #15283a;
+    --sev-unknown-bg: #252930;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 14px 36px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur: 0ms; }
+  *, *::before, *::after { animation-duration: 0ms !important; transition-duration: 0ms !important; }
+}
