@@ -37,7 +37,7 @@ export default function Sync() {
         <Panel title="동기화 설정" meta={q.data.last_run ? `마지막 실행 ${fmtDateTime(q.data.last_run)} · 그룹 ${q.data.groups} · 사용자 ${q.data.users}` : "아직 실행하지 않았습니다"}>
           {q.data.last_error && <div className="alert alert-danger" role="alert">마지막 오류: {q.data.last_error}</div>}
           <form className="admin-form" onSubmit={(e) => { e.preventDefault(); save.mutate(undefined); }}>
-            <Field label="서비스 계정 Client ID" hint="Keycloak 클라이언트(service account 사용)에 view-users, view-realm 역할이 필요합니다."><input className="input" value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} /></Field>
+            <Field label="서비스 계정 Client ID" hint="Keycloak 클라이언트(service account 사용)에 view-users 역할이 필요합니다(그룹 목록을 못 읽으면 query-groups 추가)."><input className="input" value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} /></Field>
             <SecretField label="서비스 계정 Secret" isSet={q.data.client_secret_set} value={secret} onChange={setSecret} />
             <div className="two">
               <Field label="동기화 주기 (분)"><input className="input" type="number" min={1} value={f.interval_min} onChange={(e) => setF({ ...f, interval_min: Number(e.target.value) })} /></Field>

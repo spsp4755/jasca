@@ -12,7 +12,7 @@ export default function AI() {
   const q = useApi<AISettings>("/admin/ai");
   const pq = useApi<AIPrompts>("/admin/ai/prompts");
   const toast = useToast();
-  const [f, setF] = useState<AISettingsPut>({ base_url: "", model: "", timeout_sec: 120, max_input_tokens: 24000, enabled: false });
+  const [f, setF] = useState<AISettingsPut>({ base_url: "", model: "", timeout_sec: 120, max_input_tokens: 12000, enabled: false });
   const [key, setKey] = useState("");
   const [pr, setPr] = useState<AIPrompts>({ vuln_guide: "", project_report: "" });
   useEffect(() => { if (q.data) { const { api_key_set: _k, ...rest } = q.data; setF(rest); setKey(""); } }, [q.data]);
@@ -36,13 +36,14 @@ export default function AI() {
             <Field label="모델 이름" required><input className="input" value={f.model} onChange={(e) => setF({ ...f, model: e.target.value })} /></Field>
             <SecretField label="API 키" isSet={q.data.api_key_set} value={key} onChange={setKey} hint={q.data.api_key_set ? undefined : "키가 필요 없는 서버면 비워 두세요."} />
             <div className="two">
-              <Field label="응답 대기 시간 (초)"><input className="input" type="number" min={1} value={f.timeout_sec} onChange={num("timeout_sec")} /></Field>
-              <Field label="최대 입력 토큰" hint="이보다 길면 취약점 목록을 줄여 보냅니다."><input className="input" type="number" min={1} value={f.max_input_tokens} onChange={num("max_input_tokens")} /></Field>
+              <Field label="응답 대기 시간 (초)"><input className="input" type="number" min={1} max={600} value={f.timeout_sec} onChange={num("timeout_sec")} /></Field>
+              <Field label="최대 입력 토큰" hint="100 이상. 이보다 길면 취약점 목록을 줄여 보냅니다. 기본 12000."><input className="input" type="number" min={100} value={f.max_input_tokens} onChange={num("max_input_tokens")} /></Field>
             </div>
             <div className="admin-actions">
               <Button type="submit" variant="primary" loading={save.isPending}>저장</Button>
               <Button loading={test.isPending} onClick={() => test.mutate(undefined)}>연결 시험</Button>
             </div>
+            <p className="muted" style={{ margin: 0 }}>저장된 API 키는 저장된 Base URL로만 보냅니다. 다른 주소로 시험하려면 키를 다시 입력하세요.</p>
           </form>
         </Panel>
       )}
