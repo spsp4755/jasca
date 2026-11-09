@@ -97,6 +97,7 @@ func main() {
 	for _, w := range workerStarters {
 		go w(ctx, s)
 	}
+	go s.jobLoop(ctx)
 	srv := &http.Server{Addr: cfg.Addr, Handler: s, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	drained := make(chan struct{})
 	go func() {

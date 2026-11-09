@@ -32,6 +32,8 @@ type server struct {
 	providers  map[string]*oidc.Provider // discovered Keycloak per issuer
 	syncMu     sync.Mutex                // one Keycloak sync at a time
 	loginDepts deptLog                   // the last 20 SSO logins' department outcomes
+	jobs       jobRunner                 // jobs.go
+	trivy      trivyState                // trivydb.go
 }
 
 // reqCtx is what the middleware learned about the caller. User and Token are never both set.

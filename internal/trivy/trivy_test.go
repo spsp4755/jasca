@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -41,6 +42,30 @@ func TestArgsNoShell(t *testing.T) {
 		if !slices.Contains(a, f) {
 			t.Fatalf("missing %s", f)
 		}
+	}
+	// trivy 0.76.1 sbom has no misconfig checks and rejects --skip-check-update ("unknown flag")
+	if slices.Contains(sb, "--skip-check-update") || !slices.Contains(sb, "--offline-scan") {
+		t.Fatalf("sbom flags: %v", sb)
+	}
+}
+
+func TestCycloneDXWithOS(t *testing.T) {
+	out, err := CycloneDXWithOS(&OSInfo{Family: "alpine", Name: "3.12.12"}, []Package{
+		{PURL: "pkg:apk/alpine/zlib@1.2.12-r0?arch=x86_64&distro=3.12.12", Name: "zlib", Version: "1.2.12-r0", Ecosystem: "alpine"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bom struct {
+		Components []struct{ Type, Name, Version, Purl string }
+	}
+	json.Unmarshal(out, &bom)
+	if len(bom.Components) != 2 || bom.Components[0].Type != "operating-system" || bom.Components[0].Name != "alpine" ||
+		bom.Components[0].Version != "3.12.12" || bom.Components[1].Name != "zlib" {
+		t.Fatalf("%+v", bom.Components)
+	}
+	plain, _ := CycloneDX([]Package{{PURL: "pkg:npm/a@1", Name: "a", Version: "1"}})
+	if bytes.Contains(plain, []byte("operating-system")) {
+		t.Fatal("OS component without OS")
 	}
 }
 
@@ -143,8 +168,12 @@ func TestBundleRejects(t *testing.T) {
 			if name == "too big" {
 				max = 1 << 20
 			}
-			if _, _, err := InstallBundle(d, bytes.NewReader(b), max); err == nil {
+			_, _, err := InstallBundle(d, bytes.NewReader(b), max)
+			if err == nil {
 				t.Fatal("expected error")
+			}
+			if (name == "too big") != errors.Is(err, ErrTooLarge) {
+				t.Fatalf("ErrTooLarge: %v", err)
 			}
 			oldIntact(t, d)
 		})

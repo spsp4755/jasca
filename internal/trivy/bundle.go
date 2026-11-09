@@ -53,6 +53,26 @@ func Status(cacheDir string) (DBStatus, error) {
 	return st, nil
 }
 
+// ErrTooLarge: the bundle unpacks to more than InstallBundle's maxBytes.
+var ErrTooLarge = errors.New("bundle exceeds size limit")
+
+// capReader fails with ErrTooLarge once more than left bytes have been read.
+type capReader struct {
+	r    io.Reader
+	left int64
+}
+
+func (c *capReader) Read(p []byte) (int, error) {
+	if c.left < 0 {
+		return 0, ErrTooLarge
+	}
+	n, err := c.r.Read(p)
+	if c.left -= int64(n); c.left < 0 {
+		return n, ErrTooLarge
+	}
+	return n, err
+}
+
 // InstallBundle extracts a trivy-db or trivy-java-db tar.gz, validates it, then swaps it in.
 // kind is "db" or "java-db". On any failure the existing directory is untouched.
 func InstallBundle(cacheDir string, r io.Reader, maxBytes int64) (kind string, st DBStatus, err error) {
@@ -73,8 +93,9 @@ func InstallBundle(cacheDir string, r io.Reader, maxBytes int64) (kind string, s
 	if err != nil {
 		return "", st, err
 	}
-	// maxBytes bounds the decompressed size; +1 lets us detect overflow.
-	tr := tar.NewReader(io.LimitReader(gz, maxBytes+1))
+	// maxBytes bounds everything decompressed, the tar padding and trailing data included
+	cr := &capReader{r: gz, left: maxBytes}
+	tr := tar.NewReader(cr)
 	var total int64
 	sizes := map[string]int64{}
 	for {
@@ -102,11 +123,11 @@ func InstallBundle(cacheDir string, r io.Reader, maxBytes int64) (kind string, s
 			return "", st, e
 		}
 		if total += n; total > maxBytes {
-			return "", st, errors.New("bundle exceeds size limit")
+			return "", st, ErrTooLarge
 		}
 		sizes[h.Name] = n
 	}
-	if _, e := io.Copy(io.Discard, gz); e != nil { // verifies the gzip trailer
+	if _, e := io.Copy(io.Discard, cr); e != nil { // verifies the gzip trailer
 		return "", st, e
 	}
 	dbFile := "trivy.db"

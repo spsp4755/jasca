@@ -26,7 +26,10 @@ func Args(kind, input string, o Options) []string {
 		scanners = "vuln"
 	}
 	a := []string{kind, "--format", "json", "--list-all-pkgs", "--skip-db-update", "--skip-java-db-update",
-		"--skip-check-update", "--offline-scan", "--cache-dir", o.CacheDir, "--scanners", scanners, "--quiet"}
+		"--offline-scan", "--cache-dir", o.CacheDir, "--scanners", scanners, "--quiet"}
+	if kind != "sbom" { // sbom has no misconfig checks and rejects the flag
+		a = append(a, "--skip-check-update")
+	}
 	if kind == "image" {
 		return append(a, "--input", input)
 	}
