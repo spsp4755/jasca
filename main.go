@@ -92,6 +92,7 @@ func main() {
 		log.Fatal(err)
 	}
 	go s.syncLoop(ctx)
+	go s.retentionLoop(ctx)
 	srv := &http.Server{Addr: cfg.Addr, Handler: s, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	drained := make(chan struct{})
 	go func() {
