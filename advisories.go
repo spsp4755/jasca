@@ -6,7 +6,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"regexp"
 	"slices"
@@ -22,19 +21,6 @@ import (
 
 func init() {
 	routeRegistrars = append(routeRegistrars, (*server).advisoryRoutes)
-	afterIngest = append(afterIngest, func(ctx context.Context, s *server, r *ingestResult) {
-		err := s.tx(ctx, func(tx pgx.Tx) error {
-			advs, err := loadAdvisories(ctx, tx, true)
-			if err != nil || len(advs) == 0 {
-				return err
-			}
-			_, err = s.syncAdvisories(ctx, tx, advs, "", r.TargetID)
-			return err
-		})
-		if err != nil {
-			log.Printf("advisories: match target %d: %v", r.TargetID, err)
-		}
-	})
 }
 
 // ecoAliases maps the names advisory authors use to the ecosystem names of the package inventory (and of internal/versions).

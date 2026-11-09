@@ -293,3 +293,32 @@ func TestRecheckRealTrivy(t *testing.T) {
 	}
 	t.Logf("recheck findings: %d", qInt(t, s, `select count(*) from findings where origin='recheck'`))
 }
+
+// a finding the recheck adds is covered by an approved exception just like one a scan adds
+func TestRecheckFindingInheritsException(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	pid := mkProject(t, s, "web")
+	tid := seedInventory(t, s, pid, "fs", "t1", "trivy/fs-mixed.json", false)
+	sqlExec(t, s, `insert into exceptions(scope, project_id, vuln_id, resolution, reason, status, expires_at)
+		values('project_vuln', $1, 'CVE-2021-23337', 'false_positive', 'r', 'approved', now() + interval '1 day')`, pid)
+	useFakeTrivy(t, s, sbomStyle(t, readFixture(t, "trivy/fs-mixed.json")))
+	if _, err := s.startRecheck(ctx, "manual"); err != nil {
+		t.Fatal(err)
+	}
+	if ran, err := s.runNextJob(ctx); !ran || err != nil {
+		t.Fatal(ran, err)
+	}
+	var st string
+	var exID *int64
+	if err := s.db.QueryRow(ctx, `select status, exception_id from findings where target_id=$1 and rule_id='CVE-2021-23337' and origin='recheck'`, tid).
+		Scan(&st, &exID); err != nil {
+		t.Fatal(err)
+	}
+	if st != "false_positive" || exID == nil {
+		t.Fatalf("recheck finding: %s %v", st, exID)
+	}
+	if n := qInt(t, s, `select (summary->>'open')::int from scans where source='recheck'`); n != qInt(t, s, `select count(*) from findings where target_id=$1 and status='open'`, tid) {
+		t.Fatalf("recheck summary counts the excepted finding as open: %d", n)
+	}
+}

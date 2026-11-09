@@ -95,7 +95,10 @@ func TestAdvisoryMatchesExistingInventory(t *testing.T) {
 		t.Errorf("package gone: open=%d fixed=%d", o, fx)
 	}
 	// and a scan that brings a vulnerable version matches at ingest
-	mustUpload(t, e.s, "web", "target=app&kind=fs", pkgDoc("app", "npm", [2]string{"left-pad", "1.0.0"}), mck)
+	up := mustUpload(t, e.s, "web", "target=app&kind=fs", pkgDoc("app", "npm", [2]string{"left-pad", "1.0.0"}), mck)
+	if up.Summary["high"] != 1 { // matched inside the ingest, before the summary and the policy
+		t.Errorf("upload summary misses the advisory finding: %v", up.Summary)
+	}
 	if o, _ := advFindings(t, e.s, "INT-2026-001"); o != 1 {
 		t.Errorf("new scan: open = %d", o)
 	}

@@ -15,11 +15,6 @@ import (
 func init() {
 	routeRegistrars = append(routeRegistrars, (*server).exceptionRoutes)
 	workerStarters = append(workerStarters, func(ctx context.Context, s *server) { s.runExceptionExpiry(ctx) })
-	afterIngest = append(afterIngest, func(ctx context.Context, s *server, r *ingestResult) {
-		if err := s.tx(ctx, func(tx pgx.Tx) error { return reapplyExceptions(ctx, tx, "f.target_id = $1", r.TargetID) }); err != nil {
-			log.Printf("exceptions: apply to target %d: %v", r.TargetID, err)
-		}
-	})
 }
 
 // workerStarters are background loops main starts with the process context, after newServer.

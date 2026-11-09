@@ -40,7 +40,8 @@ var errScanCanceled = errors.New("scan was canceled")
 // own errors; they cannot fail the upload. Append from an init().
 var afterIngest []func(ctx context.Context, s *server, r *ingestResult)
 
-// ingest stores one parsed report in one transaction: target, scan, packages, catalog, findings, auto-resolve.
+// ingest stores one parsed report in one transaction: target, scan, packages, catalog, findings, auto-resolve,
+// advisory matches and active exceptions.
 // Then it evaluates the policy, trims old raw reports and runs the afterIngest hooks.
 func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, error) {
 	rep := in.Report
@@ -117,6 +118,19 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 			and not exists (select 1 from scan_findings sf where sf.scan_id = $3 and sf.finding_id = f.id) returning f.id`,
 			res.TargetID, slices.Collect(maps.Keys(rep.Complete)), res.ScanID)
 		if res.Fixed, err = pgx.CollectRows(rows, pgx.RowTo[int64]); err != nil {
+			return err
+		}
+		// advisories and exceptions before the counts, so the summary and the policy see their result
+		advs, err := loadAdvisories(ctx, tx, true)
+		if err != nil {
+			return err
+		}
+		if len(advs) > 0 {
+			if _, err := s.syncAdvisories(ctx, tx, advs, "", res.TargetID); err != nil {
+				return err
+			}
+		}
+		if err := reapplyExceptions(ctx, tx, "f.target_id = $1", res.TargetID); err != nil {
 			return err
 		}
 		var c sevCounts
