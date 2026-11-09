@@ -432,3 +432,16 @@ func TestAIRunsAccess(t *testing.T) {
 		t.Fatalf("audit rows %d", n)
 	}
 }
+
+// A second request while the same run is still queued returns that run instead of queueing another LLM call.
+func TestAIRunNotQueuedTwice(t *testing.T) {
+	s := testServer(t)
+	enableAI(t, s, echoLLM(t), "", 0)
+	sqlExec(t, s, `insert into vulns(id, title) values('CVE-2024-1111', 'bug')`)
+	ck := loginAs(t, s, mkUser(t, s, "kim", ""))
+	a := postRun(t, s, "/api/v1/vulns/CVE-2024-1111/ai-guide", ck)
+	b := postRun(t, s, "/api/v1/vulns/CVE-2024-1111/ai-guide", ck)
+	if a != b || qInt(t, s, `select count(*) from jobs where kind='ai'`) != 1 {
+		t.Fatalf("runs %d %d", a, b)
+	}
+}

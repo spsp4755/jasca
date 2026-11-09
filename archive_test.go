@@ -126,6 +126,17 @@ func TestExtractRejectsAbsolute(t *testing.T) {
 	}
 }
 
+// Only a drive letter makes "x:" a path attack; "a:b.txt" is a normal file name on Linux.
+func TestExtractAllowsColonNames(t *testing.T) {
+	dir, err := runExtract(t, mkZip(t, arEnt{name: "a:b.txt", body: "ok"}, arEnt{name: "1:x", body: "ok"}), 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "a:b.txt")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestExtractSkipsSymlinkOutside(t *testing.T) {
 	ar := mkTarGz(t, true,
 		arEnt{name: "link", typ: tar.TypeSymlink, link: "/etc"},

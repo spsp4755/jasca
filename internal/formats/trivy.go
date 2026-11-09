@@ -153,9 +153,9 @@ func addTrivyResult(rep *Report, res *trivyResult) {
 		rep.Complete["secret:trivy"] = true
 	}
 	eco := trivyEco(res.Class, res.Type)
-	seen := map[[2]string]bool{}
+	seen := map[[3]string]bool{}
 	addPkg := func(name, ver, purl, fp, srcName, srcVer string) {
-		key := [2]string{name, ver}
+		key := [3]string{name, ver, fp} // one entry per file: the same JAR at two paths is two findings
 		if seen[key] {
 			return
 		}

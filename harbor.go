@@ -247,6 +247,10 @@ func (s *server) handleHarborMappingsGet(w http.ResponseWriter, r *http.Request,
 		}
 		out = append(out, map[string]any{"harbor_project": hp, "repo_pattern": pat, "project_id": pid})
 	}
+	if err := rows.Err(); err != nil {
+		writeInternal(w, "harbor mappings", err)
+		return
+	}
 	writeJSON(w, 200, out)
 }
 
@@ -317,6 +321,10 @@ func (s *server) handleHarborUnmapped(w http.ResponseWriter, r *http.Request, c 
 			return
 		}
 		out = append(out, map[string]any{"id": id, "link_id": link, "harbor_project": hp, "repository": repo, "digest": digest, "tag": tag, "received_at": at.UTC()})
+	}
+	if err := rows.Err(); err != nil {
+		writeInternal(w, "harbor unmapped", err)
+		return
 	}
 	writeJSON(w, 200, out)
 }
@@ -443,10 +451,17 @@ func (s *server) handleHarborHook(w http.ResponseWriter, r *http.Request, c *req
 			pat string
 			pid int64
 		}
-		rows.Scan(&p.pat, &p.pid)
+		if err := rows.Scan(&p.pat, &p.pid); err != nil {
+			rows.Close()
+			writeInternal(w, "harbor hook mappings", err)
+			return
+		}
 		pats = append(pats, p)
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil { // a DB error must not file the image as unmapped
+		writeInternal(w, "harbor hook mappings", err)
+		return
+	}
 	short := strings.TrimPrefix(repo, ns+"/")
 	pid := int64(0)
 	for _, p := range pats { // most specific pattern first; a pattern may name the repo with or without the Harbor project

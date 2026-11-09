@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -20,6 +21,9 @@ var maxExtractEntries = 200000
 
 // archiveError is a rejected archive. Its text is Korean and shown to the user as the scan error.
 type archiveError struct{ msg string }
+
+// driveRe: a Windows drive path ("C:/x", "C:"); "a:b.txt" is an ordinary name.
+var driveRe = regexp.MustCompile(`^[A-Za-z]:(/|$)`)
 
 func (e *archiveError) Error() string { return e.msg }
 
@@ -99,7 +103,7 @@ func (x *extractor) next(name string) (string, error) {
 		return "", err
 	}
 	name = strings.ReplaceAll(name, `\`, "/")
-	if strings.HasPrefix(name, "/") || (len(name) > 1 && name[1] == ':') {
+	if strings.HasPrefix(name, "/") || driveRe.MatchString(name) {
 		return "", errArchivePath
 	}
 	for _, seg := range strings.Split(name, "/") {

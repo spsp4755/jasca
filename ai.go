@@ -315,11 +315,17 @@ func (s *server) aiEnabled(w http.ResponseWriter, ctx context.Context) bool {
 func (s *server) startRun(ctx context.Context, kind string, projectID *int64, vulnID *string, userID int64) (int64, error) {
 	var id int64
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		// one queued run per user and subject: repeated clicks must not pile up LLM calls ahead of other jobs
+		err := tx.QueryRow(ctx, `select id from ai_runs where requested_by = $1 and kind = $2 and project_id is not distinct from $3
+			and vuln_id is not distinct from $4 and state = 'queued' order by id desc limit 1`, userID, kind, projectID, vulnID).Scan(&id)
+		if err == nil || !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
 		if err := tx.QueryRow(ctx, `insert into ai_runs(kind, project_id, vuln_id, requested_by) values($1, $2, $3, $4) returning id`,
 			kind, projectID, vulnID, userID).Scan(&id); err != nil {
 			return err
 		}
-		_, err := s.enqueue(ctx, tx, "ai", nil, map[string]int64{"run_id": id}, prioAI)
+		_, err = s.enqueue(ctx, tx, "ai", nil, map[string]int64{"run_id": id}, prioAI)
 		return err
 	})
 	return id, err

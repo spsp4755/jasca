@@ -2,7 +2,7 @@
 # 먼저 postgres.yaml(또는 사내 DB)을 준비한 뒤 적용하세요.
 # 신규 설치: JASCA_BOOTSTRAP_PASSWORD와 Ingress host를 수정하세요.
 # 프로젝트, 스캔 결과, 사용자, 설정은 PostgreSQL에 있고, Trivy DB와 업로드 작업 폴더는 PVC jasca-data(/data)에 있습니다.
-# 백업은 DB와 PVC를 함께 받아야 합니다(PVC에는 Trivy DB와 첨부 보고서 파일이 있습니다).
+# 백업은 DB와 PVC를 함께 받아야 합니다(원본 보고서는 DB에, PVC에는 Trivy DB와 대기 중인 스캔 업로드가 있습니다).
 apiVersion: v1
 kind: Secret
 metadata:
@@ -74,6 +74,7 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001 # /data 볼륨을 앱 사용자가 쓸 수 있게 합니다.
+        fsGroupChangePolicy: OnRootMismatch # 시작할 때마다 PVC 전체를 chown하지 않습니다(느린 스토리지에서 startup probe 초과 방지).
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -142,7 +143,8 @@ metadata:
     # JASCA_MAX_SCAN_UPLOAD_MB를 바꾸면 proxy-body-size도 함께 바꾸세요. 다른 프록시도 같은 조건을 맞추세요.
     # 서버는 Origin과 Host가 같은지 검사하므로 Host 헤더를 바꾸지 마세요.
     nginx.ingress.kubernetes.io/ssl-redirect: "true" # HTTP로 들어오면 HTTPS로 돌립니다.
-    nginx.ingress.kubernetes.io/proxy-body-size: "2g"
+    nginx.ingress.kubernetes.io/proxy-body-size: "2100m" # 앱 상한 2GiB + multipart 머리말 여유, 그래야 초과 시 앱의 한국어 안내가 보입니다.
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off" # 2GiB 업로드를 컨트롤러 디스크에 먼저 쌓지 않고 바로 넘깁니다.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
 spec:

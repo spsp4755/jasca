@@ -58,7 +58,7 @@ Namespace `jasca`는 미리 생성되어 있다고 가정합니다(`kubectl crea
 3. Ingress host(`jasca.example.internal`)를 실제 사내 주소로 변경하고, 필요하면 `ingressClassName`을 지정.
 4. 기본 StorageClass가 없으면 `postgres.yaml`과 `jasca.yaml`(PVC `jasca-data`, 기본 30Gi)의 `storageClassName`을 지정. 앱 PVC는 ReadWriteOnce 하나면 됩니다(replicas 1).
 5. Ingress TLS 항목은 생략했습니다. 사내 앞단/LB/Ingress 공용 인증서로 **HTTPS**를 제공하세요.
-6. 스캔 파일 업로드 상한은 기본 2GiB입니다. Ingress의 `proxy-body-size`(예: `2g`)와 읽기·쓰기 제한 시간(600초)이 이 값 이상이어야 합니다. 상한을 바꾸면 ConfigMap의 `JASCA_MAX_SCAN_UPLOAD_MB`와 함께 바꾸세요.
+6. 스캔 파일 업로드 상한은 기본 2GiB입니다. Ingress의 `proxy-body-size`(예: `2100m`, 상한보다 조금 크게)와 읽기·쓰기 제한 시간(600초)이 이 값 이상이어야 합니다. `proxy-request-buffering: "off"`로 큰 업로드를 컨트롤러 디스크에 쌓지 않게 합니다. 상한을 바꾸면 ConfigMap의 `JASCA_MAX_SCAN_UPLOAD_MB`와 함께 바꾸세요.
 7. Trivy는 임시 파일을 `/tmp`(emptyDir 2Gi)에, 취약점 DB를 `/data/trivy`에 씁니다. Pod 메모리 한도는 2Gi입니다. 큰 이미지를 스캔하면 늘려야 할 수 있습니다.
 
 ```sh
@@ -218,7 +218,7 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 - PostgreSQL PVC에는 스캔마다 원본 보고서(gzip)와 패키지 목록이 쌓입니다. **관리 → 보존 기간**의 두 조건(대상당 최근 N개, N일)을 모두 넘긴 스캔은 원본, 패키지 목록, 결과 연결이 지워지고 스캔 기록과 결과(취약점 이력)는 남습니다. 대상의 현재 인벤토리(패키지가 있는 가장 최근 스캔)는 재평가와 사내 권고 매칭에 쓰이므로 항상 남습니다.
 - 크기는 `대상 수 × max(최근 N개, 보존 일수 × 하루 업로드 수) × 스캔 1건`으로 잡으세요. 스캔 1건은 원본 0.1~1MB와 패키지 1,000개당 약 0.3MB입니다. 예: 대상 300개, CI가 하루 5번 올리고 보존 14일이면 300 × 70 × 약 0.8MB ≈ 17GB입니다. 기본값(90일)은 업로드가 잦은 곳에서 20Gi를 넘을 수 있으니 일수를 줄이거나 PVC를 늘리세요.
 - 검사 대상 수백 개 규모를 기준으로 설계했고 2,000개까지는 무리 없이 동작하도록 만들었습니다.
-- Ingress는 업로드 상한과 같은 `proxy-body-size`, 600초 읽기·쓰기 제한 시간이 필요합니다(`jasca.yaml`에 있음). NGINX가 아닌 Ingress는 같은 의미의 설정을 따로 하세요.
+- Ingress는 업로드 상한보다 조금 큰 `proxy-body-size`, 요청 버퍼링 끄기, 600초 읽기·쓰기 제한 시간이 필요합니다(`jasca.yaml`에 있음). NGINX가 아닌 Ingress는 같은 의미의 설정을 따로 하세요.
 
 ## 문제 해결
 

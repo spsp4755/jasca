@@ -16,6 +16,7 @@ export JASCA_TEST_DATABASE_URL=${JASCA_TEST_DATABASE_URL:-postgres://jasca:jasca
 "$ENGINE" exec jasca-pg createdb -U jasca jasca_release 2>/dev/null || true
 go vet ./... && go test ./...
 (cd web && npm ci && npm run build)
+sh scripts/check-forbidden.sh # again: the fresh web/dist is what the binary embeds (the image grep skips binaries)
 rm -rf release && mkdir release
 "$ENGINE" build --platform linux/amd64 --build-arg VERSION="${TAG#v}" -t "jasca:$TAG" .
 sh scripts/check-forbidden.sh "jasca:$TAG"

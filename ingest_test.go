@@ -535,9 +535,9 @@ func TestRetentionTrimsPackages(t *testing.T) {
 	pkgs := func(n string) []byte {
 		return trivyDoc(n, []tv{{ID: "CVE-2024-1000", Pkg: "lib-" + n}}, nil)
 	}
-	inv := mustUpload(t, s, "web", "", pkgs("A"), ck)     // the inventory once only package-less scans follow
-	old := mustUpload(t, s, "web", "", pkgs("B"), ck)     // old, not the newest, not an inventory: trimmed
-	keepB := mustUpload(t, s, "web", "", pkgs("B"), ck)   // B's newest
+	inv := mustUpload(t, s, "web", "", pkgs("A"), ck)   // the inventory once only package-less scans follow
+	old := mustUpload(t, s, "web", "", pkgs("B"), ck)   // old, not the newest, not an inventory: trimmed
+	keepB := mustUpload(t, s, "web", "", pkgs("B"), ck) // B's newest
 	sqlExec(t, s, `update scans set created_at = now() - interval '2 days'`)
 	sarif := []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep"}},"results":[]}]}`)
 	mustUpload(t, s, "web", "target=A&kind=fs", sarif, ck)

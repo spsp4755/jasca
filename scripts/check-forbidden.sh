@@ -30,6 +30,7 @@ if [ -n "${1:-}" ]; then
   [ "$n" -gt 0 ] && [ -n "$(ls -A "$tmp/fs")" ] || { echo "image $1: no layers extracted, cannot scan" >&2; exit 1; }
     # keep grep's own exit status (a pipe into sed would hide a grep error)
   LABEL="image $1"; scan sh -c 'out=$(grep -rnwIiF -f "$1" "$2" "$3"); rc=$?; [ -z "$out" ] || printf "%s\n" "$out" | sed "s#^$4/##"; exit $rc' _ "$LIST" "$tmp/fs" "$tmp/img" "$tmp"
+  LABEL="image $1 file names"; scan sh -c 'cd "$2" && find . | grep -nwiF -f "$1"' _ "$LIST" "$tmp/fs"
 fi
 [ "$fail" -eq 0 ] || exit 1
 echo "forbidden-words check: clean"

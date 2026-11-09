@@ -276,3 +276,18 @@ func TestTrivyDebianSourcePackage(t *testing.T) {
 		t.Fatalf("cyclonedx: %+v", p)
 	}
 }
+
+// The same JAR version at two paths is two inventory entries, so a recheck fingerprints both copies.
+func TestTrivySamePackageTwoPaths(t *testing.T) {
+	doc := `{"SchemaVersion":2,"ArtifactName":"app","ArtifactType":"container_image","Results":[{"Target":"Java","Class":"lang-pkgs","Type":"jar",
+		"Packages":[{"Name":"org.x:lib","Version":"1.0","FilePath":"a/lib.jar"},{"Name":"org.x:lib","Version":"1.0","FilePath":"b/lib.jar"},
+		{"Name":"org.x:lib","Version":"1.0","FilePath":"a/lib.jar"}]}]}`
+	p, _ := Get("trivy")
+	rep, err := p.Parse(strings.NewReader(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Packages) != 2 || rep.Packages[0].Path != "a/lib.jar" || rep.Packages[1].Path != "b/lib.jar" {
+		t.Fatalf("packages %+v", rep.Packages)
+	}
+}
