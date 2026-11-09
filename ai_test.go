@@ -108,6 +108,13 @@ type aiTestRunView struct {
 func waitRun(t *testing.T, s *server, ck *http.Cookie, id int64) aiTestRunView {
 	t.Helper()
 	for i := 0; i < 100; i++ {
+		for { // the worker is started by main, not testServer: run the queued jobs here, in order
+			if ran, err := s.runNextJob(context.Background()); err != nil {
+				t.Fatal(err)
+			} else if !ran {
+				break
+			}
+		}
 		rec := do(t, s, "GET", fmt.Sprintf("/api/v1/ai/runs/%d", id), nil, ck)
 		var r aiTestRunView
 		if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &r) != nil {

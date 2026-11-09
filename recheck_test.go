@@ -68,10 +68,10 @@ func TestRecheckAddsOnlyAndResumes(t *testing.T) {
 	s := testServer(t)
 	ctx := context.Background()
 	pid := mkProject(t, s, "web")
-	emits := captureEmits(t)
 	t1 := seedInventory(t, s, pid, "fs", "t1", "trivy/fs-mixed.json", true) // already has the findings
 	t2 := seedInventory(t, s, pid, "fs", "t2", "trivy/fs-mixed.json", false)
 	t3 := seedInventory(t, s, pid, "fs", "t3", "trivy/fs-mixed.json", false)
+	emits := captureEmits(t) // after seeding: the uploads' own new_critical/policy_failed events are not the recheck's
 	sqlExec(t, s, `update findings set status='fixed', fixed_at=now() where target_id=$1 and rule_id='CVE-2021-23337'`, t1)
 	sqlExec(t, s, `update findings set status='accepted' where target_id=$1 and rule_id='CVE-2026-4800'`, t1)
 	sqlExec(t, s, `insert into findings(project_id, target_id, fingerprint, kind, tool, rule_id, severity) values($1, $2, 'gone', 'vuln', 'trivy', 'CVE-1999-0001', 'LOW')`, pid, t1)
