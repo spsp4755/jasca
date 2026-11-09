@@ -3,6 +3,13 @@ import Empty from "./components/Empty";
 import Layout from "./components/Layout";
 import PageHeader from "./components/PageHeader";
 import Home from "./pages/Home";
+// Task 16: projects, findings, vulns, scans
+import Findings from "./pages/Findings";
+import ProjectDetail from "./pages/ProjectDetail";
+import Projects from "./pages/Projects";
+import Scan from "./pages/Scan";
+import Vuln from "./pages/Vuln";
+import "./styles/pages.css";
 // admin
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminAI from "./pages/admin/AI";
@@ -32,11 +39,11 @@ function Soon({ title }: { title: string }) {
 // Signed-in pages (rendered inside Layout). Add a route here and, for top-level sections, an entry in Sidebar NAV.
 export const pages: RouteObject[] = [
   { index: true, element: <Home /> },
-  { path: "projects", element: <Soon title="프로젝트" /> },
-  { path: "projects/:key/*", element: <Soon title="프로젝트" /> },
-  { path: "findings", element: <Soon title="취약점" /> },
-  { path: "vulns/:id", element: <Soon title="취약점 상세" /> },
-  { path: "scans/:id", element: <Soon title="스캔 상세" /> },
+  { path: "projects", element: <Projects /> },
+  { path: "projects/:key/*", element: <ProjectDetail /> },
+  { path: "findings", element: <Findings /> },
+  { path: "vulns/:id", element: <Vuln /> },
+  { path: "scans/:id", element: <Scan /> },
   { path: "scan", element: <Soon title="스캔하기" /> },
   { path: "exceptions", element: <Soon title="예외" /> },
   { path: "exceptions/approvals", element: <Soon title="예외 승인" /> },

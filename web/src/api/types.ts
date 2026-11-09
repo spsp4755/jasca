@@ -34,14 +34,16 @@ export interface Me {
 export interface Principal { kind: "user" | "group"; principal: string; display: string }
 
 // --- projects ---
+/** my_role is "" for API-token callers. */
 export interface Project {
-  id: number; key: string; name: string; description: string; my_role: ProjectRole; counts: Counts; last_scan_at: string | null;
+  id: number; key: string; name: string; description: string; created_by: number | null; created_at: string;
+  my_role: ProjectRole | ""; counts: Counts; last_scan_at: string | null;
 }
 export interface ProjectCreate { key: string; name: string; description: string }
 export type ProjectPatch = Partial<Omit<ProjectCreate, "key">>;
 export interface Member { principal_kind: "user" | "group"; principal: string; role: ProjectRole; display: string }
 export interface ApiToken {
-  id: number; name: string; prefix: string; scopes: TokenScope[]; expires_at: string; last_used_at: string | null;
+  id: number; project_id: number; created_by: number | null; name: string; prefix: string; scopes: TokenScope[]; expires_at: string; last_used_at: string | null;
   created_at: string; revoked_at: string | null;
 }
 export interface TokenCreate { name: string; scopes: TokenScope[]; expires_at: string }
@@ -54,29 +56,33 @@ export interface Target {
 }
 
 // --- scans ---
-export interface PolicyResult { passed: boolean; reasons: string[] }
+/** error is set when the gate failed closed (evaluation error). */
+export interface PolicyResult { passed: boolean; reasons: string[]; error?: string }
 export interface UploadResult { scan_id: number; target_id: number; summary: Counts; policy: PolicyResult; duplicate: boolean }
 export interface Scan {
-  id: number; project_id: number; target_id: number; source: ScanSource; format: string; ref: string; status: JobState;
-  error: string; summary: Partial<Counts>; policy: PolicyResult | null; created_at: string; finished_at: string | null;
+  id: number; project_id: number; target_id: number; target_kind: TargetKind; target_name: string; source: ScanSource;
+  format: string; ref: string; status: JobState; error: string; created_by_user: number | null; created_by_token: number | null;
+  summary: Partial<Counts> & { os?: { family: string; name: string } }; policy: PolicyResult | null; has_raw: boolean;
+  created_at: string; finished_at: string | null;
 }
-export interface ScanPage { items: Scan[]; next_before: string | null }
-export interface ScanDetail extends Scan { diff: { new: number; fixed: number; unchanged: number } }
+export interface ScanPage { items: Scan[]; next_before: number | null }
+/** diff compares with the previous done scan of the same target and format (set difference of linked findings). */
+export interface ScanDetail extends Scan { diff: { new: number; fixed: number; unchanged: number; previous_scan_id: number | null } }
 export interface ScanJobCreated { scan_id: number }
 
 // --- findings / vulns ---
 export interface Finding {
-  id: number; project_id: number; target_id: number; kind: FindingKind; tool: string; rule_id: string; title: string;
+  id: number; project_id: number; project_key: string; target_id: number; target_kind: TargetKind; target_name: string; kind: FindingKind; tool: string; rule_id: string; title: string;
   severity: Severity; pkg_name: string; pkg_version: string; fixed_version: string; pkg_path: string; location: string;
   status: FindingStatus; origin: FindingOrigin; first_seen_at: string; last_seen_at: string; fixed_at: string | null;
   reopened_count: number; exception_id: number | null; details: Record<string, unknown>;
-  project_key?: string; target?: string; // joined names, when the endpoint includes them
 }
+/** Query of GET /findings and /findings.csv. severity, status, kind and origin take comma lists. */
 export interface FindingFilters {
-  project?: string; target_id?: number; severity?: Severity | ""; status?: FindingStatus | ""; kind?: FindingKind | "";
-  origin?: FindingOrigin | ""; fixable?: boolean; q?: string; limit?: number; cursor?: string;
+  project?: string; target_id?: string; severity?: string; status?: string; kind?: string; origin?: string;
+  fixable?: "true" | "false" | ""; q?: string; limit?: number; cursor?: number;
 }
-export interface FindingPage { items: Finding[]; next_cursor: string | null; total: number }
+export interface FindingPage { items: Finding[]; next_cursor: number | null; total: number }
 export interface VulnAffected {
   project_key: string; target: string; finding_id: number; severity: Severity; status: FindingStatus;
   pkg_name: string; pkg_version: string; fixed_version: string;

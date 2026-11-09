@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useDashboard } from "../api/hooks";
-import { SEVERITIES, type Counts, type Dashboard, type DashboardScan } from "../api/types";
+import { SEVERITIES, type Counts, type Dashboard, type PolicyResult } from "../api/types";
 import Button from "../components/Button";
 import Empty from "../components/Empty";
 import Icon from "../components/Icon";
@@ -170,7 +170,7 @@ function RiskSummary({ totals }: { totals?: Counts }) {
   );
 }
 
-function PkgCell({ name, version, fixed }: { name: string; version: string; fixed: string }) {
+export function PkgCell({ name, version, fixed }: { name: string; version: string; fixed: string }) {
   return (
     <span className="pkg">
       <span className="pkg-name">{name || "—"}</span>
@@ -180,7 +180,7 @@ function PkgCell({ name, version, fixed }: { name: string; version: string; fixe
   );
 }
 
-function ProjectTarget({ project, target }: { project: string; target: string }) {
+export function ProjectTarget({ project, target }: { project: string; target: string }) {
   return (
     <span className="pt">
       <Link to={`/projects/${encodeURIComponent(project)}`} className="pt-project">{project}</Link>
@@ -189,13 +189,13 @@ function ProjectTarget({ project, target }: { project: string; target: string })
   );
 }
 
-function SummaryCell({ s }: { s: Partial<Counts> }) {
+export function SummaryCell({ s }: { s: Partial<Counts> }) {
   const parts = SEVERITIES.map((sev) => [sev, s[sev.toLowerCase() as keyof Counts] ?? 0] as const).filter(([, n]) => n > 0);
   if (!parts.length) return <span className="muted">발견 없음</span>;
   return <span className="sev-row">{parts.map(([sev, n]) => <SeverityBadge key={sev} severity={sev} count={n} compact />)}</span>;
 }
 
-function PolicyCell({ s }: { s: DashboardScan }) {
+export function PolicyCell({ s }: { s: { policy: PolicyResult | null } }) {
   if (!s.policy) return <span className="muted">—</span>;
   return s.policy.passed
     ? <span className="policy policy-pass"><Icon name="check" size={14} />통과</span>

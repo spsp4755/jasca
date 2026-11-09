@@ -1,4 +1,4 @@
-import type { ExceptionResolution, ExceptionScope, FindingOrigin, ScanSource, Severity } from "../api/types";
+import type { ExceptionResolution, ExceptionScope, FindingKind, FindingOrigin, ProjectRole, ScanSource, Severity, TargetKind } from "../api/types";
 
 export const DEFAULT_TZ = "Asia/Seoul";
 /** Zone every time is shown in (JASCA_TZ, from GET /auth/config). Set by useAuthConfig before signed-in pages render. */
@@ -65,3 +65,15 @@ export const SOURCE_LABEL: Record<ScanSource, string> = { upload: "CI 업로드"
 export const ORIGIN_LABEL: Record<FindingOrigin, string> = { scan: "스캔", recheck: "재평가", advisory: "사내 Advisory" };
 export const SCOPE_LABEL: Record<ExceptionScope, string> = { finding: "결과", project_vuln: "프로젝트 전체", global_vuln: "전사" };
 export const RESOLUTION_LABEL: Record<ExceptionResolution, string> = { accepted: "위험 수용", false_positive: "오탐" };
+
+// --- Task 16: finding/target labels and date-input helpers ---
+export const KIND_LABEL: Record<FindingKind, string> = { vuln: "취약점", misconfig: "설정 오류", secret: "비밀값", sast: "코드 분석" };
+export const TARGET_KIND_LABEL: Record<TargetKind, string> = { image: "이미지", repo: "저장소", fs: "파일시스템", sbom: "SBOM" };
+export const ROLE_LABEL: Record<ProjectRole, string> = { owner: "소유자", member: "멤버", viewer: "보기 전용" };
+/** Local YYYY-MM-DD `days` from today, for <input type="date"> values and min/max. */
+export const dateInput = (days = 0) => {
+  const d = new Date(Date.now() + days * 86_400_000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+/** End of that local day as RFC3339; the API caps expiry at 365 days, so date pickers stop at dateInput(364). */
+export const endOfDayISO = (date: string) => new Date(`${date}T23:59:59`).toISOString();
