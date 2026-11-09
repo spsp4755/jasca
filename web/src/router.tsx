@@ -1,0 +1,39 @@
+import { createBrowserRouter, type RouteObject } from "react-router-dom";
+import Empty from "./components/Empty";
+import Layout from "./components/Layout";
+import PageHeader from "./components/PageHeader";
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import NotFound from "./pages/NotFound";
+
+/** Stand-in until the page's task lands; replace the element in `pages` below. */
+function Soon({ title }: { title: string }) {
+  return (
+    <>
+      <PageHeader title={title} />
+      <div className="panel"><Empty icon="clock" title="준비 중" description="이 화면은 곧 추가됩니다." /></div>
+    </>
+  );
+}
+
+// Signed-in pages (rendered inside Layout). Add a route here and, for top-level sections, an entry in Sidebar NAV.
+export const pages: RouteObject[] = [
+  { index: true, element: <Home /> },
+  { path: "projects", element: <Soon title="프로젝트" /> },
+  { path: "projects/:key/*", element: <Soon title="프로젝트" /> },
+  { path: "findings", element: <Soon title="취약점" /> },
+  { path: "vulns/:id", element: <Soon title="취약점 상세" /> },
+  { path: "scans/:id", element: <Soon title="스캔 상세" /> },
+  { path: "scan", element: <Soon title="스캔하기" /> },
+  { path: "exceptions", element: <Soon title="예외" /> },
+  { path: "exceptions/approvals", element: <Soon title="예외 승인" /> },
+  { path: "advisories/*", element: <Soon title="사내 Advisory" /> },
+  { path: "reports/*", element: <Soon title="보고서" /> },
+  { path: "admin/*", element: <Soon title="관리" /> },
+  { path: "*", element: <NotFound /> },
+];
+
+export const router = createBrowserRouter([
+  { path: "/login", element: <Login /> },
+  { path: "/", element: <Layout />, children: pages },
+]);

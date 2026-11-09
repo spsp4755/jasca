@@ -1,0 +1,55 @@
+import type { ExceptionResolution, ExceptionScope, FindingOrigin, ScanSource, Severity } from "../api/types";
+
+// shortcut: JASCA_TZ is not exposed by the API yet, so the default zone is fixed here; read it from /auth/config when it is.
+export const TZ = "Asia/Seoul";
+
+const dateFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+const dtFmt = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+const mdFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: TZ, month: "numeric", day: "numeric" });
+const numFmt = new Intl.NumberFormat("ko-KR");
+
+const valid = (iso?: string | null) => (iso ? new Date(iso) : null);
+const ok = (d: Date | null): d is Date => !!d && !Number.isNaN(d.getTime());
+
+/** 2026. 11. 09. */
+export const fmtDate = (iso?: string | null) => { const d = valid(iso); return ok(d) ? dateFmt.format(d) : "—"; };
+/** 2026. 11. 09. 14:05 */
+export const fmtDateTime = (iso?: string | null) => { const d = valid(iso); return ok(d) ? dtFmt.format(d) : "—"; };
+/** 11. 9. — chart axes. A bare YYYY-MM-DD is a calendar day, not an instant, so it is not shifted. */
+export const fmtMonthDay = (date: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (m) return `${Number(m[2])}. ${Number(m[3])}.`;
+  const d = valid(date);
+  return ok(d) ? mdFmt.format(d) : date;
+};
+export const fmtNumber = (n?: number | null) => (n == null ? "—" : numFmt.format(n));
+
+/** "방금", "5분 전", "3일 전", "2일 후" … falls back to the date after 30 days. */
+export function fmtRelative(iso?: string | null, now = Date.now()): string {
+  const d = valid(iso);
+  if (!ok(d)) return "—";
+  const diff = d.getTime() - now;
+  const abs = Math.abs(diff);
+  const suffix = diff < 0 ? "전" : "후";
+  const min = 60_000, hour = 60 * min, day = 24 * hour;
+  if (abs < min) return "방금";
+  if (abs < hour) return `${Math.floor(abs / min)}분 ${suffix}`;
+  if (abs < day) return `${Math.floor(abs / hour)}시간 ${suffix}`;
+  if (abs < 30 * day) return `${Math.floor(abs / day)}일 ${suffix}`;
+  return fmtDate(iso);
+}
+
+/** Whole days from iso to now (age of an open finding). */
+export const daysSince = (iso: string, now = Date.now()) => Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86_400_000));
+
+/** Whole days from now until iso, rounded up (0 = today or past). */
+export const daysUntil = (iso: string, now = Date.now()) => Math.max(0, Math.ceil((new Date(iso).getTime() - now) / 86_400_000));
+
+// Korean labels; the API enum stays visible as a tooltip where it matters (SeverityBadge title).
+export const SEVERITY_LABEL: Record<Severity, string> = { CRITICAL: "치명", HIGH: "높음", MEDIUM: "중간", LOW: "낮음", UNKNOWN: "알 수 없음" };
+export const SOURCE_LABEL: Record<ScanSource, string> = { upload: "CI 업로드", server: "서버 스캔", harbor: "Harbor", recheck: "재평가" };
+export const ORIGIN_LABEL: Record<FindingOrigin, string> = { scan: "스캔", recheck: "재평가", advisory: "사내 Advisory" };
+export const SCOPE_LABEL: Record<ExceptionScope, string> = { finding: "결과", project_vuln: "프로젝트 전체", global_vuln: "전사" };
+export const RESOLUTION_LABEL: Record<ExceptionResolution, string> = { accepted: "위험 수용", false_positive: "오탐" };
