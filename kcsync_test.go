@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -113,5 +114,51 @@ func TestSyncDisablesMissingUser(t *testing.T) {
 	rec = do(t, s, "GET", "/api/v1/admin/sync", nil, admin)
 	if json.Unmarshal(rec.Body.Bytes(), &sy); sy["last_error"] == "" {
 		t.Fatalf("error not recorded: %s", rec.Body.String())
+	}
+}
+
+// A new Keycloak user that reuses a departed user's username never revives or merges into the old row.
+func TestSyncUsernameReuse(t *testing.T) {
+	s := testServer(t)
+	kc := newFakeKC(t, "/realms/jasca")
+	configureSSO(t, s, kc)
+	ctx := context.Background()
+	old := mkUser(t, s, "alice", "") // oidc_sub = "alice"
+	sqlExec(t, s, `update users set system_role='security', role_from_sso=false where id=$1`, old.ID)
+	pid := mkProject(t, s, "web")
+	addMember(t, s, pid, "user", fmt.Sprint(old.ID), "owner")
+	kc.tree = []map[string]any{{"id": "g1", "name": "dev", "path": "/dev", "subGroups": []map[string]any{}}}
+	kc.member = map[string][]map[string]any{"g1": {{"id": "alice2", "username": "alice", "enabled": true}}}
+	kc.users = []map[string]any{{"id": "alice2", "username": "alice", "enabled": true, "email": "b@example.internal"},
+		{"id": "boss", "username": "boss", "enabled": true}}
+	for i := 0; i < 2; i++ { // the second run must not flip anything back
+		if err := s.syncKeycloak(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var oldName, oldEmail string
+	var oldActive bool
+	s.db.QueryRow(ctx, `select username, email, active from users where id=$1`, old.ID).Scan(&oldName, &oldEmail, &oldActive)
+	if oldActive || oldName == "alice" || oldEmail == "b@example.internal" {
+		t.Fatalf("old row: %q %q active=%v", oldName, oldEmail, oldActive)
+	}
+	var newID int64
+	var sub, role string
+	var active bool
+	if err := s.db.QueryRow(ctx, `select id, oidc_sub, system_role, active from users where username='alice'`).Scan(&newID, &sub, &role, &active); err != nil {
+		t.Fatal(err)
+	}
+	if newID == old.ID || sub != "alice2" || role != "" || !active {
+		t.Fatalf("new row %d sub %q role %q active %v", newID, sub, role, active)
+	}
+	var owners, groups int
+	s.db.QueryRow(ctx, `select count(*) from project_members where principal_kind='user' and principal=$1::text`, newID).Scan(&owners)
+	s.db.QueryRow(ctx, `select count(*) from user_groups where user_id=$1`, newID).Scan(&groups)
+	if owners != 0 || groups != 1 {
+		t.Fatalf("new row inherited memberships %d, groups %d", owners, groups)
+	}
+	g, _ := memberships(t, s, oldName)
+	if len(g) != 0 {
+		t.Fatalf("old row got the new user's groups %v", g)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -324,7 +325,7 @@ func TestSSOStateMismatch(t *testing.T) {
 		"missing state":   do(t, s, "GET", "/api/v1/auth/sso/callback?code=c", nil, st),
 		"other site's ck": do(t, s, "GET", "/api/v1/auth/sso/callback?code=c&state="+url.QueryEscape(state), nil, &http.Cookie{Name: ssoCookie, Value: "x.y"}),
 	} {
-		if rec.Code != 400 || errCode(t, rec) != "bad_request" || cookieNamed(rec, sessionCookie) != nil {
+		if rec.Code != 302 || rec.Header().Get("Location") != "/login?error=state" || cookieNamed(rec, sessionCookie) != nil {
 			t.Errorf("%s: %d %s", name, rec.Code, rec.Body.String())
 		}
 	}
@@ -349,7 +350,7 @@ func TestSSOStateExpires(t *testing.T) {
 	o.Exp = time.Now().Add(-time.Second).Unix()
 	old := &http.Cookie{Name: ssoCookie, Value: s.signed(o)}
 	rec := do(t, s, "GET", "/api/v1/auth/sso/callback?code=c&state="+url.QueryEscape(loc.Query().Get("state")), nil, old)
-	if rec.Code != 400 || cookieNamed(rec, sessionCookie) != nil {
+	if rec.Code != 302 || rec.Header().Get("Location") != "/login?error=state" || cookieNamed(rec, sessionCookie) != nil {
 		t.Fatalf("expired state: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -567,5 +568,49 @@ func TestAdminSSONeverReturnsSecret(t *testing.T) {
 		if rec := do(t, s, "GET", p, nil, user); rec.Code != 403 {
 			t.Errorf("%s as user: %d", p, rec.Code)
 		}
+	}
+}
+
+// A different Keycloak identity with a reused username never inherits the old row (memberships, admin role).
+func TestSSOUsernameReuseRefused(t *testing.T) {
+	s := testServer(t)
+	kc := newFakeKC(t, "/realms/jasca")
+	configureSSO(t, s, kc)
+	ctx := context.Background()
+	old := mkUser(t, s, "alice", "") // oidc_sub = "alice"
+	sqlExec(t, s, `update users set system_role='security', role_from_sso=false where id=$1`, old.ID)
+	if _, _, _, _, err := s.ssoUpsert(ctx, "a-different-keycloak-user", "alice", "New Alice", "new@example.internal", ""); !errors.Is(err, errIdentityConflict) {
+		t.Fatalf("upsert with another sub: %v", err)
+	}
+	kc.user, kc.sub = "alice", "a-different-keycloak-user"
+	st, loc := ssoStart(t, s, kc, "/")
+	rec := do(t, s, "GET", "/api/v1/auth/sso/callback?code=c&state="+url.QueryEscape(loc.Query().Get("state")), nil, st)
+	if rec.Code != 302 || rec.Header().Get("Location") != "/login?error=identity" || cookieNamed(rec, sessionCookie) != nil {
+		t.Fatalf("callback: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	var sub, role string
+	s.db.QueryRow(ctx, `select oidc_sub, system_role from users where id=$1`, old.ID).Scan(&sub, &role)
+	if sub != "alice" || role != "security" {
+		t.Fatalf("old row changed: sub %q role %q", sub, role)
+	}
+
+	// once an admin deactivates the old account, the new person gets a fresh row and the old one is renamed
+	sqlExec(t, s, `update users set active=false where id=$1`, old.ID)
+	ssoLogin(t, s, kc)
+	var id int64
+	s.db.QueryRow(ctx, `select id, system_role from users where username='alice'`).Scan(&id, &role)
+	var oldName string
+	s.db.QueryRow(ctx, `select username from users where id=$1`, old.ID).Scan(&oldName)
+	if id == old.ID || role != "" || oldName == "alice" {
+		t.Fatalf("new row %d (old %d) role %q, old name %q", id, old.ID, role, oldName)
+	}
+
+	// a row without a stored sub (made before subs were recorded) is still found by username
+	sqlExec(t, s, `insert into users(username, name, source) values('bob', 'bob', 'sso')`)
+	bob := userID(t, s, "bob")
+	kc.user, kc.sub = "bob", "kc-bob"
+	ssoLogin(t, s, kc)
+	if userID(t, s, "bob") != bob {
+		t.Fatal("null-sub row not adopted")
 	}
 }

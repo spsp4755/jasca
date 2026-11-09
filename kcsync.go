@@ -393,13 +393,13 @@ func (s *server) doSync(ctx context.Context) (nGroups, nUsers int, err error) {
 	for _, g := range groups {
 		paths = append(paths, g.Path)
 	}
-	var known, off, on []string
+	var known, off, knownIDs, offIDs, onIDs []string
 	for _, u := range all {
-		known = append(known, u.Username)
+		known, knownIDs = append(known, u.Username), append(knownIDs, u.ID)
 		if u.Enabled {
-			on = append(on, u.Username)
+			onIDs = append(onIDs, u.ID)
 		} else {
-			off = append(off, u.Username)
+			off, offIDs = append(off, u.Username), append(offIDs, u.ID)
 		}
 	}
 	err = s.tx(ctx, func(tx pgx.Tx) error {
@@ -412,17 +412,33 @@ func (s *server) doSync(ctx context.Context) (nGroups, nUsers int, err error) {
 		if _, e := tx.Exec(ctx, `update kc_groups set deleted=true where not deleted and path <> all($1)`, paths); e != nil {
 			return e
 		}
+		// disabled or deleted in Keycloak: inactive now, and their sessions end. Rows are matched by sub (the
+		// Keycloak user id); only a row without a stored sub falls back to its username. Done first, so a departed
+		// user's username is free for a new Keycloak user below.
+		if _, e := tx.Exec(ctx, `with gone as (update users set active=false, disabled_by_sync=true
+				where source='sso' and active and case when oidc_sub is null then username = any($1) or username <> all($2)
+					else oidc_sub = any($3) or oidc_sub <> all($4) end returning id)
+			delete from sessions where user_id in (select id from gone)`, off, known, offIDs, knownIDs); e != nil {
+			return e
+		}
 		for _, u := range all {
-			// the Keycloak user id is the OIDC sub; a sub match also follows a username rename
-			tag, e := tx.Exec(ctx, `update users set username=$1, name=$2, email=$3 where oidc_sub=$4 and source='sso'`,
-				u.Username, displayName(u), u.Email, u.ID)
+			if _, e := tx.Exec(ctx, freeUsernameSQL, u.Username, u.ID); e != nil {
+				return e
+			}
+			// a sub match also follows a username rename, unless another row still holds the new name
+			tag, e := tx.Exec(ctx, `update users set username=$1, name=$2, email=$3 where oidc_sub=$4 and source='sso'
+				and not exists (select 1 from users o where o.username=$1 and o.id <> users.id)`, u.Username, displayName(u), u.Email, u.ID)
 			if e != nil {
 				return e
 			}
 			if tag.RowsAffected() == 0 && u.Enabled {
+				// a username held by another identity is left alone (that row is never reused); a row without a sub is adopted
 				if _, e := tx.Exec(ctx, `insert into users(username, name, email, source, oidc_sub, role_from_sso) values($1, $2, $3, 'sso', $4, true)
-					on conflict (username) do update set name=excluded.name, email=excluded.email where users.source='sso'`,
-					u.Username, displayName(u), u.Email, u.ID); e != nil {
+					on conflict do nothing`, u.Username, displayName(u), u.Email, u.ID); e != nil {
+					return e
+				}
+				if _, e := tx.Exec(ctx, `update users set oidc_sub=$4, name=$2, email=$3 where username=$1 and source='sso' and oidc_sub is null
+					and not exists (select 1 from users o where o.oidc_sub=$4)`, u.Username, displayName(u), u.Email, u.ID); e != nil {
 					return e
 				}
 			}
@@ -433,14 +449,14 @@ func (s *server) doSync(ctx context.Context) (nGroups, nUsers int, err error) {
 				return e
 			}
 		}
-		add := func(table, username, path string) error {
-			_, e := tx.Exec(ctx, `insert into `+table+`(user_id, path) select id, $2 from users where username=$1 and source='sso'
-				on conflict do nothing`, username, path)
+		add := func(table, sub, path string) error {
+			_, e := tx.Exec(ctx, `insert into `+table+`(user_id, path) select id, $2 from users where oidc_sub=$1 and source='sso'
+				on conflict do nothing`, sub, path)
 			return e
 		}
 		for _, g := range groups {
 			for _, u := range members[g.ID] {
-				if e := add("user_groups", u.Username, g.Path); e != nil {
+				if e := add("user_groups", u.ID, g.Path); e != nil {
 					return e
 				}
 			}
@@ -448,23 +464,17 @@ func (s *server) doSync(ctx context.Context) (nGroups, nUsers int, err error) {
 		if deptOn {
 			for _, u := range all {
 				for _, p := range deptPaths(u.Attributes[attr]) {
-					if e := add("user_depts", u.Username, p); e != nil {
+					if e := add("user_depts", u.ID, p); e != nil {
 						return e
 					}
 				}
 			}
 		}
-		// disabled or deleted in Keycloak: inactive now, and their sessions end
-		if _, e := tx.Exec(ctx, `with gone as (update users set active=false, disabled_by_sync=true
-				where source='sso' and active and (username = any($1) or username <> all($2)) returning id)
-			delete from sessions where user_id in (select id from gone)`, off, known); e != nil {
-			return e
-		}
 		// only users this sync disabled come back; an admin's deactivation stays
-		_, e := tx.Exec(ctx, `update users set active=true, disabled_by_sync=false where source='sso' and disabled_by_sync and username = any($1)`, on)
+		_, e := tx.Exec(ctx, `update users set active=true, disabled_by_sync=false where source='sso' and disabled_by_sync and oidc_sub = any($1)`, onIDs)
 		return e
 	})
-	return len(groups), len(on), err
+	return len(groups), len(onIDs), err
 }
 
 func displayName(u kcUser) string {

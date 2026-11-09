@@ -23,6 +23,8 @@ const ERRORS: Record<string, string> = {
   expired: "로그인 시간이 지났습니다. 다시 로그인하세요.",
   state: "로그인 요청을 확인하지 못했습니다. 다시 로그인하세요.",
   forbidden: "이 서비스를 사용할 권한이 없습니다. 관리자에게 문의하세요.",
+  conflict: "같은 아이디의 로컬 계정이 있어 Keycloak으로 로그인할 수 없습니다. 관리자에게 문의하세요.",
+  identity: "같은 아이디를 쓰던 다른 Keycloak 계정이 JASCA에 남아 있습니다. 관리자에게 기존 계정을 비활성화해 달라고 요청하세요.",
 };
 const errorText = (code: string, fallback?: string) => ERRORS[code] ?? fallback ?? "로그인하지 못했습니다. 다시 시도하세요.";
 

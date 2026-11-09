@@ -52,6 +52,9 @@ type ssoState struct {
 
 var errLocalAccount = errors.New("a local account already uses this username")
 
+// errIdentityConflict: an active Keycloak row with another sub holds the username (a reused username).
+var errIdentityConflict = errors.New("another Keycloak identity already uses this username")
+
 func (s *server) ssoRoutes() {
 	s.handle("GET /api/v1/auth/config", permPublic, func(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 		sso, err := s.ssoConf(r.Context())
@@ -170,7 +173,7 @@ func (s *server) handleSSOCallback(w http.ResponseWriter, r *http.Request, c *re
 	if err != nil || !s.unsigned(ck.Value, &o) || time.Now().Unix() > o.Exp || o.State == "" ||
 		subtle.ConstantTimeCompare([]byte(o.State), []byte(r.URL.Query().Get("state"))) != 1 {
 		audit("state", "state")
-		writeErr(w, 400, "bad_request", "로그인 요청이 만료되었거나 올바르지 않습니다. 처음부터 다시 로그인하세요.")
+		http.Redirect(w, r, "/login?error=state", http.StatusFound) // a browser lands here, so show the login page's message
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: ssoCookie, Path: ssoCookiePath, MaxAge: -1, HttpOnly: true, Secure: secure(r)})
@@ -230,6 +233,10 @@ func (s *server) handleSSOCallback(w http.ResponseWriter, r *http.Request, c *re
 	uid, active, before, after, err := s.ssoUpsert(ctx, id.Subject, claims.Username, claims.Name, claims.Email, mapRole(sso, roles))
 	if errors.Is(err, errLocalAccount) {
 		bad("conflict", "username", err)
+		return
+	}
+	if errors.Is(err, errIdentityConflict) {
+		bad("identity", "username", err)
 		return
 	}
 	if err != nil {
@@ -325,17 +332,36 @@ func (s *server) loginDeptsFor(ctx context.Context, id *oidc.IDToken, sso ssoSet
 	return depts
 }
 
-// ssoUpsert finds the user by OIDC sub (then by username, for rows the sync or an older login made) or creates
-// it. With role_from_sso the Keycloak role replaces the system role; an admin's override is kept.
+// freeUsernameSQL renames an inactive Keycloak row that holds username $1 under another sub ($2), so a new person
+// who got a departed person's username gets a fresh row instead of the old memberships and role.
+const freeUsernameSQL = `update users set username = username || '#' || id
+	where username = $1 and source = 'sso' and not active and oidc_sub is not null and oidc_sub <> $2`
+
+// ssoUpsert finds the user by OIDC sub (then by username, only for rows without a stored sub) or creates it.
+// A username held by an active row with another sub is refused (errIdentityConflict). With role_from_sso the
+// Keycloak role replaces the system role; an admin's override is kept.
 func (s *server) ssoUpsert(ctx context.Context, sub, username, name, email, role string) (id int64, active bool, before, after string, err error) {
 	err = s.tx(ctx, func(tx pgx.Tx) error {
-		var source string
-		var fromSSO bool
-		var bySync bool
-		const cols = `select id, source, active, system_role, role_from_sso, disabled_by_sync from users `
-		e := tx.QueryRow(ctx, cols+`where oidc_sub=$1 for update`, sub).Scan(&id, &source, &active, &before, &fromSSO, &bySync)
+		if _, e := tx.Exec(ctx, freeUsernameSQL, username, sub); e != nil {
+			return e
+		}
+		var hsource string
+		var hsub *string
+		e := tx.QueryRow(ctx, `select source, oidc_sub from users where username=$1 for update`, username).Scan(&hsource, &hsub)
+		switch {
+		case errors.Is(e, pgx.ErrNoRows):
+		case e != nil:
+			return e
+		case hsource != "sso":
+			return errLocalAccount
+		case hsub != nil && *hsub != sub:
+			return errIdentityConflict
+		}
+		var fromSSO, bySync bool
+		const cols = `select id, active, system_role, role_from_sso, disabled_by_sync from users `
+		e = tx.QueryRow(ctx, cols+`where oidc_sub=$1 and source='sso' for update`, sub).Scan(&id, &active, &before, &fromSSO, &bySync)
 		if errors.Is(e, pgx.ErrNoRows) {
-			e = tx.QueryRow(ctx, cols+`where username=$1 for update`, username).Scan(&id, &source, &active, &before, &fromSSO, &bySync)
+			e = tx.QueryRow(ctx, cols+`where username=$1 and source='sso' and oidc_sub is null for update`, username).Scan(&id, &active, &before, &fromSSO, &bySync)
 		}
 		if errors.Is(e, pgx.ErrNoRows) {
 			before, after, active = "", role, true
@@ -344,9 +370,6 @@ func (s *server) ssoUpsert(ctx context.Context, sub, username, name, email, role
 		}
 		if e != nil {
 			return e
-		}
-		if source != "sso" {
-			return errLocalAccount
 		}
 		after = before
 		if fromSSO {
