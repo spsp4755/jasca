@@ -95,7 +95,7 @@ func enableAI(t *testing.T, s *server, f *fakeLLM, base string, maxTokens int) {
 	}
 }
 
-type runView struct {
+type aiTestRunView struct {
 	ID        int64   `json:"id"`
 	Kind      string  `json:"kind"`
 	ProjectID *int64  `json:"project_id"`
@@ -105,11 +105,11 @@ type runView struct {
 	Error     string  `json:"error"`
 }
 
-func waitRun(t *testing.T, s *server, ck *http.Cookie, id int64) runView {
+func waitRun(t *testing.T, s *server, ck *http.Cookie, id int64) aiTestRunView {
 	t.Helper()
 	for i := 0; i < 100; i++ {
 		rec := do(t, s, "GET", fmt.Sprintf("/api/v1/ai/runs/%d", id), nil, ck)
-		var r runView
+		var r aiTestRunView
 		if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &r) != nil {
 			t.Fatalf("get run: %d %s", rec.Code, rec.Body.String())
 		}
@@ -119,7 +119,7 @@ func waitRun(t *testing.T, s *server, ck *http.Cookie, id int64) runView {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatal("run did not finish")
-	return runView{}
+	return aiTestRunView{}
 }
 
 func addFinding(t *testing.T, s *server, pid, tid int64, rule, sev, pkg, title string, n int) {
