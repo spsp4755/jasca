@@ -1,0 +1,6 @@
+{
+  "name": "jasca-e2e",
+  "private": true,
+  "description": "브라우저 E2E. playwright-core는 JASCA_E2E_PLAYWRIGHT로 따로 지정합니다.",
+  "devDependencies": { "axe-core": "4.10.2" }
+}
