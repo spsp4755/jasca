@@ -6,8 +6,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"log"
 	"maps"
+	"runtime/debug"
 	"slices"
 
 	"github.com/jackc/pgx/v5"
@@ -30,6 +32,9 @@ type ingestResult struct {
 	Policy                      policyResult
 	Duplicate                   bool
 }
+
+// errScanCanceled: the pre-created scan (ingestInput.ScanID) was canceled while it ran; nothing was written.
+var errScanCanceled = errors.New("scan was canceled")
 
 // afterIngest runs after a new scan is committed and its policy stored (never for a duplicate). Hooks log their
 // own errors; they cannot fail the upload. Append from an init().
@@ -66,9 +71,21 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 		}
 		var err error
 		if in.ScanID != nil {
+			// finished_at must be set here, in this tx: the new_only policy rule compares it with first_seen_at
 			err = tx.QueryRow(ctx, `update scans set target_id = $3, format = $4, ref = $5, report_sha256 = $6, raw = $7,
-				status = 'done', error = '', finished_at = now() where id = $1 and project_id = $2 returning id`,
+				status = 'done', error = '', finished_at = now()
+				where id = $1 and project_id = $2 and status in ('queued', 'running') returning id`,
 				*in.ScanID, in.ProjectID, res.TargetID, rep.Format, in.Ref, sum, gz).Scan(&res.ScanID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				var status string
+				if err := tx.QueryRow(ctx, `select status from scans where id = $1 and project_id = $2`, *in.ScanID, in.ProjectID).Scan(&status); err != nil {
+					return fmt.Errorf("pre-created scan %d: %w", *in.ScanID, err)
+				}
+				if status == "canceled" {
+					return errScanCanceled
+				}
+				return fmt.Errorf("pre-created scan %d is %s, not queued or running", *in.ScanID, status)
+			}
 		} else {
 			err = tx.QueryRow(ctx, `insert into scans(project_id, target_id, source, format, ref, report_sha256, raw, status,
 					created_by_user, created_by_token, finished_at)
@@ -124,6 +141,8 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 	if err != nil {
 		return nil, err
 	}
+	// the scan is committed: a client that hangs up now must not leave it without a policy or skip the hooks
+	ctx = context.WithoutCancel(ctx)
 	res.Policy = s.evaluatePolicy(ctx, in.ProjectID, res.ScanID)
 	if res.Duplicate {
 		return res, nil
@@ -135,9 +154,19 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 		log.Printf("ingest: trim raw reports of target %d: %v", res.TargetID, err)
 	}
 	for _, h := range afterIngest {
-		h(ctx, s, res)
+		runHook(ctx, s, res, h)
 	}
 	return res, nil
+}
+
+// runHook runs one afterIngest hook; a panic is logged so the upload, already committed, still succeeds.
+func runHook(ctx context.Context, s *server, res *ingestResult, h func(context.Context, *server, *ingestResult)) {
+	defer func() {
+		if v := recover(); v != nil {
+			log.Printf("afterIngest hook panicked for scan %d: %v\n%s", res.ScanID, v, debug.Stack())
+		}
+	}()
+	h(ctx, s, res)
 }
 
 // trimRaw drops the raw report of the target's scans that are neither among the newest raw_per_target nor

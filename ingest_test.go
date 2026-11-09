@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -566,4 +567,59 @@ func TestPreCreatedScan(t *testing.T) {
 	if n := qInt(t, s, `select count(*) from scans`); n != 1 {
 		t.Errorf("scans %d", n)
 	}
+
+	// a scan canceled while it ran is not finished, and nothing of the report is written
+	sid2 := qint64(t, s, `insert into scans(project_id, target_id, source, format, status) values($1, $2, 'server', 'trivy', 'canceled') returning id`, pid, tid)
+	doc2 := trivyDoc("A", []tv{{ID: "CVE-2024-9999"}}, nil)
+	_, err = s.ingest(ctx, ingestInput{ProjectID: pid, TargetKind: "fs", TargetName: "A", Source: "server",
+		Report: parseReport(t, "trivy", doc2), Raw: doc2, ScanID: &sid2})
+	if !errors.Is(err, errScanCanceled) {
+		t.Errorf("canceled scan: %v", err)
+	}
+	// a finished scan is not refilled either (generic error)
+	if _, err = s.ingest(ctx, ingestInput{ProjectID: pid, TargetKind: "fs", TargetName: "A", Source: "server",
+		Report: parseReport(t, "trivy", doc2), Raw: doc2, ScanID: &sid}); err == nil || errors.Is(err, errScanCanceled) {
+		t.Errorf("done scan: %v", err)
+	}
+	if n := qInt(t, s, `select count(*) from scans where id=$1 and status='canceled' and raw is null`, sid2); n != 1 {
+		t.Error("canceled scan was changed")
+	}
+	if n := qInt(t, s, `select count(*) from findings where rule_id='CVE-2024-9999'`) + qInt(t, s, `select count(*) from packages where scan_id=$1`, sid2); n != 0 {
+		t.Errorf("rows written for a canceled scan: %d", n)
+	}
+}
+
+// The scan is committed before the policy and the hooks run, so a client hanging up must not stop them.
+func TestPostCommitSurvivesCancel(t *testing.T) {
+	s := testServer(t)
+	pid, _ := memberSession(t, s)
+	saved := afterIngest
+	t.Cleanup(func() { afterIngest = saved })
+	ctx, cancel := context.WithCancel(context.Background())
+	var later error
+	ran := 0
+	afterIngest = append(afterIngest,
+		func(context.Context, *server, *ingestResult) { cancel() }, // the client hangs up
+		func(context.Context, *server, *ingestResult) { panic("broken hook") },
+		func(hctx context.Context, hs *server, r *ingestResult) {
+			ran++
+			later = hs.db.QueryRow(hctx, `select 1`).Scan(new(int))
+		})
+	doc := trivyDoc("A", []tv{{ID: "CVE-2024-1000", Sev: "CRITICAL"}}, nil)
+	res, err := s.ingest(ctx, ingestInput{ProjectID: pid, TargetKind: "fs", TargetName: "A", Source: "upload",
+		Report: parseReport(t, "trivy", doc), Raw: doc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ran != 1 || later != nil {
+		t.Errorf("hook after cancel and panic: ran=%d err=%v", ran, later)
+	}
+	if n := qInt(t, s, `select count(*) from scans where id=$1 and policy->>'passed' = 'false'`, res.ScanID); n != 1 {
+		t.Error("policy not stored")
+	}
+	// over HTTP too: a panicking hook does not turn the committed upload into a 500
+	afterIngest = append(saved, func(context.Context, *server, *ingestResult) { panic("broken hook") })
+	u := mkUser(t, s, "dev2", "")
+	addMember(t, s, pid, "user", itoa(u.ID), "member")
+	mustUpload(t, s, "web", "", trivyDoc("A", nil, nil), loginAs(t, s, u))
 }
