@@ -241,75 +241,19 @@ func (s *server) recheckTarget(ctx context.Context, runID, targetID int64) error
 	if err != nil {
 		return err
 	}
-	var pkgs []trivy.Package
-	paths := map[[2]string][]string{} // name+version -> the files they were found in; trivy sbom drops them
-	seen := map[trivy.Package]bool{}
 	rows, _ := s.db.Query(ctx, `select distinct purl, name, version, ecosystem, path, src_name, src_version from packages where scan_id = $1
 		order by name, version, path`, *scanID)
-	for rows.Next() {
-		var p trivy.Package
-		var path string
-		if err := rows.Scan(&p.PURL, &p.Name, &p.Version, &p.Ecosystem, &path, &p.SrcName, &p.SrcVersion); err != nil {
-			rows.Close()
-			return err
-		}
-		if !seen[p] {
-			seen[p] = true
-			pkgs = append(pkgs, p)
-		}
-		k := [2]string{p.Name, p.Version}
-		paths[k] = append(paths[k], path)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	bom, err := trivy.CycloneDXWithOS(osForRecheck(summary, pkgs), pkgs)
+	inv, err := pgx.CollectRows(rows, pgx.RowToStructByPos[formats.Package])
 	if err != nil {
 		return err
 	}
-	root := filepath.Join(s.cfg.DataDir, "work")
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(root, fmt.Sprintf("recheck-%d-*.json", targetID))
+	found, err := s.sbomFindings(ctx, fmt.Sprintf("recheck-%d-*.json", targetID), summary, inv)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
-	_, err = f.Write(bom)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return err
-	}
-	var out bytes.Buffer
-	s.trivy.mu.Lock() // never while a DB bundle is being installed
-	err = trivy.Run(ctx, trivy.Options{Bin: s.cfg.TrivyBin, CacheDir: s.trivyCacheDir(), Timeout: s.cfg.ScanTimeout}, "sbom", f.Name(), &out)
-	s.trivy.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	parser, _ := formats.Get("trivy")
-	rep, err := parser.Parse(&out)
-	if err != nil {
-		return err
-	}
-	// give each finding the file path its package had in the scan, so the fingerprint matches a real scan's
 	byFP := map[string]formats.Finding{}
-	for _, fd := range rep.Findings {
-		if fd.Kind != "vuln" {
-			continue
-		}
-		ps := paths[[2]string{fd.PkgName, fd.PkgVersion}]
-		if len(ps) == 0 {
-			ps = []string{fd.PkgPath}
-		}
-		for _, p := range slices.Compact(ps) {
-			fd.PkgPath = p
-			fd.Fingerprint = formats.Fingerprint(fd)
-			byFP[string(fd.Fingerprint)] = fd
-		}
+	for _, fd := range found {
+		byFP[string(fd.Fingerprint)] = fd
 	}
 	return s.tx(ctx, func(tx pgx.Tx) error {
 		var queued bool
@@ -362,6 +306,76 @@ func (s *server) recheckTarget(ctx context.Context, runID, targetID int64) error
 		}
 		return s.endItem(ctx, tx, runID, targetID, "done", added)
 	})
+}
+
+// sbomFindings evaluates a package inventory with the installed Trivy DB (trivy sbom on a CycloneDX built from
+// it, with the OS component taken from summary["os"] or a distro= purl) and returns the vulnerability findings, one
+// per file path the package had, so the fingerprints match a real scan's. Used by the recheck and CycloneDX uploads.
+func (s *server) sbomFindings(ctx context.Context, tmpName string, summary map[string]any, inv []formats.Package) ([]formats.Finding, error) {
+	var pkgs []trivy.Package
+	paths := map[[2]string][]string{} // name+version -> the files they were found in; trivy sbom drops them
+	seen := map[trivy.Package]bool{}
+	for _, ip := range inv {
+		p := trivy.Package{PURL: ip.PURL, Name: ip.Name, Version: ip.Version, Ecosystem: ip.Ecosystem, SrcName: ip.SrcName, SrcVersion: ip.SrcVersion}
+		if !seen[p] {
+			seen[p] = true
+			pkgs = append(pkgs, p)
+		}
+		k := [2]string{p.Name, p.Version}
+		paths[k] = append(paths[k], ip.Path)
+	}
+	bom, err := trivy.CycloneDXWithOS(osForRecheck(summary, pkgs), pkgs)
+	if err != nil {
+		return nil, err
+	}
+	root := filepath.Join(s.cfg.DataDir, "work")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return nil, err
+	}
+	f, err := os.CreateTemp(root, tmpName)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(f.Name())
+	_, err = f.Write(bom)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	s.trivy.mu.Lock() // never while a DB bundle is being installed
+	err = trivy.Run(ctx, trivy.Options{Bin: s.cfg.TrivyBin, CacheDir: s.trivyCacheDir(), Timeout: s.cfg.ScanTimeout}, "sbom", f.Name(), &out)
+	s.trivy.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	parser, _ := formats.Get("trivy")
+	rep, err := parser.Parse(&out)
+	if err != nil {
+		return nil, err
+	}
+	byFP := map[string]formats.Finding{}
+	for _, fd := range rep.Findings {
+		if fd.Kind != "vuln" {
+			continue
+		}
+		ps := paths[[2]string{fd.PkgName, fd.PkgVersion}]
+		if len(ps) == 0 {
+			ps = []string{fd.PkgPath}
+		}
+		for _, p := range slices.Compact(ps) {
+			fd.PkgPath = p
+			fd.Fingerprint = formats.Fingerprint(fd)
+			byFP[string(fd.Fingerprint)] = fd
+		}
+	}
+	var fs []formats.Finding
+	for _, k := range slices.Sorted(maps.Keys(byFP)) {
+		fs = append(fs, byFP[k])
+	}
+	return fs, nil
 }
 
 // osForRecheck is the scan's stored OS (summary.os), else the one a distro= purl qualifier names.

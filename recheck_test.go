@@ -322,3 +322,41 @@ func TestRecheckFindingInheritsException(t *testing.T) {
 		t.Fatalf("recheck summary counts the excepted finding as open: %d", n)
 	}
 }
+
+// fakeTrivyDB makes s look like it has an installed Trivy DB.
+func fakeTrivyDB(t *testing.T, s *server) {
+	t.Helper()
+	dir := filepath.Join(s.trivyCacheDir(), "db")
+	os.MkdirAll(dir, 0o755)
+	if err := os.WriteFile(filepath.Join(dir, "metadata.json"), []byte(`{"Version":2,"UpdatedAt":"2026-11-01T00:00:00Z","NextUpdate":"2026-11-02T00:00:00Z"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A CycloneDX upload is evaluated at once with the installed DB; without a DB its policy fails closed.
+func TestCycloneDXUploadIsEvaluated(t *testing.T) {
+	s := testServer(t)
+	_, ck := memberSession(t, s)
+	bom := readFixture(t, "cyclonedx/image.json")
+	res := mustUpload(t, s, "web", "", bom, ck)
+	if res.Policy.Passed || len(res.Policy.Reasons) != 1 || !strings.Contains(res.Policy.Reasons[0], "Trivy DB가 없어 평가하지 못했습니다") {
+		t.Fatalf("no DB: policy %+v", res.Policy)
+	}
+	fakeTrivyDB(t, s)
+	logPath := useFakeTrivy(t, s, sbomStyle(t, readFixture(t, "trivy/fs-mixed.json")))
+	bom2 := append([]byte(nil), bom...)
+	bom2 = append(bom2, ' ') // other bytes, so not a duplicate
+	res = mustUpload(t, s, "web", "", bom2, ck)
+	if calls := readLog(logPath); len(calls) != 1 || !strings.HasPrefix(calls[0], "sbom|") {
+		t.Fatalf("trivy calls %v", calls)
+	}
+	if res.Summary["open"] == 0 || qInt(t, s, `select count(*) from findings where target_id=$1 and kind='vuln' and tool='trivy'`, res.TargetID) == 0 {
+		t.Fatalf("no findings from the SBOM: %v", res.Summary)
+	}
+	// Trivy fails: the upload is stored, the policy fails closed
+	t.Setenv("FAKETRIVY_FAIL", "1")
+	res = mustUpload(t, s, "web", "", append(bom2, ' '), ck)
+	if res.Policy.Passed {
+		t.Fatalf("trivy failure: policy %+v", res.Policy)
+	}
+}

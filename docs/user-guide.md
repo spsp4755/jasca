@@ -42,6 +42,7 @@ grep -q '"passed":true' jasca.json
 
    - `kind`: `image`, `repo`, `fs`, `sbom`. `ref`는 태그나 커밋 값입니다. 업로드 크기 한도는 기본 50MB이고, 큰 보고서는 `Content-Encoding: gzip`으로 보냅니다.
    - 올릴 수 있는 형식: Trivy JSON, SARIF, Harbor 취약점 보고서, CycloneDX JSON(SBOM). 형식은 자동으로 알아봅니다.
+   - CycloneDX SBOM은 올리는 즉시 서버의 Trivy DB로 평가해 취약점을 채웁니다. 서버에 Trivy DB가 아직 없으면 패키지 목록만 저장되고 정책 판정은 **실패**("Trivy DB가 없어 평가하지 못했습니다")로 나옵니다.
    - 응답의 `policy.passed`가 `false`이면 정책 실패입니다. 위 `grep` 때문에 CI 작업이 종료 코드 1로 끝납니다.
    - 같은 보고서를 10분 안에 같은 대상에 다시 올리면 새 스캔을 만들지 않고 기존 스캔을 돌려줍니다(재시도 안전).
    - **스캐너 표시(`scanners`)**: 이 보고서가 그 종류를 끝까지 검사했다는 뜻이며, 같은 대상에서 이번 보고서에 없는 열린 결과를 자동으로 해결됨으로 바꾸는 근거가 됩니다. 실제로 돌린 스캐너만 적으세요.

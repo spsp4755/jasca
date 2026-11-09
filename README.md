@@ -4,7 +4,7 @@ JASCA는 폐쇄망 Kubernetes에서 쓰는 취약점 관리 서비스입니다. 
 
 ## 주요 기능
 
-- **결과 수집**: Trivy JSON(취약점·설정 오류·비밀값), SARIF 2.1(Semgrep, Checkov 등), Harbor 취약점 보고서, CycloneDX JSON SBOM을 업로드 API로 받습니다.
+- **결과 수집**: Trivy JSON(취약점·설정 오류·비밀값), SARIF 2.1(Semgrep, Checkov 등), Harbor 취약점 보고서, CycloneDX JSON SBOM을 업로드 API로 받습니다. SBOM은 받는 즉시 서버의 Trivy DB로 평가합니다.
 - **서버 스캔**: 압축 파일(zip, tar, tar.gz/tgz)이나 `docker save` 이미지 tar를 올리면 서버의 Trivy가 검사합니다.
 - **새 취약점 반영**: 관리자가 오프라인 Trivy DB를 올리면 저장된 모든 대상의 패키지 목록을 자동으로 다시 평가합니다. 공개 DB에 없는 취약점은 **사내 Advisory**(화면 또는 CSV)로 등록하면 기존 결과에도 즉시 적용됩니다.
 - **결과 추적**: 대상별로 안정적인 결과 하나를 유지하고(열림, 해결됨, 위험 수용, 오탐), 사라진 결과는 자동으로 해결됨 처리하며, 다시 나타나면 재발로 표시합니다.

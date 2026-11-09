@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/spsp4755/jasca/internal/formats"
+	"github.com/spsp4755/jasca/internal/trivy"
 )
 
 type ingestInput struct {
@@ -46,6 +47,10 @@ var afterIngest []func(ctx context.Context, s *server, r *ingestResult)
 func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, error) {
 	rep := in.Report
 	res := &ingestResult{ProjectID: in.ProjectID}
+	var notEvaluated string
+	if rep.Format == "cyclonedx" { // an SBOM has packages only: evaluate it now, before the transaction
+		notEvaluated = s.evalSBOM(ctx, rep)
+	}
 	var sum, gz []byte
 	if in.Raw != nil {
 		h := sha256.Sum256(in.Raw)
@@ -158,6 +163,9 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 	// the scan is committed: a client that hangs up now must not leave it without a policy or skip the hooks
 	ctx = context.WithoutCancel(ctx)
 	res.Policy = s.evaluatePolicy(ctx, in.ProjectID, res.ScanID)
+	if notEvaluated != "" { // fail closed: an unevaluated SBOM never passes a CI gate
+		res.Policy = policyResult{Reasons: []string{notEvaluated}}
+	}
 	if res.Duplicate {
 		return res, nil
 	}
@@ -171,6 +179,26 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 		runHook(ctx, s, res, h)
 	}
 	return res, nil
+}
+
+// evalSBOM adds the vulnerability findings of a CycloneDX report's packages, found with the installed Trivy DB the
+// same way as a recheck. It returns a Korean reason when it could not evaluate (then the policy fails).
+func (s *server) evalSBOM(ctx context.Context, rep *formats.Report) string {
+	if _, err := trivy.Status(s.trivyCacheDir()); err != nil {
+		return "Trivy DB가 없어 평가하지 못했습니다. 관리자가 Trivy DB를 올린 뒤 SBOM을 다시 올리세요."
+	}
+	summary := map[string]any{}
+	if rep.OS != nil {
+		summary["os"] = map[string]any{"family": rep.OS.Family, "name": rep.OS.Name}
+	}
+	found, err := s.sbomFindings(ctx, "sbom-*.json", summary, rep.Packages)
+	if err != nil {
+		log.Printf("ingest: evaluate SBOM: %v", err)
+		return "Trivy로 SBOM을 평가하지 못했습니다. 잠시 후 다시 올리거나 관리자에게 문의하세요."
+	}
+	rep.Findings = append(rep.Findings, found...)
+	rep.Complete["vuln:trivy"] = true // the SBOM is the whole inventory, like a Trivy scan of it
+	return ""
 }
 
 // runHook runs one afterIngest hook; a panic is logged so the upload, already committed, still succeeds.
