@@ -3,9 +3,11 @@ package main
 import (
 	"archive/tar"
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
 	"os"
@@ -52,6 +54,9 @@ func extractArchive(ctx context.Context, archive, dst string, maxBytes int64) er
 	case bytes.HasPrefix(head, []byte("PK\x03\x04")) || bytes.HasPrefix(head, []byte("PK\x05\x06")):
 		fi, err := f.Stat()
 		if err != nil {
+			return err
+		}
+		if err := zipPrecheck(f, fi.Size()); err != nil {
 			return err
 		}
 		zr, err := zip.NewReader(f, fi.Size())
@@ -142,7 +147,10 @@ func (x *extractor) zipEntry(zf *zip.File) error {
 	case m&os.ModeSymlink != 0:
 		return nil
 	case m.IsDir() || strings.HasSuffix(zf.Name, "/"):
-		return os.MkdirAll(p, 0o755)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			return errArchiveCorrupt
+		}
+		return nil
 	case !m.IsRegular():
 		return nil
 	}
@@ -179,4 +187,68 @@ func (x *extractor) tar(r io.Reader) error {
 			}
 		} // symlinks, hardlinks, devices and fifos are skipped
 	}
+}
+
+// zipPrecheck enforces maxExtractEntries before zip.NewReader, which keeps a *zip.File (~230 bytes) for every
+// central-directory record and reads records until a bad one, whatever count the end record declares. So it
+// checks the declared count (zip64 too) and then counts the records the way zip.NewReader will find them, by
+// streaming them from both directory starts it may use.
+func zipPrecheck(r io.ReaderAt, size int64) error {
+	le := binary.LittleEndian
+	tail := make([]byte, min(size, 22+65535))
+	tailAt := size - int64(len(tail))
+	if _, err := r.ReadAt(tail, tailAt); err != nil && err != io.EOF {
+		return errArchiveCorrupt
+	}
+	i := len(tail) - 22 // the last end signature whose comment fits, as zip.NewReader picks it
+	for ; i >= 0; i-- {
+		if string(tail[i:i+4]) == "PK\x05\x06" && i+22+int(le.Uint16(tail[i+20:])) <= len(tail) {
+			break
+		}
+	}
+	if i < 0 {
+		return errArchiveCorrupt
+	}
+	end := tail[i : i+22]
+	endAt := tailAt + int64(i)
+	records, dirSize, dirOff := uint64(le.Uint16(end[10:])), uint64(le.Uint32(end[12:])), uint64(le.Uint32(end[16:]))
+	// zip64 when a field is saturated (dirSize 0xFFFF too, as zip.NewReader checks it) and a locator is present
+	loc, rec := make([]byte, 20), make([]byte, 56)
+	if (records == 0xFFFF || dirSize == 0xFFFF || dirSize == 0xFFFFFFFF || dirOff == 0xFFFFFFFF) && endAt >= 20 {
+		if _, err := r.ReadAt(loc, endAt-20); err == nil && le.Uint32(loc) == 0x07064b50 && le.Uint32(loc[16:]) == 1 {
+			at := le.Uint64(loc[8:])
+			if at > uint64(size) {
+				return errArchiveCorrupt
+			}
+			if _, err := r.ReadAt(rec, int64(at)); err != nil || le.Uint32(rec) != 0x06064b50 {
+				return errArchiveCorrupt
+			}
+			records, dirSize, dirOff, endAt = le.Uint64(rec[32:]), le.Uint64(rec[40:]), le.Uint64(rec[48:]), int64(at)
+		}
+	}
+	if dirOff > uint64(size) {
+		return errArchiveCorrupt
+	}
+	if records > uint64(maxExtractEntries) || dirSize > 256<<20 {
+		return errArchiveMany
+	}
+	for _, start := range []int64{int64(dirOff), endAt - int64(dirSize)} { // as written, and after a prepended stub
+		if start < 0 || start >= size {
+			continue
+		}
+		br := bufio.NewReaderSize(io.NewSectionReader(r, start, size-start), 64<<10)
+		h := make([]byte, 46)
+		for n := 0; ; {
+			if _, err := io.ReadFull(br, h); err != nil || le.Uint32(h) != 0x02014b50 {
+				break
+			}
+			if n++; n > maxExtractEntries {
+				return errArchiveMany
+			}
+			if _, err := br.Discard(int(le.Uint16(h[28:])) + int(le.Uint16(h[30:])) + int(le.Uint16(h[32:]))); err != nil {
+				break
+			}
+		}
+	}
+	return nil
 }

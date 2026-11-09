@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -219,4 +221,89 @@ func TestExtractFormatsAndModes(t *testing.T) {
 	}
 	_, err := runExtract(t, []byte("\x89PNG\r\n\x1a\nnot an archive at all"), 1<<20)
 	wantArchiveErr(t, err)
+}
+
+// synthZip builds a bogus local header, n minimal central-directory records and an end record that declares
+// declared entries. zip64 puts the counts in a zip64 end record instead.
+func synthZip(n int, declared uint64, zip64 bool) []byte {
+	le := binary.LittleEndian
+	b := append([]byte("PK\x03\x04"), make([]byte, 26)...)
+	cdStart := len(b)
+	for range n {
+		h := make([]byte, 46)
+		le.PutUint32(h, 0x02014b50)
+		le.PutUint16(h[28:], 1)
+		b = append(append(b, h...), 'a')
+	}
+	cdSize := len(b) - cdStart
+	end := make([]byte, 22)
+	le.PutUint32(end, 0x06054b50)
+	if zip64 {
+		pos := len(b)
+		r := make([]byte, 56)
+		le.PutUint32(r, 0x06064b50)
+		le.PutUint64(r[4:], 44)
+		le.PutUint64(r[24:], declared)
+		le.PutUint64(r[32:], declared)
+		le.PutUint64(r[40:], uint64(cdSize))
+		le.PutUint64(r[48:], uint64(cdStart))
+		loc := make([]byte, 20)
+		le.PutUint32(loc, 0x07064b50)
+		le.PutUint64(loc[8:], uint64(pos))
+		le.PutUint32(loc[16:], 1)
+		b = append(append(b, r...), loc...)
+		le.PutUint16(end[8:], 0xFFFF)
+		le.PutUint16(end[10:], 0xFFFF)
+		le.PutUint32(end[12:], 0xFFFFFFFF)
+		le.PutUint32(end[16:], 0xFFFFFFFF)
+	} else {
+		le.PutUint16(end[8:], uint16(declared))
+		le.PutUint16(end[10:], uint16(declared))
+		le.PutUint32(end[12:], uint32(cdSize))
+		le.PutUint32(end[16:], uint32(cdStart))
+	}
+	return append(b, end...)
+}
+
+// TestZipEntryCapBeforeParse: the entry cap is enforced from the end record and a streaming walk of the central
+// directory, before zip.NewReader would load every record into memory. (zip.NewReader itself would report these
+// bogus archives as corrupt, so errArchiveMany proves the pre-check fired.)
+func TestZipEntryCapBeforeParse(t *testing.T) {
+	old := maxExtractEntries
+	maxExtractEntries = 5
+	t.Cleanup(func() { maxExtractEntries = old })
+	for name, c := range map[string]struct {
+		ar   []byte
+		many bool
+	}{
+		"declared over cap":     {synthZip(7, 7, false), true},
+		"count lies (mod 2^16)": {synthZip(7, 1, false), true},
+		"zip64 declared":        {synthZip(7, 7, true), true},
+		"zip64 count lies":      {synthZip(7, 1, true), true},
+		"under cap":             {synthZip(3, 3, false), false},
+		"zip64 under cap":       {synthZip(3, 3, true), false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := runExtract(t, c.ar, 1<<20)
+			if c.many != (err == errArchiveMany) {
+				t.Fatalf("got %v", err)
+			}
+		})
+	}
+	// real archives written by Go pass: a small one, and one with 70000 entries (Go writes zip64 end records then)
+	maxExtractEntries = old
+	var ents []arEnt
+	for i := range 70000 {
+		ents = append(ents, arEnt{name: fmt.Sprintf("d/%d", i)})
+	}
+	for _, ar := range [][]byte{mkZip(t, arEnt{name: "a", body: "x"}), mkZip(t, ents...)} {
+		if err := zipPrecheck(bytes.NewReader(ar), int64(len(ar))); err != nil {
+			t.Fatalf("%d bytes: %v", len(ar), err)
+		}
+	}
+	maxExtractEntries = 69999
+	big := mkZip(t, ents...)
+	if err := zipPrecheck(bytes.NewReader(big), int64(len(big))); err != errArchiveMany {
+		t.Fatalf("real zip64 over cap: %v", err)
+	}
 }

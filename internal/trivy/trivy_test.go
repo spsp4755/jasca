@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -167,8 +168,12 @@ func TestBundleRejects(t *testing.T) {
 			if name == "too big" {
 				max = 1 << 20
 			}
-			if _, _, err := InstallBundle(d, bytes.NewReader(b), max); err == nil {
+			_, _, err := InstallBundle(d, bytes.NewReader(b), max)
+			if err == nil {
 				t.Fatal("expected error")
+			}
+			if (name == "too big") != errors.Is(err, ErrTooLarge) {
+				t.Fatalf("ErrTooLarge: %v", err)
 			}
 			oldIntact(t, d)
 		})

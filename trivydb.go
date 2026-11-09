@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -118,13 +120,16 @@ func (s *server) handleTrivyDB(w http.ResponseWriter, r *http.Request, c *reqCtx
 			io.Copy(io.Discard, part)
 			continue
 		}
-		s.trivy.mu.Lock()
-		kind, st, err := trivy.InstallBundle(s.trivyCacheDir(), part, s.cfg.MaxExtractMB<<20)
-		s.trivy.mu.Unlock()
+		// spool first: the lock (which recheck items wait on) is held only for the install, not the upload
+		kind, st, err := s.installBundle(part)
 		if err != nil {
 			s.audit(ctx, c, "trivy.db_upload_failed", nil, "", map[string]any{"error": err.Error()})
 			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 				writeErr(w, 413, "too_large", "파일이 너무 큽니다.")
+				return
+			}
+			if errors.Is(err, trivy.ErrTooLarge) {
+				writeErr(w, 413, "too_large", fmt.Sprintf("DB 번들을 풀면 %dMB를 넘습니다.", s.cfg.MaxExtractMB))
 				return
 			}
 			writeErr(w, 400, "bad_bundle", "올바른 Trivy DB 번들(db.tar.gz 또는 javadb.tar.gz)이 아닙니다. 기존 DB를 그대로 사용합니다.")
@@ -141,4 +146,27 @@ func (s *server) handleTrivyDB(w http.ResponseWriter, r *http.Request, c *reqCtx
 		writeJSON(w, 200, out)
 		return
 	}
+}
+
+// installBundle copies the upload to a temp file under DATA_DIR/work, then installs it holding s.trivy.mu.
+func (s *server) installBundle(r io.Reader) (string, trivy.DBStatus, error) {
+	root := filepath.Join(s.cfg.DataDir, "work")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", trivy.DBStatus{}, err
+	}
+	f, err := os.CreateTemp(root, "trivydb-*.tar.gz")
+	if err != nil {
+		return "", trivy.DBStatus{}, err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if _, err := io.Copy(f, r); err != nil {
+		return "", trivy.DBStatus{}, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", trivy.DBStatus{}, err
+	}
+	s.trivy.mu.Lock()
+	defer s.trivy.mu.Unlock()
+	return trivy.InstallBundle(s.trivyCacheDir(), f, s.cfg.MaxExtractMB<<20)
 }

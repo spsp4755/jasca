@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -365,11 +366,26 @@ func TestTrivyDBUploadKeepsOldOnFailure(t *testing.T) {
 	if st := decode[status](t, do(t, s, "GET", "/api/v1/admin/trivy", nil, adm)); st.DBVersion != 2 {
 		t.Fatalf("status after failure: %+v", st)
 	}
-	if auditCount(t, s, "trivy.db_upload") != 1 || auditCount(t, s, "trivy.db_upload_failed") != 2 {
-		t.Fatal("uploads not audited")
-	}
 	if n := qInt(t, s, `select count(*) from recheck_runs where reason='trivydb'`); n != 1 {
 		t.Fatalf("recheck runs: %d", n)
+	}
+	// too big, either unpacked (InstallBundle's limit) or on the wire: 413, old DB kept
+	s.cfg.MaxExtractMB = 1
+	if rec := postDB(mkBundle(t, 3, false), adm); rec.Code != 413 {
+		t.Fatalf("unpacked too big: %d %s", rec.Code, rec.Body.String())
+	}
+	s.cfg.MaxExtractMB, s.cfg.MaxScanUploadMB = 4096, 1
+	noise := make([]byte, 2<<20)
+	rand.Read(noise)
+	if rec := postDB(noise, adm); rec.Code != 413 {
+		t.Fatalf("upload too big: %d %s", rec.Code, rec.Body.String())
+	}
+	s.cfg.MaxScanUploadMB = 2048
+	if st := decode[status](t, do(t, s, "GET", "/api/v1/admin/trivy", nil, adm)); st.DBVersion != 2 {
+		t.Fatalf("status after 413: %+v", st)
+	}
+	if es, _ := os.ReadDir(filepath.Join(s.cfg.DataDir, "work")); len(es) != 0 {
+		t.Fatalf("spooled bundle left behind: %v", es)
 	}
 	wantCode(t, postDB(mkBundle(t, 2, false), loginAs(t, s, mkUser(t, s, "sec", "security"))), 403, "security")
 
@@ -380,6 +396,9 @@ func TestTrivyDBUploadKeepsOldOnFailure(t *testing.T) {
 	}
 	for _, bad := range [][]string{{}, {"vuln", "license"}, {"vuln", "vuln"}} {
 		wantCode(t, do(t, s, "PUT", "/api/v1/admin/trivy", map[string]any{"scanners": bad}, adm), 400, "bad scanners")
+	}
+	if auditCount(t, s, "trivy.db_upload") != 1 || auditCount(t, s, "trivy.db_upload_failed") != 4 {
+		t.Fatal("uploads not audited")
 	}
 	if auditCount(t, s, "trivy.settings") != 1 {
 		t.Fatal("settings not audited")
