@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"net/http"
-	"sync"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
