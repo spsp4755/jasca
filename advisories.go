@@ -36,10 +36,10 @@ func normEco(e string) string {
 
 type advAffected struct {
 	Ecosystem string `json:"ecosystem"`
-	Package   string `json:"package"`
+	Package   string `json:"name"`
 	Range     string `json:"range"`
 	Fixed     string `json:"fixed"`
-	Name      string `json:"name,omitempty"` // accepted on input as an alias of package; never stored
+	Alias     string `json:"package,omitempty"` // accepted on input as an alias of name (the CSV header word); never stored
 }
 
 type advisory struct {
@@ -83,9 +83,9 @@ func (a *advisoryReq) check(needID bool) string {
 	for i := range a.Affected {
 		it := &a.Affected[i]
 		if it.Package == "" {
-			it.Package = it.Name
+			it.Package = it.Alias
 		}
-		it.Name = ""
+		it.Alias = ""
 		it.Ecosystem, it.Package = normEco(it.Ecosystem), strings.TrimSpace(it.Package)
 		it.Range, it.Fixed = strings.TrimSpace(it.Range), strings.TrimSpace(it.Fixed)
 		if it.Ecosystem == "" || it.Package == "" || it.Range == "" {

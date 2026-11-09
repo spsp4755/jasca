@@ -59,6 +59,9 @@ func TestAdvisoryMatchesExistingInventory(t *testing.T) {
 	wantCode(t, do(t, e.s, "POST", "/api/v1/advisories", advBody("INT-2026-001", "npm", "left-pad", "<1.3.1"), mck), 403, "member create")
 	rec := do(t, e.s, "POST", "/api/v1/advisories", advBody("INT-2026-001", "npm", "left-pad", "<1.3.1"), e.secA)
 	wantCode(t, rec, 201, "create")
+	if !strings.Contains(rec.Body.String(), `"name":"left-pad"`) || strings.Contains(rec.Body.String(), `"package"`) {
+		t.Errorf("affected must use the key name (input alias package): %s", rec.Body.String())
+	}
 	var f struct {
 		Status, Origin, Tool, Severity, Fixed, Pkg, Ver string
 		Kind                                            string
