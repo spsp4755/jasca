@@ -26,7 +26,6 @@ func addMember(t *testing.T, s *server, projectID int64, kind, principal, role s
 	}
 }
 
-
 // sqlExec runs a statement in a test and fails it on error.
 func sqlExec(t *testing.T, s *server, q string, args ...any) {
 	t.Helper()
