@@ -19,6 +19,29 @@ type Report struct {
 	Packages   []Package
 	Findings   []Finding
 	Complete   map[string]bool // result kinds this report fully covers, e.g. "vuln:trivy"
+	OS         *OSInfo         // operating system of an image/SBOM when the report says so
+
+	fpIndex map[string]int
+}
+
+type OSInfo struct{ Family, Name string }
+
+var sevRank = map[string]int{"UNKNOWN": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+
+// add appends f; a finding with an already-seen fingerprint is merged into the first (highest severity kept).
+func (r *Report) add(f Finding) {
+	f.Fingerprint = Fingerprint(f)
+	if r.fpIndex == nil {
+		r.fpIndex = map[string]int{}
+	}
+	if i, ok := r.fpIndex[string(f.Fingerprint)]; ok {
+		if sevRank[f.Severity] > sevRank[r.Findings[i].Severity] {
+			r.Findings[i].Severity = f.Severity
+		}
+		return
+	}
+	r.fpIndex[string(f.Fingerprint)] = len(r.Findings)
+	r.Findings = append(r.Findings, f)
 }
 
 type Package struct{ PURL, Name, Version, Ecosystem, Path string }
@@ -98,7 +121,7 @@ func Fingerprint(f Finding) []byte {
 	case "misconfig":
 		return sha(fmt.Sprintf("misconfig|%s|%s|%s", f.RuleID, f.Location, str(f.Details, "resource")))
 	case "secret":
-		return sha(fmt.Sprintf("secret|%s|%s|%s", f.RuleID, f.Location, str(f.Details, "match_sha256")))
+		return sha(fmt.Sprintf("secret|%s|%s|%s", f.RuleID, f.Location, str(f.Details, "redacted_match_sha256")))
 	case "sast":
 		if p := str(f.Details, "partial_fingerprints"); p != "" {
 			return sha(fmt.Sprintf("sast|%s|%s|%s", f.Tool, f.RuleID, p))

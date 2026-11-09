@@ -73,10 +73,10 @@ func sarifScoreSeverity(s float64) string {
 func secSeverity(p map[string]any) (float64, bool) {
 	switch v := p["security-severity"].(type) {
 	case float64:
-		return v, true
+		return v, v > 0
 	case string:
 		f, err := strconv.ParseFloat(v, 64)
-		return f, err == nil
+		return f, err == nil && f > 0
 	}
 	return 0, false
 }

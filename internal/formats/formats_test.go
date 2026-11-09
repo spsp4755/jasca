@@ -112,6 +112,9 @@ func TestTrivyFSMixed(t *testing.T) {
 	if r.Packages[0].Ecosystem != "npm" {
 		t.Fatalf("eco %q", r.Packages[0].Ecosystem)
 	}
+	if i := parse(t, "trivy", "testdata/trivy/image-alpine.json"); i.OS == nil || i.OS.Family != "alpine" || i.OS.Name != "3.12.12" {
+		t.Fatalf("trivy os %+v", i.OS)
+	}
 	for _, k := range []string{"vuln:trivy", "misconfig:trivy", "secret:trivy"} {
 		if !r.Complete[k] {
 			t.Errorf("%s not complete", k)
@@ -122,7 +125,7 @@ func TestTrivyFSMixed(t *testing.T) {
 		if strings.Contains(string(b), "AWS_ACCESS_KEY_ID") || strings.Contains(string(b), "export ") {
 			t.Fatalf("secret match leaked: %s", b)
 		}
-		if f.Details["match_sha256"] == "" || len(f.Fingerprint) != 32 {
+		if f.Details["redacted_match_sha256"] == "" || len(f.Fingerprint) != 32 {
 			t.Fatal("no hash/fingerprint")
 		}
 	}
@@ -194,6 +197,14 @@ func TestCycloneDX(t *testing.T) {
 	if r.TargetKind != "sbom" || r.TargetName != "alpine" || r.Ref != "3.12" || len(r.Packages) <= 10 || len(r.Findings) != 0 || len(r.Complete) != 0 {
 		t.Fatalf("%q %q %q %d %d %v", r.TargetKind, r.TargetName, r.Ref, len(r.Packages), len(r.Findings), r.Complete)
 	}
+	for _, p := range r.Packages {
+		if p.Ecosystem == "" || p.Name == "" && p.PURL == "" {
+			t.Fatalf("bad package %+v", p)
+		}
+	}
+	if r.OS == nil || r.OS.Family != "alpine" || r.OS.Name != "3.12.12" {
+		t.Fatalf("os %+v", r.OS)
+	}
 	p := r.Packages[len(r.Packages)-1]
 	if p.PURL == "" || p.Ecosystem != "alpine" || p.Version == "" {
 		t.Fatalf("%+v", p)
@@ -218,5 +229,20 @@ func TestFingerprintRules(t *testing.T) {
 	}
 	if NormalizeSeverity("moderate") != "MEDIUM" || NormalizeSeverity("zzz") != "UNKNOWN" {
 		t.Fatal("severity")
+	}
+}
+
+func TestSARIFDedupAndZeroScore(t *testing.T) {
+	const doc = `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"T"}},"results":[
+	{"ruleId":"R","level":"note","message":{"text":"m"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.go"},"region":{"startLine":1,"snippet":{"text":"x := 1"}}}}]},
+	{"ruleId":"R","level":"error","message":{"text":"m"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.go"},"region":{"startLine":9,"snippet":{"text":"x := 1"}}}}]},
+	{"ruleId":"Z","level":"error","properties":{"security-severity":"0"},"message":{"text":"z"}}]}]}`
+	p, _ := Get("sarif")
+	r, err := p.Parse(strings.NewReader(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Findings) != 2 || r.Findings[0].Severity != "HIGH" || r.Findings[1].Severity != "HIGH" {
+		t.Fatalf("%+v", r.Findings)
 	}
 }

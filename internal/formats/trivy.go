@@ -95,11 +95,12 @@ func (trivyParser) Parse(r io.Reader) (*Report, error) {
 		case "ArtifactType":
 			return dec.Decode(&artType)
 		case "Metadata":
-			var m struct{ OS *struct{ Family string } }
+			var m struct{ OS *OSInfo }
 			if err := dec.Decode(&m); err != nil {
 				return err
 			}
 			if m.OS != nil {
+				rep.OS = m.OS
 				rep.Complete["vuln:trivy"] = true
 			}
 		case "Results":
@@ -212,13 +213,8 @@ func addTrivyResult(rep *Report, res *trivyResult) {
 		rep.add(Finding{Kind: "secret", Tool: "trivy", RuleID: s.RuleID, Title: s.Title,
 			Severity: NormalizeSeverity(s.Severity), Location: res.Target, Details: map[string]any{
 				"category": s.Category, "start_line": s.StartLine, "end_line": s.EndLine,
-				"match_sha256": fmt.Sprintf("%x", sha(s.Match))}})
+				"redacted_match_sha256": fmt.Sprintf("%x", sha(s.Match))}})
 	}
-}
-
-func (r *Report) add(f Finding) {
-	f.Fingerprint = Fingerprint(f)
-	r.Findings = append(r.Findings, f)
 }
 
 func ptr[T any](v T) *T { return &v }

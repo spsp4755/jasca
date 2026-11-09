@@ -44,11 +44,17 @@ func (cdxParser) Parse(r io.Reader) (*Report, error) {
 		case "components":
 			return eachElem(dec, func() error {
 				var c struct {
-					Name, Version, PURL string
-					Properties          []struct{ Name, Value string }
+					Type, Name, Version, PURL string
+					Properties                []struct{ Name, Value string }
 				}
 				if err := dec.Decode(&c); err != nil {
 					return err
+				}
+				if c.Type == "operating-system" {
+					rep.OS = &OSInfo{Family: c.Name, Name: c.Version}
+				}
+				if c.Type != "library" && c.Type != "framework" {
+					return nil
 				}
 				eco := ecoFromPURL(c.PURL)
 				for _, p := range c.Properties {
