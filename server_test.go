@@ -222,9 +222,11 @@ func TestPermChecks(t *testing.T) {
 	check("plain", "/api/v1/t-security", plain, 403)
 	check("sec", "/api/v1/t-security", sec, 204)
 	check("adm", "/api/v1/t-security", adm, 204)
-	// until Task 6 replaces projectRole, project perms fail closed with 404 even for admin
-	check("adm", "/api/v1/projects/alpha/t-view", adm, 404)
-	check("adm", "/api/v1/things/7", adm, 404)
+	check("adm", "/api/v1/projects/alpha/t-owner", adm, 204)
+	check("adm", "/api/v1/things/7", adm, 200)
+	check("sec", "/api/v1/projects/alpha/t-view", sec, 204)
+	check("sec", "/api/v1/projects/alpha/t-owner", sec, 403)
+	check("plain", "/api/v1/projects/alpha/t-view", plain, 404)
 
 	old := projectRole
 	t.Cleanup(func() { projectRole = old })

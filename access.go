@@ -83,10 +83,70 @@ type apiToken struct {
 	RevokedAt  *time.Time `json:"revoked_at"`
 }
 
-// projectRole is the user's role on a project ("" = no access). Task 6 replaces it; until then project
-// perms fail closed with 404.
+// projectRole is the user's role on a project ("" = no access): admin is owner everywhere, security is at least
+// viewer, everyone else gets the highest grant among their own user row and their group/department paths
+// (memberPathsSQL). A var so tests can swap it.
 var projectRole = func(s *server, ctx context.Context, u *user, projectID int64) (role string, err error) {
-	return "", nil
+	var rank int
+	err = s.db.QueryRow(ctx, `select coalesce(max(case pm.role when 'owner' then 3 when 'member' then 2 when 'viewer' then 1 end), 0)
+		from project_members pm where pm.project_id = $2 and `+memberMatchSQL("$1::bigint"), u.ID, projectID).Scan(&rank)
+	if err != nil {
+		return "", err
+	}
+	return roleFor(u, rank), nil
+}
+
+// roleFor turns the rank of the user's best membership grant (0 = none) into their effective role.
+func roleFor(u *user, rank int) string {
+	switch u.SystemRole {
+	case "admin":
+		rank = 3
+	case "security":
+		rank = max(rank, 1)
+	}
+	return [...]string{"", "viewer", "member", "owner"}[rank]
+}
+
+// memberPathsSQL is a subquery of the group and department paths that make the user (arg, a bigint SQL
+// expression) a member, parents included. A department path (or parent) that is also a Keycloak group path, live
+// or deleted, is left out: "/개발본부/X" from the department attribute never grants Keycloak's "/개발본부" (R4a).
+func memberPathsSQL(arg string) string {
+	return `select distinct a.path from (select path, false as dept from user_groups where user_id = ` + arg + `
+			union all select path, true from user_depts where user_id = ` + arg + `) m
+		cross join lateral (select array_to_string((string_to_array(m.path, '/'))[1:i], '/') as path
+			from generate_series(2, cardinality(string_to_array(m.path, '/'))) i) a
+		where not (m.dept and exists (select 1 from kc_groups k where k.path = a.path))`
+}
+
+// memberMatchSQL matches project_members rows (alias pm) that grant something to the user (arg, a bigint SQL expression).
+func memberMatchSQL(arg string) string {
+	return `(pm.principal_kind = 'user' and pm.principal = (` + arg + `)::text
+		or pm.principal_kind = 'group' and pm.principal in (` + memberPathsSQL(arg) + `))`
+}
+
+// memberPaths lists the paths memberPathsSQL yields for userID, sorted.
+func (s *server) memberPaths(ctx context.Context, userID int64) ([]string, error) {
+	rows, _ := s.db.Query(ctx, memberPathsSQL("$1::bigint"), userID)
+	paths, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	slices.Sort(paths)
+	return paths, err
+}
+
+// visibleProjectsSQL is the WHERE fragment that limits a list query to the projects u can see; the row's project
+// id is alias.project_id and the fragment's own args start at $argN. Admin and security see every project, a nil
+// user (an API token) none. Usage:
+//
+//	cond, args := s.visibleProjectsSQL(c.User, "f", 2)
+//	rows, err := s.db.Query(ctx, `select ... from findings f where f.status = $1 and `+cond, append([]any{"open"}, args...)...)
+func (s *server) visibleProjectsSQL(u *user, alias string, argN int) (cond string, args []any) {
+	switch {
+	case u == nil:
+		return "false", nil
+	case u.SystemRole == "admin" || u.SystemRole == "security":
+		return "true", nil
+	}
+	return alias + ".project_id in (select pm.project_id from project_members pm where " +
+		memberMatchSQL(fmt.Sprintf("$%d::bigint", argN)) + ")", []any{u.ID}
 }
 
 func rankRole(r string) int {
@@ -189,6 +249,6 @@ func (s *server) authorize(w http.ResponseWriter, r *http.Request, p perm, c *re
 	if rankRole(role) < rankRole(need) {
 		return forbidden()
 	}
-	c.Project = pr
+	c.Project, c.Role = pr, role
 	return true
 }

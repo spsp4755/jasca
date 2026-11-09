@@ -32,6 +32,7 @@ type reqCtx struct {
 	User    *user     // nil for token and anonymous requests
 	Token   *apiToken // set for Bearer requests
 	Project *project  // set by proj, upload and obj perms
+	Role    string    // the user's role on Project ("" for tokens)
 	IP      string
 }
 
@@ -63,6 +64,9 @@ func newServer(ctx context.Context, cfg config, db *pgxpool.Pool) (*server, erro
 		io.WriteString(w, "ok")
 	})
 	s.authLocalRoutes()
+	s.projectRoutes()
+	s.tokenRoutes()
+	s.principalRoutes()
 	s.handle("GET /", permPublic, s.serveWeb)
 	return s, nil
 }
