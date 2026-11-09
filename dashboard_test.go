@@ -210,14 +210,18 @@ func TestRetentionAndDefaultPolicy(t *testing.T) {
 	s := testServer(t)
 	ck := loginAs(t, s, mkUser(t, s, "adm", "admin"))
 	rec := do(t, s, "GET", "/api/v1/admin/retention", nil, ck)
-	if rec.Body.String() != "{\"raw_per_target\":20,\"raw_days\":90}\n" && rec.Code != 200 {
+	if rec.Body.String() != "{\"raw_per_target\":20,\"raw_days\":90}\n" || rec.Code != 200 {
 		t.Errorf("default: %s", rec.Body.String())
 	}
 	if rec := do(t, s, "PUT", "/api/v1/admin/retention", map[string]int{"raw_per_target": 0, "raw_days": 5}, ck); rec.Code != 400 {
 		t.Errorf("invalid: %d", rec.Code)
 	}
-	if rec := do(t, s, "PUT", "/api/v1/admin/retention", map[string]int{"raw_per_target": 1, "raw_days": 7}, ck); rec.Code != 200 {
+	if rec := do(t, s, "PUT", "/api/v1/admin/retention", map[string]int{"raw_per_target": 1, "raw_days": 8}, ck); rec.Code != 200 {
 		t.Fatal(rec.Code)
+	}
+	// an omitted field keeps its stored value
+	if rec := do(t, s, "PUT", "/api/v1/admin/retention", map[string]int{"raw_days": 7}, ck); rec.Body.String() != "{\"raw_per_target\":1,\"raw_days\":7}\n" {
+		t.Fatalf("partial put: %d %s", rec.Code, rec.Body.String())
 	}
 	p := mkProject(t, s, "proj-a")
 	seedFinding(t, s, p, "a/app", "CVE-1", "LOW", "open", "scan", 0)

@@ -124,6 +124,10 @@ func (s *server) handleRetentionGet(w http.ResponseWriter, r *http.Request, c *r
 
 func (s *server) handleRetentionPut(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	ret := retention{20, 90}
+	if _, err := s.getSetting(r.Context(), "retention", &ret); err != nil { // an omitted field keeps its stored value
+		writeInternal(w, "retention", err)
+		return
+	}
 	if err := readJSON(r, 4<<10, &ret); err != nil {
 		writeBodyErr(w, err)
 		return
