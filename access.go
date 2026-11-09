@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -252,3 +253,5 @@ func (s *server) authorize(w http.ResponseWriter, r *http.Request, p perm, c *re
 	c.Project, c.Role = pr, role
 	return true
 }
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }

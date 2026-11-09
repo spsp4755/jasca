@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"slices"
-	"strconv"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -27,7 +26,6 @@ func addMember(t *testing.T, s *server, projectID int64, kind, principal, role s
 	}
 }
 
-func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
 // sqlExec runs a statement in a test and fails it on error.
 func sqlExec(t *testing.T, s *server, q string, args ...any) {
