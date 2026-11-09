@@ -17,7 +17,7 @@ import "../styles/t17.css";
 
 const ECOS = ["debian", "ubuntu", "alpine", "redhat", "rocky", "alma", "amazon", "suse", "npm", "pip", "gomod", "maven", "cargo", "nuget", "gem", "composer"];
 const OTHER = "__other";
-const BLANK: AdvisoryAffected = { ecosystem: "npm", package: "", range: "", fixed: "" };
+const BLANK: AdvisoryAffected = { ecosystem: "npm", name: "", range: "", fixed: "" };
 type Form = { id: string; title: string; description: string; severity: Severity; refs: string; active: boolean; affected: AdvisoryAffected[] };
 const NEW: Form = { id: "", title: "", description: "", severity: "HIGH", refs: "", active: true, affected: [{ ...BLANK }] };
 
@@ -38,7 +38,7 @@ function AffectedEditor({ rows, onChange, disabled }: { rows: AdvisoryAffected[]
                   {ECOS.map((e) => <option key={e}>{e}</option>)}<option value={OTHER}>기타(직접 입력)</option>
                 </select>}
             </Field>
-            <Field label="패키지"><input className="input mono" value={r.package} disabled={disabled} onChange={(e) => upd(i, { package: e.target.value })} /></Field>
+            <Field label="패키지"><input className="input mono" value={r.name} disabled={disabled} onChange={(e) => upd(i, { name: e.target.value })} /></Field>
             <Field label="영향 범위" hint="예: <1.4.2 또는 >=1.0 <1.2.5"><input className="input mono" value={r.range} disabled={disabled} onChange={(e) => upd(i, { range: e.target.value })} /></Field>
             <Field label="수정 버전"><input className="input mono" value={r.fixed} disabled={disabled} onChange={(e) => upd(i, { fixed: e.target.value })} /></Field>
             <Button variant="ghost" aria-label={`행 ${i + 1} 삭제`} icon="x" disabled={disabled || rows.length < 2} onClick={() => onChange(rows.filter((_, j) => j !== i))} />
@@ -69,10 +69,10 @@ export default function AdvisoryEdit() {
     if (a) setF({ id: a.id, title: a.title, description: a.description, severity: a.severity, refs: (a.refs ?? []).join("\n"), active: a.active, affected: a.affected?.length ? a.affected : [{ ...BLANK }] });
   }, [q.data]);
   const set = (p: Partial<Form>) => { setF({ ...f, ...p }); setPreview(null); };
-  const affected = f.affected.map((a) => ({ ...a, package: a.package.trim(), range: a.range.trim(), fixed: a.fixed.trim(), ecosystem: a.ecosystem.trim() }));
+  const affected = f.affected.map((a) => ({ ...a, name: a.name.trim(), range: a.range.trim(), fixed: a.fixed.trim(), ecosystem: a.ecosystem.trim() }));
   const body = { id: f.id.trim(), title: f.title.trim(), description: f.description.trim(), severity: f.severity, affected, active: f.active,
     refs: f.refs.split(/\s+/).map((s) => s.trim()).filter(Boolean) };
-  const valid = /^[A-Z][A-Z0-9-]{2,40}$/.test(body.id) && body.title && affected.length > 0 && affected.every((a) => a.ecosystem && a.package && a.range);
+  const valid = /^[A-Z][A-Z0-9-]{2,40}$/.test(body.id) && body.title && affected.length > 0 && affected.every((a) => a.ecosystem && a.name && a.range);
 
   const prev = useMutation<AdvisoryPreviewRow[], ApiError>({
     mutationFn: () => api.post<AdvisoryPreviewRow[]>("/advisories/preview", body),

@@ -106,7 +106,7 @@ export interface ExceptionCreate {
   resolution: ExceptionResolution; reason: string; expires_at: string;
 }
 export interface Decision { note: string }
-export interface AdvisoryAffected { ecosystem: string; package: string; range: string; fixed: string }
+export interface AdvisoryAffected { ecosystem: string; name: string; range: string; fixed: string }
 export interface Advisory {
   id: string; title: string; description: string; severity: Severity; affected: AdvisoryAffected[]; refs: string[];
   active: boolean; created_at: string; updated_at: string;
