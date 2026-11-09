@@ -33,6 +33,7 @@ type reportException struct {
 	VulnID     *string   `json:"vuln_id"`
 	FindingID  *int64    `json:"finding_id"`
 	Resolution string    `json:"resolution"`
+	Status     string    `json:"status"`
 	Reason     string    `json:"reason"`
 	ExpiresAt  time.Time `json:"expires_at"`
 }
@@ -92,7 +93,7 @@ func (s *server) handleProjectReport(w http.ResponseWriter, r *http.Request, c *
 		fail(err)
 		return
 	}
-	if rep.Exceptions, err = collect[reportException](ctx, s, `select id, scope, vuln_id, finding_id, resolution, reason, expires_at
+	if rep.Exceptions, err = collect[reportException](ctx, s, `select id, scope, vuln_id, finding_id, resolution, status, reason, expires_at
 		from exceptions where project_id = $1 and status = 'approved' and expires_at > now() order by expires_at, id`, pid); err != nil {
 		fail(err)
 		return

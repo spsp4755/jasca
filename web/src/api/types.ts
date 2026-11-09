@@ -196,13 +196,20 @@ export interface SMTPSettings { host: string; port: number; username: string; pa
 export type SMTPSettingsPut = Omit<SMTPSettings, "password_set"> & { password?: string };
 
 // --- reports (t17) ---
-/** Assumed shape of GET /projects/{key}/report (Task 13); every section is optional and the page skips what is missing. */
+/** GET /projects/{key}/report (reports.go): open findings summary, targets, top 100 open findings, active exceptions,
+ * the project's policy settings and the latest finished AI report. */
+export interface ReportFinding {
+  id: number; target: string; kind: FindingKind; rule_id: string; title: string; severity: Severity;
+  pkg_name: string; pkg_version: string; fixed_version: string; first_seen_at: string;
+}
 export interface ProjectReportData {
-  project?: { key: string; name: string; description?: string };
-  generated_at?: string;
-  totals?: Partial<Counts>;
-  policy?: PolicyResult | null;
-  targets?: { name: string; kind: TargetKind; last_scan_at: string | null; counts: Partial<Counts> }[];
-  findings?: DashboardFinding[];
-  exceptions?: { id: number; vuln_id: string | null; scope: ExceptionScope; resolution: ExceptionResolution; status: ExceptionStatus; expires_at: string; reason?: string }[];
+  project: { key: string; name: string; description: string };
+  generated_at: string;
+  summary: { by_severity: Counts; by_kind: Record<FindingKind, number> };
+  targets: Target[];
+  findings: ReportFinding[];
+  exceptions: { id: number; scope: ExceptionScope; vuln_id: string | null; finding_id: number | null; resolution: ExceptionResolution;
+    status: ExceptionStatus; reason: string; expires_at: string }[];
+  policy: Policy;
+  ai_report: { id: number; output: string; created_at: string } | null;
 }
