@@ -67,6 +67,9 @@ func newServer(ctx context.Context, cfg config, db *pgxpool.Pool) (*server, erro
 	s.projectRoutes()
 	s.tokenRoutes()
 	s.principalRoutes()
+	s.scanRoutes()
+	s.findingRoutes()
+	s.vulnRoutes()
 	s.handle("GET /", permPublic, s.serveWeb)
 	return s, nil
 }
