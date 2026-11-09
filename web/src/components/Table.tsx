@@ -9,7 +9,7 @@ export type Column<T> = {
   align?: "left" | "right" | "center";
   /** Monospace cell (IDs, versions, digests). */
   mono?: boolean;
-  /** Truncate with an ellipsis instead of wrapping (set a width too). */
+  /** Keep on one line; with a width it is also cut with an ellipsis (without one the column grows to fit). */
   nowrap?: boolean;
 };
 
@@ -86,7 +86,7 @@ export default function Table<T>({ columns, rows, rowKey, onRowClick, empty, loa
                     <td className="col-check"><input type="checkbox" aria-label="선택" checked={isSel} onChange={() => toggle(k)} /></td>
                   )}
                   {columns.map((c) => (
-                    <td key={c.key} style={{ textAlign: c.align }} className={[c.mono && "mono", c.nowrap && "nowrap"].filter(Boolean).join(" ") || undefined}>
+                    <td key={c.key} style={{ textAlign: c.align }} className={[c.mono && "mono", c.nowrap && "nowrap", c.nowrap && c.width !== undefined && "truncate"].filter(Boolean).join(" ") || undefined}>
                       {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? "")}
                     </td>
                   ))}

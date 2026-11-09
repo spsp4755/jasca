@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../components/PageHeader";
 import Tabs from "../components/Tabs";
@@ -12,13 +12,20 @@ import Empty from "../components/Empty";
 import { useToast } from "../components/Toast";
 import { ApiError, api } from "../api/client";
 import { isSecurity, useApi, useMe } from "../api/hooks";
-import { RESOLUTION_LABEL, SCOPE_LABEL, fmtDate } from "../lib/format";
+import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, fmtDate } from "../lib/format";
 import type { ExceptionItem } from "../api/types";
 
 type Act = { item: ExceptionItem; kind: "approve" | "reject" };
 
+/** What an exception covers: the CVE, or for one finding its rule, package and severity (linked to the finding). */
+function what(e: ExceptionItem) {
+  if (e.vuln_id) return e.vuln_id;
+  if (!e.finding_id) return "—";
+  return [e.finding_rule ?? `결과 #${e.finding_id}`, e.finding_pkg, e.finding_severity && SEVERITY_LABEL[e.finding_severity]].filter(Boolean).join(" · ");
+}
+
 export default function Exceptions() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const nav = useNavigate();
   const { data: me } = useMe();
   const sec = isSecurity(me);
@@ -27,13 +34,17 @@ export default function Exceptions() {
   const toast = useToast();
   const [act, setAct] = useState<Act | null>(null);
   const [note, setNote] = useState("");
-  const tab = pathname.endsWith("/approvals") && sec ? "pending" : (new URLSearchParams(useLocation().search).get("tab") ?? "mine");
-  const all = q.data ?? [];
+  const sp = new URLSearchParams(search);
+  // links from a project (?project=) or a finding (?id=) narrow the list and open on "전체"
+  const onlyProject = sp.get("project"), onlyID = Number(sp.get("id")) || null;
+  const tab = pathname.endsWith("/approvals") && sec ? "pending" : (sp.get("tab") ?? (onlyProject || onlyID ? "all" : "mine"));
+  const all = (q.data ?? []).filter((e) => (!onlyProject || e.project_key === onlyProject) && (!onlyID || e.id === onlyID));
   const mine = all.filter((e) => e.requested_by === me?.id);
   const pending = all.filter((e) => e.status === "pending");
   const rows = tab === "pending" ? pending : tab === "all" ? all : mine;
 
-  const done = () => { void qc.invalidateQueries({ queryKey: ["/exceptions"] }); setAct(null); setNote(""); };
+  const close = () => { setAct(null); setNote(""); };
+  const done = () => { void qc.invalidateQueries({ queryKey: ["/exceptions"] }); close(); };
   const decide = useMutation<unknown, ApiError, Act>({
     mutationFn: ({ item, kind }) => api.post(`/exceptions/${item.id}/${kind}`, { note: note.trim() }),
     onSuccess: (_r, v) => { toast(v.kind === "approve" ? "승인했습니다." : "반려했습니다.", "ok"); done(); },
@@ -47,7 +58,8 @@ export default function Exceptions() {
 
   const cols: Column<ExceptionItem>[] = [
     { key: "scope", header: "범위", render: (e) => SCOPE_LABEL[e.scope] ?? e.scope, nowrap: true },
-    { key: "target", header: "대상", render: (e) => <span className="mono">{e.vuln_id ?? (e.finding_id ? `결과 #${e.finding_id}` : "—")}</span> },
+    { key: "target", header: "대상", render: (e) => e.finding_id && !e.vuln_id
+      ? <Link className="mono" to={`/findings?finding=${e.finding_id}`}>{what(e)}</Link> : <span className="mono">{what(e)}</span> },
     { key: "project", header: "프로젝트", render: (e) => e.project_key ?? (e.scope === "global_vuln" ? "전사" : "—") },
     { key: "res", header: "처리", render: (e) => RESOLUTION_LABEL[e.resolution] ?? e.resolution, nowrap: true },
     { key: "reason", header: "사유", render: (e) => <span title={e.reason}>{e.reason}</span> },
@@ -80,17 +92,18 @@ export default function Exceptions() {
   return (
     <>
       <PageHeader title="예외" description="위험 수용·오탐 처리 요청입니다. 만료일이 지나면 결과가 자동으로 다시 열립니다." />
+      {(onlyProject || onlyID) && <p className="muted">{onlyProject ? `프로젝트 ${onlyProject}` : `예외 #${onlyID}`}만 보고 있습니다. <Link to="/exceptions">모두 보기</Link></p>}
       <Tabs label="예외 구분" value={tab} onChange={(t) => nav(t === "mine" ? "/exceptions" : `/exceptions?tab=${t}`)}
         tabs={[{ id: "mine", label: "내 요청", count: mine.length }, { id: "pending", label: "승인 대기", count: pending.length, hidden: !sec }, { id: "all", label: "전체", count: all.length }]} />
       {q.error && <div className="alert alert-danger" role="alert">{q.error.message}</div>}
-      <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
+      <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`} className="panel">
         <Table columns={cols} rows={rows} rowKey={(e) => e.id} loading={q.isLoading} caption="예외 목록"
           empty={<Empty title={tab === "pending" ? "승인 대기 중인 요청이 없습니다" : "예외가 없습니다"}
             description="취약점 결과 화면에서 &quot;예외 요청&quot;을 눌러 만들 수 있습니다." />} />
       </div>
-      <Dialog open={!!act} onClose={() => setAct(null)} title={act?.kind === "approve" ? "예외 승인" : "예외 반려"}
-        description={act ? `${act.item.vuln_id ?? `결과 #${act.item.finding_id}`} · ${act.item.reason}` : undefined}
-        footer={<><Button onClick={() => setAct(null)}>취소</Button>
+      <Dialog open={!!act} onClose={close} title={act?.kind === "approve" ? "예외 승인" : "예외 반려"}
+        description={act ? `${what(act.item)}${act.item.project_key ? ` (${act.item.project_key})` : ""} · ${act.item.reason}` : undefined}
+        footer={<><Button onClick={close}>취소</Button>
           <Button variant={act?.kind === "approve" ? "primary" : "danger"} loading={decide.isPending} disabled={act?.kind === "reject" && !note.trim()}
             onClick={() => act && decide.mutate(act)}>{act?.kind === "approve" ? "승인" : "반려"}</Button></>}>
         <Field label="메모" required={act?.kind === "reject"} hint="요청자에게 보입니다. 반려할 때는 이유를 적어 주세요.">

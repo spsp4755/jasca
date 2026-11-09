@@ -70,7 +70,7 @@ export function FindingsView({ project, projects, targets }: { project?: string;
       ? { key: "target", header: "대상", width: "20%", render: (r) => <span className="pt-target mono" title={r.target_name}>{r.target_name}</span> }
       : { key: "where", header: "프로젝트 · 대상", width: "20%", render: (r) => <ProjectTarget project={r.project_key} target={r.target_name} /> },
     { key: "status", header: "상태", width: 96, render: (r) => <StatusBadge status={r.status} /> },
-    { key: "seen", header: "처음 발견", width: 92, align: "right", render: (r) => <span className="num muted" title={fmtDate(r.first_seen_at)}>{daysSince(r.first_seen_at)}일 전</span> },
+    { key: "seen", header: "처음 발견", width: 92, align: "right", render: (r) => <span className="num muted" title={fmtDate(r.first_seen_at)}>{daysSince(r.first_seen_at) === 0 ? "오늘" : `${daysSince(r.first_seen_at)}일 전`}</span> },
   ];
 
   return (

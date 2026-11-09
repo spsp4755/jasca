@@ -81,7 +81,8 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; margin:
 .table-dense td { padding-top: 7px; padding-bottom: 7px; }
 .table tbody tr:last-child td { border-bottom: 0; }
 .table tbody th { padding: 7px 12px; position: static; background: none; font-weight: 500; color: var(--text-2); border-bottom: 1px solid var(--line); }
-.table td.nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+.table td.nowrap { white-space: nowrap; }
+.table td.nowrap.truncate { overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* max-width: 0 only works with a column width */
 .row-click { cursor: pointer; }
 .table tbody tr:hover td { background: var(--surface-2); }
 .row-click:focus-visible { box-shadow: none; }
@@ -350,3 +351,4 @@ polyline.trend-line { fill: none; }
 .login-note { font-size: 12.5px; color: var(--muted); text-align: center; }
 .login-switch { font-size: 13px; text-align: center; }
 .login-loading { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.grow { flex: 1; min-width: 0; }

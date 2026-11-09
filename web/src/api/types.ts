@@ -40,7 +40,6 @@ export interface Project {
   my_role: ProjectRole | ""; counts: Counts; last_scan_at: string | null;
 }
 export interface ProjectCreate { key: string; name: string; description: string }
-export type ProjectPatch = Partial<Omit<ProjectCreate, "key">>;
 export interface Member { principal_kind: "user" | "group"; principal: string; role: ProjectRole; display: string }
 export interface ApiToken {
   id: number; project_id: number; created_by: number | null; name: string; prefix: string; scopes: TokenScope[]; expires_at: string; last_used_at: string | null;
@@ -58,7 +57,6 @@ export interface Target {
 // --- scans ---
 /** error is set when the gate failed closed (evaluation error). */
 export interface PolicyResult { passed: boolean; reasons: string[]; error?: string }
-export interface UploadResult { scan_id: number; target_id: number; summary: Counts; policy: PolicyResult; duplicate: boolean }
 export interface Scan {
   id: number; project_id: number; target_id: number; target_kind: TargetKind; target_name: string; source: ScanSource;
   format: string; ref: string; status: JobState; error: string; created_by_user: number | null; created_by_token: number | null;
@@ -106,12 +104,12 @@ export interface ExceptionItem {
   resolution: ExceptionResolution; reason: string; status: ExceptionStatus; requested_by: number | null;
   decided_by: number | null; decided_at: string | null; decision_note: string; expires_at: string; created_at: string;
   project_key?: string;
+  finding_rule?: string | null; finding_pkg?: string | null; finding_severity?: Severity | null;
 }
 export interface ExceptionCreate {
   scope: ExceptionScope; project_key?: string; finding_ids?: number[]; vuln_id?: string;
   resolution: ExceptionResolution; reason: string; expires_at: string;
 }
-export interface Decision { note: string }
 export interface AdvisoryAffected { ecosystem: string; name: string; range: string; fixed: string }
 export interface Advisory {
   id: string; title: string; description: string; severity: Severity; affected: AdvisoryAffected[]; refs: string[];
@@ -162,7 +160,6 @@ export interface SyncSettings {
   client_id: string; client_secret_set: boolean; interval_min: number; dept_attribute: string; dept_off: boolean;
   last_run: string | null; last_error: string;
 }
-export type SyncSettingsPut = Omit<SyncSettings, "client_secret_set" | "last_run" | "last_error"> & { client_secret?: string };
 export type TrivyScanner = "vuln" | "secret" | "misconfig";
 export interface TrivyStatus {
   /** schema version of the installed DB; 0 = none installed. java_db is {updated_at} or null. */

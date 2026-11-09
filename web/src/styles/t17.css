@@ -3,10 +3,9 @@
 .dropzone:hover, .dropzone.over, .dropzone:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .row-gap { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.code-block { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; overflow-x: auto; margin: 0; white-space: pre; font-family: var(--font-mono, ui-monospace, monospace); }
+.code-block { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; overflow-x: auto; margin: 0; white-space: pre; font-family: var(--mono); }
 .aff-row { display: grid; grid-template-columns: 150px 1fr 1fr 1fr auto; gap: 8px; align-items: end; }
 .md h2, .md h3, .md h4 { margin: 14px 0 6px; }
 .md p, .md ul, .md ol { margin: 6px 0; }
 .md ul, .md ol { padding-left: 20px; }
-.md pre.code { background: var(--surface-2); border: 1px solid var(--line); padding: 8px 10px; overflow-x: auto; border-radius: var(--radius-sm); }
 .tag-ok { color: var(--ok, inherit); }

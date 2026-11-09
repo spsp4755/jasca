@@ -46,7 +46,7 @@ func init() {
 
 var eventLabels = map[string]string{
 	"new_critical": "새 Critical/High 취약점", "policy_failed": "정책 실패", "scan_failed": "스캔 실패",
-	"exception_requested": "예외 요청", "exception_approved": "예외 승인", "exception_rejected": "예외 거절",
+	"exception_requested": "예외 요청", "exception_approved": "예외 승인", "exception_rejected": "예외 반려",
 	"exception_expiring": "예외 만료 임박", "exception_expired": "예외 만료", "new_known": "새로 알려진 취약점", "test": "시험 메시지",
 }
 

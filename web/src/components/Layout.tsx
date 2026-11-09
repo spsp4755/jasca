@@ -76,7 +76,7 @@ export default function Layout() {
         <header className="topbar">
           <form role="search" className="search" onSubmit={onSearch}>
             <Icon name="search" />
-            <input ref={search} type="search" placeholder="CVE ID, 패키지, 프로젝트 검색" aria-label="전체 검색"
+            <input ref={search} type="search" placeholder="CVE ID, 패키지, 제목으로 결과 검색" aria-label="전체 검색"
               onKeyDown={(e) => { if (e.key === "Escape") e.currentTarget.blur(); }} />
             <kbd aria-hidden="true">/</kbd>
           </form>

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
@@ -360,5 +361,28 @@ func TestGlobalExceptionEventsPerProject(t *testing.T) {
 	want := []string{itoa(a) + " exception_requested", itoa(b) + " exception_requested", itoa(a) + " exception_approved", itoa(b) + " exception_approved"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("emits %v, want %v", got, want)
+	}
+}
+
+// The approval inbox can say what a finding exception covers; duplicate requests are not stored twice.
+func TestExceptionListNamesFindingAndNoDuplicates(t *testing.T) {
+	e := newExEnv(t)
+	pid, mck, _ := e.project(t, "web", "CVE-2024-1")
+	fid := qint64(t, e.s, `select id from findings where project_id=$1 and rule_id='CVE-2024-1'`, pid)
+	got := e.request(t, mck, map[string]any{"scope": "finding", "finding_ids": []int64{fid, fid}}, 201)
+	if len(got) != 1 {
+		t.Fatalf("duplicate ids made %d exceptions", len(got))
+	}
+	e.request(t, mck, map[string]any{"scope": "finding", "finding_ids": []int64{fid}}, 409)
+	e.request(t, mck, map[string]any{"scope": "project_vuln", "project_key": "web", "vuln_id": "CVE-2024-1"}, 201)
+	e.request(t, mck, map[string]any{"scope": "project_vuln", "project_key": "web", "vuln_id": "CVE-2024-1"}, 409)
+	var list []map[string]any
+	rec := do(t, e.s, "GET", "/api/v1/exceptions", nil, e.secA)
+	if json.Unmarshal(rec.Body.Bytes(), &list); len(list) != 2 {
+		t.Fatalf("list: %s", rec.Body.String())
+	}
+	f := list[1]
+	if f["finding_rule"] != "CVE-2024-1" || f["finding_pkg"] != "zlib" || f["finding_severity"] != "HIGH" {
+		t.Fatalf("finding brief: %v", f)
 	}
 }

@@ -5,7 +5,51 @@
 
 @page { size: A4; margin: 16mm 14mm; }
 @media print {
-  .sidebar, .topbar, .no-print, .tabs, .toast-region { display: none !important; }
+  /* Paper is always light: the light theme's colour tokens (copied from tokens.css :root), with a selector that
+     beats both dark-theme rules, so text-2/muted/surface-2 never print as dark-theme greys on white. */
+  html:root[data-theme], html:root:not([data-theme]) {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #f0f2f5;
+    --surface-3: #e7eaef;
+    --line: #e2e5ea;
+    --line-strong: #cbd0d8;
+    --text: #161a21;
+    --text-2: #353c48;
+    --muted: #5f6775;
+    --accent: #3e47c4;
+    --accent-ink: #ffffff;
+    --accent-soft: #eceefd;
+    --primary: #232a36; /* primary buttons: graphite, so colour stays reserved for meaning */
+    --primary-hover: #343d4c;
+    --primary-ink: #ffffff;
+    --ok: #1d7044;
+    --ok-bg: #e7f4ec;
+    --warn: #7f5300;
+    --warn-bg: #fbf1dc;
+    --danger: #b42318;
+    --danger-ink: #ffffff;
+    --danger-bg: #fdeeec;
+    --overlay: rgba(14, 17, 22, 0.42);
+
+    --sev-critical: #b42318;
+    --sev-high: #d9480f;
+    --sev-medium: #b08800;
+    --sev-low: #2f6f9f;
+    --sev-unknown: #6b7280;
+    --sev-critical-ink: #b42318;
+    --sev-high-ink: #b03a0b;
+    --sev-medium-ink: #755a00;
+    --sev-low-ink: #2a6592;
+    --sev-unknown-ink: #555c69;
+    --sev-critical-bg: #fdeeec;
+    --sev-high-bg: #fdefe6;
+    --sev-medium-bg: #faf2d6;
+    --sev-low-bg: #e8f0f7;
+    --sev-unknown-bg: #eef0f2;
+  }
+  .sidebar, .topbar, .no-print, .tabs, .toasts { display: none !important; }
   html, body { background: #fff !important; color: #000 !important; }
   body, .app, .app-main, main, .content { display: block !important; height: auto !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; }
   .report-split { display: block; }

@@ -18,12 +18,12 @@ const EMPTY: Form = { name: "", base_url: "", robot_user: "", robot_secret: "", 
 function Once({ label, value }: { label: string; value: string }) {
   const toast = useToast();
   return (
-    <Field label={label}>
-      <div style={{ display: "flex", gap: 6 }}>
+    <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+      <Field label={label} className="grow">
         <input className="input mono" readOnly value={value} onFocus={(e) => e.currentTarget.select()} />
-        <Button icon="copy" aria-label={`${label} 복사`} onClick={async () => toast((await copyText(value)) ? "복사했습니다." : "복사하지 못했습니다. 직접 선택해 복사하세요.", "info")} />
-      </div>
-    </Field>
+      </Field>
+      <Button icon="copy" aria-label={`${label} 복사`} onClick={async () => toast((await copyText(value)) ? "복사했습니다." : "복사하지 못했습니다. 직접 선택해 복사하세요.", "info")} />
+    </div>
   );
 }
 
@@ -74,7 +74,7 @@ export default function Harbor() {
   const ready = form && form.name.trim() && form.base_url.trim() && form.robot_user.trim() && (form.id || form.robot_secret);
   return (
     <>
-      <PageHeader title="Harbor" description="Harbor에 이미지가 올라오면 웹훅으로 알림을 받아 Trivy로 검사합니다."
+      <PageHeader title="Harbor" description="Harbor가 이미지를 스캔하면 웹훅으로 알림을 받아 Harbor의 취약점 보고서를 가져옵니다."
         actions={<Button variant="primary" icon="check" onClick={() => setForm(EMPTY)}>Harbor 연결 추가</Button>} />
       <Panel title="연결">
         <Loading q={links} />
@@ -93,8 +93,8 @@ export default function Harbor() {
           ]} />
       </Panel>
       <Panel title="매핑되지 않은 이미지" meta={`${unmapped.data?.length ?? 0}건`}>
-        <p className="muted">웹훅으로 받았지만 어느 프로젝트에도 매핑되지 않은 이미지입니다. 프로젝트를 고르면 연결하고 검사합니다.</p>
-        <Table<HarborUnmapped> dense rowKey={(u) => u.id} rows={unmapped.data ?? []} loading={unmapped.isLoading} caption="매핑되지 않은 이미지" empty={<span className="muted">매핑되지 않은 이미지가 없습니다.</span>}
+        <p className="muted">웹훅으로 받았지만 어느 프로젝트에도 매핑되지 않은 이미지입니다. 프로젝트를 고르면 연결하고 보고서를 가져옵니다.</p>
+        <Table<HarborUnmapped> dense rowKey={(u) => u.id} rows={unmapped.data ?? []} loading={unmapped.isLoading} caption="매핑되지 않은 이미지" empty={<span className="muted">{unmapped.error ? `목록을 불러오지 못했습니다. ${unmapped.error.message}` : "매핑되지 않은 이미지가 없습니다."}</span>}
           columns={[
             { key: "repo", header: "저장소", render: (u) => <span className="mono">{u.repository}{u.tag && `:${u.tag}`}</span> },
             { key: "link", header: "Harbor", render: (u) => links.data?.find((l) => l.id === u.link_id)?.name ?? u.link_id },
@@ -119,13 +119,13 @@ export default function Harbor() {
         </>}
       </Dialog>
 
-      <Dialog open={!!created} onClose={() => setCreated(null)} title="웹훅 설정" size="md"
+      <Dialog open={!!created} onClose={() => setCreated(null)} title="웹훅 설정" size="md" dismissable={false}
         description="이 비밀값은 지금 한 번만 보입니다. 닫기 전에 Harbor 웹훅에 입력하세요."
         footer={<Button variant="primary" onClick={() => setCreated(null)}>닫기</Button>}>
         {created && <>
           <Once label="웹훅 URL" value={created.webhook_url} />
           <Once label="웹훅 Secret (Authorization 헤더 값)" value={created.webhook_secret} />
-          <p className="muted">Harbor 프로젝트 → Webhooks에서 이벤트 &quot;Scanning finished/Artifact pushed&quot;를 고르고, Auth Header에 위 Secret을 넣습니다.</p>
+          <p className="muted">Harbor 프로젝트 → Webhooks에서 이벤트 &quot;Scanning finished&quot;를 고르고, Auth Header에 위 Secret을 넣습니다. 다른 이벤트는 받아도 무시합니다.</p>
         </>}
       </Dialog>
       {map && <Mappings link={map} projects={projects.data ?? []} onClose={() => setMap(null)} />}

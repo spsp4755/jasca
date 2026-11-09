@@ -80,7 +80,7 @@ export default function Scan() {
         description={s && <span className="scan-target"><span className="tag tag-quiet">{TARGET_KIND_LABEL[s.target_kind] ?? s.target_kind}</span><span className="mono">{s.target_name}</span>{s.ref && <span className="mono muted">@ {s.ref}</span>}</span>}
         actions={s && (
           <>
-            {live(s.status) && <Button variant="danger" loading={cancel.isPending} onClick={() => confirm("이 스캔을 취소할까요?") && cancel.mutate()}>스캔 취소</Button>}
+            {live(s.status) && project && project.my_role !== "viewer" && <Button variant="danger" loading={cancel.isPending} onClick={() => confirm("이 스캔을 취소할까요?") && cancel.mutate()}>스캔 취소</Button>}
             {s.has_raw && <a className="btn btn-secondary" href={`${API_BASE}/scans/${s.id}/raw`} download><Icon name="fileText" />원본 보고서</a>}
           </>
         )} />

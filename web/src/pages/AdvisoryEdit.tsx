@@ -29,6 +29,7 @@ function AffectedEditor({ rows, onChange, disabled }: { rows: AdvisoryAffected[]
     <div className="stack">
       {rows.map((r, i) => {
         const isFree = free.has(i) || !ECOS.includes(r.ecosystem);
+        const row = i ? <span className="sr-only"> (행 {i + 1})</span> : null; // screen readers tell the rows apart
         return (
           <div className="aff-row" key={i}>
             <Field label={i === 0 ? "생태계" : "생태계 (행 " + (i + 1) + ")"} className={i ? "" : undefined}>
@@ -38,9 +39,9 @@ function AffectedEditor({ rows, onChange, disabled }: { rows: AdvisoryAffected[]
                   {ECOS.map((e) => <option key={e}>{e}</option>)}<option value={OTHER}>기타(직접 입력)</option>
                 </select>}
             </Field>
-            <Field label="패키지"><input className="input mono" value={r.name} disabled={disabled} onChange={(e) => upd(i, { name: e.target.value })} /></Field>
-            <Field label="영향 범위" hint="예: <1.4.2 또는 >=1.0 <1.2.5"><input className="input mono" value={r.range} disabled={disabled} onChange={(e) => upd(i, { range: e.target.value })} /></Field>
-            <Field label="수정 버전"><input className="input mono" value={r.fixed} disabled={disabled} onChange={(e) => upd(i, { fixed: e.target.value })} /></Field>
+            <Field label={<>패키지{row}</>}><input className="input mono" value={r.name} disabled={disabled} onChange={(e) => upd(i, { name: e.target.value })} /></Field>
+            <Field label={<>영향 범위{row}</>} hint="예: <1.4.2 또는 >=1.0 <1.2.5"><input className="input mono" value={r.range} disabled={disabled} onChange={(e) => upd(i, { range: e.target.value })} /></Field>
+            <Field label={<>수정 버전{row}</>}><input className="input mono" value={r.fixed} disabled={disabled} onChange={(e) => upd(i, { fixed: e.target.value })} /></Field>
             <Button variant="ghost" aria-label={`행 ${i + 1} 삭제`} icon="x" disabled={disabled || rows.length < 2} onClick={() => onChange(rows.filter((_, j) => j !== i))} />
             {isFree && r.ecosystem && !ECOS.includes(r.ecosystem) && (
               <p className="field-hint" style={{ gridColumn: "1 / -1" }}>알 수 없는 생태계 &quot;{r.ecosystem}&quot;는 일반 비교(숫자·문자 순)로 판단하므로 정확하지 않을 수 있습니다.</p>

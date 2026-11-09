@@ -9,7 +9,7 @@ import StatusBadge from "../components/StatusBadge";
 import { useToast } from "../components/Toast";
 import { ApiError, api } from "../api/client";
 import { useApi } from "../api/hooks";
-import { RESOLUTION_LABEL, SCOPE_LABEL, fmtDate, fmtDateTime, fmtNumber } from "../lib/format";
+import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, TARGET_KIND_LABEL, fmtDate, fmtDateTime, fmtNumber } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
 import type { AiRun, ProjectReportData, RunRef } from "../api/types";
 import { Loading } from "./admin/parts";
@@ -58,11 +58,11 @@ export default function ProjectReport() {
                 {(["critical", "high", "medium", "low", "unknown"] as const).map((s) => <SeverityBadge key={s} severity={s.toUpperCase() as "LOW"} count={t[s] ?? 0} />)}
                 <span className="muted num">열린 결과 {fmtNumber(t.open ?? 0)}</span></div></section>}
               {pol && <section><h2>정책</h2><p>{pol.enabled
-                ? `${pol.min_severity} 이상 열린 결과가 ${pol.max_count}건을 넘으면 실패${pol.new_only ? " (새로 발견된 것만)" : ""}${pol.fixable_only ? " (수정 버전이 있는 것만)" : ""}`
+                ? `심각도 ${SEVERITY_LABEL[pol.min_severity] ?? pol.min_severity} 이상 열린 결과가 ${pol.max_count}건을 넘으면 실패${pol.new_only ? " (새로 발견된 것만)" : ""}${pol.fixable_only ? " (수정 버전이 있는 것만)" : ""}`
                 : "정책 검사를 쓰지 않습니다."}</p></section>}
               {(d.targets ?? []).length > 0 && <section><h2>대상별 현황</h2>
                 <Table dense rows={d.targets} rowKey={(r) => r.name} caption="대상별 현황" columns={[
-                  { key: "n", header: "대상", render: (r) => r.name }, { key: "k", header: "종류", render: (r) => r.kind },
+                  { key: "n", header: "대상", render: (r) => r.name }, { key: "k", header: "종류", render: (r) => TARGET_KIND_LABEL[r.kind] ?? r.kind },
                   { key: "c", header: "치명/높음/중간/낮음", nowrap: true, render: (r) => `${r.counts.critical ?? 0} / ${r.counts.high ?? 0} / ${r.counts.medium ?? 0} / ${r.counts.low ?? 0}` },
                   { key: "s", header: "마지막 스캔", nowrap: true, render: (r) => fmtDate(r.last_scan_at) }]} /></section>}
               {(d.findings ?? []).length > 0 && <section className="page-break"><h2>주요 취약점</h2>
@@ -74,7 +74,7 @@ export default function ProjectReport() {
                   { key: "t", header: "대상", render: (r) => r.target }]} /></section>}
               {(d.exceptions ?? []).length > 0 && <section><h2>예외</h2>
                 <Table dense rows={d.exceptions} rowKey={(r) => r.id} caption="예외" columns={[
-                  { key: "v", header: "대상", mono: true, render: (r) => r.vuln_id ?? "—" }, { key: "sc", header: "범위", render: (r) => SCOPE_LABEL[r.scope] },
+                  { key: "v", header: "대상", mono: true, render: (r) => r.vuln_id ?? (r.finding_id ? `결과 #${r.finding_id}` : "—") }, { key: "sc", header: "범위", render: (r) => SCOPE_LABEL[r.scope] },
                   { key: "r", header: "처리", render: (r) => RESOLUTION_LABEL[r.resolution] }, { key: "st", header: "상태", render: (r) => <StatusBadge status={r.status} /> },
                   { key: "e", header: "만료", render: (r) => fmtDate(r.expires_at) }]} /></section>}
               {shown?.state === "done" && <section className="page-break"><h2>AI 요약 ({fmtDateTime(shown.finished_at ?? shown.created_at)})</h2><div className="md">{renderMarkdown(shown.output)}</div></section>}

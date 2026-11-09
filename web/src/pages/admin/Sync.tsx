@@ -51,7 +51,7 @@ export default function Sync() {
       <Panel title="최근 SSO 로그인의 부서" meta="최근 20건 · 서버를 다시 시작하면 비워집니다">
         <p className="muted">부서가 비어 있거나 &quot;찾지 못함&quot;이면 부서 속성 이름과 Keycloak 매퍼 설정을 확인하세요.</p>
         <Table<DeptLogin> dense rowKey={(r) => `${r.user}${r.at}`} rows={logins.data ?? []} loading={logins.isLoading} caption="최근 SSO 로그인의 부서"
-          empty={<span className="muted">아직 SSO 로그인 기록이 없습니다.</span>}
+          empty={<span className="muted">{logins.error ? `기록을 불러오지 못했습니다. ${logins.error.message}` : "아직 SSO 로그인 기록이 없습니다."}</span>}
           columns={[
             { key: "at", header: "시각", nowrap: true, render: (r) => fmtDateTime(r.at) },
             { key: "user", header: "사용자", render: (r) => r.user },

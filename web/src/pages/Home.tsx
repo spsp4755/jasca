@@ -87,7 +87,7 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
         <Table caption="오래 열린 치명 취약점" loading={loading} rows={d?.oldest_critical ?? []} rowKey={(r) => r.id} dense
           empty={<Empty compact icon="shieldCheck" title="열린 치명 취약점이 없습니다" />}
           columns={[
-            { key: "rule", header: "취약점", width: 150, nowrap: true, render: (r) => <Link to={`/vulns/${encodeURIComponent(r.rule_id)}`} className="mono">{r.rule_id}</Link> },
+            { key: "rule", header: "취약점", width: 150, nowrap: true, render: (r) => <Link to={`/findings?finding=${r.id}`} className="mono">{r.rule_id}</Link> }, // may be a secret or misconfig, not a CVE
             { key: "pkg", header: "패키지", render: (r) => <PkgCell name={r.pkg_name} version={r.pkg_version} fixed={r.fixed_version} /> },
             { key: "where", header: "프로젝트 · 대상", render: (r) => <ProjectTarget project={r.project_key} target={r.target} /> },
             { key: "age", header: "열린 기간", align: "right", width: 84, render: (r) => <span className="num age" title={fmtDate(r.first_seen_at)}>{daysSince(r.first_seen_at)}일</span> },

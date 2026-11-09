@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log"
@@ -13,6 +14,9 @@ type policyResult struct {
 	Reasons []string `json:"reasons"`
 	Error   string   `json:"error,omitempty"`
 }
+
+// severityLabel is the web's SEVERITY_LABEL, for Korean sentences that CI logs and the UI show as they are.
+var severityLabel = map[string]string{"CRITICAL": "치명", "HIGH": "높음", "MEDIUM": "중간", "LOW": "낮음", "UNKNOWN": "알 수 없음"}
 
 // evaluatePolicy applies the project's policy (spec 3.10) to the scan's target. Any error fails the gate.
 func (s *server) evaluatePolicy(ctx context.Context, projectID, scanID int64) policyResult {
@@ -37,7 +41,7 @@ func (s *server) evaluatePolicy(ctx context.Context, projectID, scanID int64) po
 		scope = "열린 결과(" + strings.Join(only, ", ") + "만)"
 	}
 	return policyResult{Reasons: []string{fmt.Sprintf("심각도 %s 이상 %s가 %d건으로 허용 %d건을 넘었습니다.",
-		p.MinSeverity, scope, n, p.MaxCount)}}
+		cmp.Or(severityLabel[p.MinSeverity], p.MinSeverity), scope, n, p.MaxCount)}}
 }
 
 // policyCount counts the findings the policy counts: open, in the scan's target, at or above min_severity, under

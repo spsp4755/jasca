@@ -99,7 +99,7 @@ SSO는 선택입니다. 설정하지 않아도 로컬 관리자(`admin`)로 로�
      - 구형 Keycloak(User profile 없음, `/auth` 경로 버전): 서버 설정의 `read-only-attributes`로 `department`를 사용자 읽기 전용으로 둡니다(Quarkus 배포판 예: `--spi-user-profile-legacy-user-profile-read-only-attributes=department`, WildFly 배포판은 `standalone.xml`의 `userProfile` SPI → `legacy-user-profile` provider의 `read-only-attributes`. 이름은 버전마다 다를 수 있습니다).
      - 어느 버전이든 적용 후 **일반 사용자로 계정 화면(`…/realms/<realm>/account`)에 들어가 department를 고칠 수 없는지 직접 확인**하세요.
 5. **동기화용 서비스 계정 client**: 이름 예 `jasca-sync`, Client authentication **ON**, Service accounts roles **ON**(Standard flow 끔).
-   - Service account roles 탭 → Assign role → *Filter by clients* → `realm-management`의 **view-users**(그룹 조회가 부족하면 **query-groups**도). 구형 Keycloak에서는 master realm의 `master-realm` client 역할을 고릅니다. 관리 화면의 안내 문구에는 `view-realm`도 적혀 있는데, 필수는 위 두 가지입니다.
+   - Service account roles 탭 → Assign role → *Filter by clients* → `realm-management`의 **view-users**(그룹 조회가 부족하면 **query-groups**도). 구형 Keycloak에서는 master realm의 `master-realm` client 역할을 고릅니다. 관리 화면(**관리 → Keycloak 동기화**)의 안내 문구도 같은 두 역할을 적고 있습니다.
    - 이 계정으로 사용자·이메일·그룹·부서를 15분마다(기본, 1~1440분) 읽어 옵니다. Keycloak에서 비활성화되거나 삭제된 사용자는 다음 동기화 뒤 다음 요청부터 로그아웃(401)됩니다. 그룹 이름을 바꾸면 새 그룹으로 취급되므로 그 그룹으로 지정한 프로젝트 멤버를 다시 지정해야 합니다.
 6. **구형 Keycloak(`/auth` 경로)**: Issuer URL에는 `https://sso.example.internal/auth/realms/<realm>`처럼 실제 `/auth`가 포함된 주소를 넣으세요. 신형은 `https://sso.example.internal/realms/<realm>`입니다. Keycloak이 알려 주는 `…/.well-known/openid-configuration`의 `issuer` 값과 글자 그대로 같아야 합니다. 동기화는 같은 주소에서 `/realms/`를 `/admin/realms/`로 바꿔 Admin API를 부르므로 `/auth`가 있는 서버에도 그대로 동작합니다.
 7. **사내 CA 인증서**를 쓰는 Keycloak이면 JASCA가 그 CA를 신뢰해야 합니다. CA 파일을 ConfigMap으로 마운트하고 `SSL_CERT_FILE`을 지정합니다. 이 변수는 시스템 인증서 묶음을 **대체**하므로, 파일에는 사내 CA 외에 필요한 다른 CA도 함께 넣으세요.
@@ -138,7 +138,7 @@ SSO로 **처음 로그인하는 순간** 부서는 다음 중 하나가 맞을 �
 
 ## 관리자 첫 로그인
 
-1. `https://<접속 주소>/login?local=1`에서 `admin` / 설치 때 정한 `JASCA_BOOTSTRAP_PASSWORD`로 로그인합니다. 비밀번호 변경 화면은 없으므로 **처음부터 강한 값**(12~72자)을 쓰세요. 이 값은 빈 DB의 최초 `admin` 생성에만 쓰이고, 이후 시작 때도 12~72자로 설정되어 있어야 앱이 시작합니다.
+1. `https://<접속 주소>/login?local=1`에서 `admin` / 설치 때 정한 `JASCA_BOOTSTRAP_PASSWORD`로 로그인합니다. 처음부터 강한 값(12~72자)을 쓰고, 로그인 뒤 오른쪽 위 사용자 메뉴의 **비밀번호 바꾸기**로 바꿀 수 있습니다. Secret의 값은 빈 DB의 최초 `admin` 생성에만 쓰이고(이후에는 바꾼 비밀번호가 유지됩니다), 시작할 때마다 12~72자로 설정되어 있어야 앱이 시작합니다.
 2. 로그인 5회 실패하면 15분간 잠기고, IP별 요청 제한도 있습니다.
 3. **관리 → Trivy DB**에서 DB를 올립니다(다음 절). Keycloak을 쓰면 위 절차로 SSO를 설정합니다.
 4. 처음 관리자는 SSO 역할 매핑으로 정하는 것을 권장합니다. 이미 로그인(또는 동기화)된 사용자는 **관리 → 사용자·역할**에서 역할을 지정할 수도 있습니다(SSO 역할로 정해진 사용자는 여기서 바꿀 수 없습니다).

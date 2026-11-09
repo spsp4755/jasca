@@ -2,8 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import { isSecurity, useMe } from "../api/hooks";
-import type { ExceptionCreate, ExceptionResolution, ExceptionScope, Finding } from "../api/types";
+import { isSecurity, useApi, useMe } from "../api/hooks";
+import type { ExceptionCreate, ExceptionResolution, ExceptionScope, Finding, Project } from "../api/types";
 import Button from "../components/Button";
 import Dialog from "../components/Dialog";
 import Field from "../components/Field";
@@ -22,6 +22,9 @@ const HIDDEN = new Set(["partial_fingerprints"]);
 /** Side panel with everything known about one finding. */
 export default function FindingDrawer({ finding: f, onClose, showProject = true }: { finding: Finding | null; onClose: () => void; showProject?: boolean }) {
   const [ask, setAsk] = useState(false);
+  const me = useMe();
+  const role = useApi<Project[]>("/projects").data?.find((p) => p.key === f?.project_key)?.my_role;
+  const canAsk = role === "member" || role === "owner" || isSecurity(me.data); // viewers would only get a 403
   const details = f ? Object.entries(f.details ?? {}).filter(([k, v]) => !HIDDEN.has(k) && v !== "" && v !== null && v !== 0) : [];
   return (
     <>
@@ -30,7 +33,7 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
         description={f?.title || undefined}
         footer={f && (
           <>
-            {f.status === "open" && <Button icon="shield" onClick={() => setAsk(true)}>예외 요청</Button>}
+            {f.status === "open" && canAsk && <Button icon="shield" onClick={() => setAsk(true)}>예외 요청</Button>}
             {f.kind === "vuln" && <Link className="btn btn-primary" to={`/vulns/${encodeURIComponent(f.rule_id)}`}>취약점 상세<Icon name="arrowRight" size={14} /></Link>}
           </>
         )}>
@@ -107,8 +110,10 @@ export function ExceptionRequestDialog({ open, findings, onClose, onDone }: {
     setBusy(true); setErr("");
     const common = { resolution, reason: reason.trim(), expires_at: endOfDayISO(expires) };
     const bodies: [string, ExceptionCreate][] = sc === "global_vuln" ? [["전체", { scope: sc, vuln_id: vulnID, ...common }]]
-      : [...byProject].map(([project_key, finding_ids]) => [project_key, sc === "finding"
-        ? { scope: sc, project_key, finding_ids, ...common } : { scope: sc, project_key, vuln_id: vulnID, ...common }]);
+      : [...byProject].flatMap(([project_key, ids]): [string, ExceptionCreate][] => sc === "finding"
+        // the API takes at most 200 findings per request
+        ? Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => [project_key, { scope: sc, project_key, finding_ids: ids.slice(i * 200, i * 200 + 200), ...common }])
+        : [[project_key, { scope: sc, project_key, vuln_id: vulnID, ...common }]]);
     const results = await Promise.allSettled(bodies.map(([, b]) => api.post("/exceptions", b)));
     setBusy(false);
     qc.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/exceptions") });

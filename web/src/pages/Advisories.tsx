@@ -27,8 +27,8 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
   const imp = useMutation<unknown, ApiError>({
     mutationFn: () => api.post("/advisories/import", text),
     onSuccess: (r) => {
-      const n = (r as { imported?: number; count?: number } | undefined);
-      toast(`가져왔습니다.${n?.imported ?? n?.count ? ` (${n.imported ?? n.count}건)` : ""}`, "ok");
+      const n = r as { created?: number; updated?: number; matched?: number } | undefined;
+      toast(n ? `가져왔습니다. 새로 ${n.created ?? 0}건, 수정 ${n.updated ?? 0}건, 일치한 결과 ${n.matched ?? 0}건.` : "가져왔습니다.", "ok");
       void qc.invalidateQueries({ queryKey: ["/advisories"] });
       onClose();
     },
@@ -74,9 +74,9 @@ export default function Advisories() {
       <PageHeader title="사내 Advisory" description="공개 DB에 없는 사내 취약점 정보를 등록하면, 저장하는 즉시 기존 스캔 결과에도 적용됩니다."
         actions={sec ? <><Button onClick={() => setImp(true)}>CSV 가져오기</Button><Link className="btn btn-primary" to="/advisories/new">새 Advisory</Link></> : undefined} />
       {q.error && <div className="alert alert-danger" role="alert">{q.error.message}</div>}
-      <Table columns={cols} rows={q.data ?? []} rowKey={(a) => a.id} loading={q.isLoading} caption="사내 Advisory 목록"
+      <div className="panel"><Table columns={cols} rows={q.data ?? []} rowKey={(a) => a.id} loading={q.isLoading} caption="사내 Advisory 목록"
         onRowClick={(a) => nav(`/advisories/${encodeURIComponent(a.id)}`)}
-        empty={<Empty title="등록된 Advisory가 없습니다" description={sec ? "새 Advisory를 만들거나 CSV로 한꺼번에 가져오세요." : "보안 담당자가 등록하면 여기에 나타납니다."} />} />
+        empty={<Empty title="등록된 Advisory가 없습니다" description={sec ? "새 Advisory를 만들거나 CSV로 한꺼번에 가져오세요." : "보안 담당자가 등록하면 여기에 나타납니다."} />} /></div>
       {imp && <ImportDialog onClose={() => setImp(false)} />}
     </>
   );

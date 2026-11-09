@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -36,11 +37,15 @@ type exception struct {
 	ExpiresAt    time.Time  `json:"expires_at"`
 	CreatedAt    time.Time  `json:"created_at"`
 	ProjectKey   *string    `json:"project_key"`
+	// finding scope: what the finding is, so an approver sees what is being approved
+	FindingRule     *string `json:"finding_rule"`
+	FindingPkg      *string `json:"finding_pkg"`
+	FindingSeverity *string `json:"finding_severity"`
 }
 
 const exceptionCols = `select e.id, e.scope, e.project_id, e.finding_id, e.vuln_id, e.resolution, e.reason, e.status, e.requested_by,
-		e.decided_by, e.decided_at, e.decision_note, e.expires_at, e.created_at, p.key
-	from exceptions e left join projects p on p.id = e.project_id `
+		e.decided_by, e.decided_at, e.decision_note, e.expires_at, e.created_at, p.key, f.rule_id, f.pkg_name, f.severity
+	from exceptions e left join projects p on p.id = e.project_id left join findings f on f.id = e.finding_id `
 
 func (s *server) exceptionRoutes() {
 	s.handle("GET /api/v1/exceptions", permUser, s.handleExceptionList)
@@ -77,6 +82,8 @@ func (s *server) handleExceptionList(w http.ResponseWriter, r *http.Request, c *
 	}
 	writeJSON(w, 200, items)
 }
+
+var errDupException = errors.New("a pending request for the same scope exists")
 
 type exceptionReq struct {
 	Scope      string  `json:"scope"`
@@ -134,6 +141,8 @@ valid:
 	}
 	switch req.Scope {
 	case "finding":
+		slices.Sort(req.FindingIDs)
+		req.FindingIDs = slices.Compact(req.FindingIDs)
 		if len(req.FindingIDs) == 0 || len(req.FindingIDs) > 200 {
 			badRequest(w, "finding_ids는 1~200개여야 합니다.")
 			return
@@ -190,6 +199,15 @@ valid:
 	var ids []int64
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		for _, t := range targets {
+			var dup bool
+			if err := tx.QueryRow(ctx, `select exists(select 1 from exceptions where status = 'pending' and scope = $1
+				and project_id is not distinct from $2 and finding_id is not distinct from $3 and vuln_id is not distinct from $4)`,
+				req.Scope, t.projectID, t.findingID, vuln).Scan(&dup); err != nil {
+				return err
+			}
+			if dup {
+				return errDupException
+			}
 			var id int64
 			if err := tx.QueryRow(ctx, `insert into exceptions(scope, project_id, finding_id, vuln_id, resolution, reason, requested_by, expires_at)
 				values($1, $2, $3, $4, $5, $6, $7, $8) returning id`, req.Scope, t.projectID, t.findingID, vuln, req.Resolution, req.Reason,
@@ -200,6 +218,10 @@ valid:
 		}
 		return nil
 	})
+	if errors.Is(err, errDupException) {
+		writeErr(w, 409, "conflict", "같은 대상에 승인 대기 중인 요청이 이미 있습니다.")
+		return
+	}
 	if err != nil {
 		writeInternal(w, "exception create", err)
 		return
