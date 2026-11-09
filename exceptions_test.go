@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"strings"
 	"testing"
 	"time"
 )
@@ -339,5 +340,25 @@ func TestExceptionCrossProject(t *testing.T) {
 	}
 	if l := decode[[]exView](t, do(t, e.s, "GET", "/api/v1/exceptions", nil, e.secA)); len(l) != 2 {
 		t.Errorf("security sees %d", len(l))
+	}
+}
+
+// a global exception has no project: its events go to each project that has the vulnerability
+func TestGlobalExceptionEventsPerProject(t *testing.T) {
+	e := newExEnv(t)
+	a, _, _ := e.project(t, "proj-a", "CVE-2024-5")
+	b, _, _ := e.project(t, "proj-b", "CVE-2024-5", "CVE-2024-6")
+	e.project(t, "proj-c", "CVE-2024-6")
+	emits := captureEmits(t)
+	g := e.request(t, e.secA, map[string]any{"scope": "global_vuln", "vuln_id": "CVE-2024-5"}, 201)[0]
+	e.decide(t, e.secB, g.ID, "approve", 200)
+	var got []string
+	for _, m := range *emits {
+		f := strings.Fields(m)
+		got = append(got, f[0]+" "+f[1])
+	}
+	want := []string{itoa(a) + " exception_requested", itoa(b) + " exception_requested", itoa(a) + " exception_approved", itoa(b) + " exception_approved"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("emits %v, want %v", got, want)
 	}
 }

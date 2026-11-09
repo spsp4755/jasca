@@ -229,18 +229,28 @@ func exTarget(ex *exception) string {
 	return ""
 }
 
-// emitException sends an exception event; global exceptions have no project (id 0).
+// emitException sends an exception event to its project. A global exception has none, so it goes to every project
+// with a finding of that vulnerability (the projects it affects).
 func (s *server) emitException(ctx context.Context, event string, ex *exception, note string) {
-	var pid int64
+	pids := []int64{}
 	if ex.ProjectID != nil {
-		pid = *ex.ProjectID
+		pids = append(pids, *ex.ProjectID)
+	} else if ex.VulnID != nil {
+		rows, _ := s.db.Query(ctx, `select distinct project_id from findings where kind = 'vuln' and rule_id = $1 order by 1`, *ex.VulnID)
+		var err error
+		if pids, err = pgx.CollectRows(rows, pgx.RowTo[int64]); err != nil {
+			log.Printf("exception %d: projects for %s: %v", ex.ID, event, err)
+			return
+		}
 	}
 	p := map[string]any{"exception_id": ex.ID, "scope": ex.Scope, "vuln_id": ex.VulnID, "finding_id": ex.FindingID, "resolution": ex.Resolution,
 		"reason": ex.Reason, "expires_at": ex.ExpiresAt, "project_key": ex.ProjectKey}
 	if note != "" {
 		p["note"] = note
 	}
-	s.emit(ctx, pid, event, p)
+	for _, pid := range pids {
+		s.emit(ctx, pid, event, p)
+	}
 }
 
 func (s *server) decideHandler(to string) func(http.ResponseWriter, *http.Request, *reqCtx) {
