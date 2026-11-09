@@ -183,20 +183,27 @@ func runHook(ctx context.Context, s *server, res *ingestResult, h func(context.C
 	h(ctx, s, res)
 }
 
-// trimRaw drops the raw report of the target's scans that are neither among the newest raw_per_target nor
-// younger than raw_days (setting "retention"). The scan rows stay.
+// trimRaw applies the retention setting to one target's scans (every target when targetID is 0). A scan that is
+// neither among its target's newest raw_per_target nor younger than raw_days loses its raw report and, unless it
+// is the target's current inventory (latestInventorySQL), its packages and finding links. The scan rows stay.
 func (s *server) trimRaw(ctx context.Context, targetID int64) error {
-	ret := struct {
-		RawPerTarget int `json:"raw_per_target"`
-		RawDays      int `json:"raw_days"`
-	}{20, 90}
+	ret := retention{20, 90}
 	if _, err := s.getSetting(ctx, "retention", &ret); err != nil {
 		return err
 	}
-	_, err := s.db.Exec(ctx, `update scans set raw = null where target_id = $1 and raw is not null
-		and created_at < now() - make_interval(days => $3)
-		and id not in (select id from scans where target_id = $1 order by created_at desc, id desc limit $2)`,
-		targetID, ret.RawPerTarget, ret.RawDays)
+	one := "$3 = 0" // a fixed condition per call shape, so the per-upload trim can use the target index
+	if targetID > 0 {
+		one = "target_id = $3"
+	}
+	_, err := s.db.Exec(ctx, `with old as (select sc.id, sc.id = `+latestInventorySQL+` as inventory
+			from scans sc join targets t on t.id = sc.target_id
+			where `+one+` and sc.created_at < now() - make_interval(days => $2)
+			and sc.id not in (select id from (select id, row_number() over (partition by target_id order by created_at desc, id desc) rn
+				from scans where `+one+`) x where rn <= $1)),
+		raw as (update scans set raw = null where id in (select id from old) and raw is not null),
+		pk as (delete from packages where scan_id in (select id from old where inventory is not true))
+		delete from scan_findings where scan_id in (select id from old where inventory is not true)`,
+		ret.RawPerTarget, ret.RawDays, targetID)
 	return err
 }
 

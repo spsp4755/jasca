@@ -525,6 +525,42 @@ func TestRawRetention(t *testing.T) {
 	}
 }
 
+// Retention also drops the packages and finding links of old scans, but never a target's current inventory.
+func TestRetentionTrimsPackages(t *testing.T) {
+	s := testServer(t)
+	_, ck := memberSession(t, s)
+	if err := s.putSetting(context.Background(), "retention", map[string]int{"raw_per_target": 1, "raw_days": 1}); err != nil {
+		t.Fatal(err)
+	}
+	pkgs := func(n string) []byte {
+		return trivyDoc(n, []tv{{ID: "CVE-2024-1000", Pkg: "lib-" + n}}, nil)
+	}
+	inv := mustUpload(t, s, "web", "", pkgs("A"), ck)     // the inventory once only package-less scans follow
+	old := mustUpload(t, s, "web", "", pkgs("B"), ck)     // old, not the newest, not an inventory: trimmed
+	keepB := mustUpload(t, s, "web", "", pkgs("B"), ck)   // B's newest
+	sqlExec(t, s, `update scans set created_at = now() - interval '2 days'`)
+	sarif := []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep"}},"results":[]}]}`)
+	mustUpload(t, s, "web", "target=A&kind=fs", sarif, ck)
+	if err := s.trimAllRaw(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	has := func(table string, id int64) bool {
+		return qInt(t, s, `select count(*) from `+table+` where scan_id=$1`, id) > 0
+	}
+	if !has("packages", inv.ScanID) || !has("scan_findings", inv.ScanID) {
+		t.Error("the target's inventory lost its packages")
+	}
+	if has("packages", old.ScanID) || has("scan_findings", old.ScanID) {
+		t.Error("an old scan kept its packages")
+	}
+	if !has("packages", keepB.ScanID) {
+		t.Error("the newest scan lost its packages")
+	}
+	if n := qInt(t, s, `select count(*) from scans`); n != 4 {
+		t.Errorf("scan rows %d", n)
+	}
+}
+
 func TestAfterIngestHooks(t *testing.T) {
 	s := testServer(t)
 	pid, ck := memberSession(t, s)

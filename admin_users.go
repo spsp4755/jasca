@@ -195,13 +195,4 @@ func (s *server) retentionLoop(ctx context.Context) {
 	}
 }
 
-func (s *server) trimAllRaw(ctx context.Context) error {
-	ret := retention{20, 90}
-	if _, err := s.getSetting(ctx, "retention", &ret); err != nil {
-		return err
-	}
-	_, err := s.db.Exec(ctx, `update scans set raw = null where raw is not null and created_at < now() - make_interval(days => $2)
-		and id not in (select id from (select id, row_number() over (partition by target_id order by created_at desc, id desc) rn
-			from scans) x where rn <= $1)`, ret.RawPerTarget, ret.RawDays)
-	return err
-}
+func (s *server) trimAllRaw(ctx context.Context) error { return s.trimRaw(ctx, 0) }
