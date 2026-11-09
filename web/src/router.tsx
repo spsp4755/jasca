@@ -16,6 +16,12 @@ import AdminSSO from "./pages/admin/SSO";
 import AdminSync from "./pages/admin/Sync";
 import AdminTrivy from "./pages/admin/Trivy";
 import AdminUsers from "./pages/admin/Users";
+import Advisories from "./pages/Advisories";
+import AdvisoryEdit from "./pages/AdvisoryEdit";
+import Exceptions from "./pages/Exceptions";
+import ProjectReport from "./pages/ProjectReport";
+import Reports from "./pages/Reports";
+import ScanNew from "./pages/ScanNew";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
@@ -37,11 +43,14 @@ export const pages: RouteObject[] = [
   { path: "findings", element: <Soon title="취약점" /> },
   { path: "vulns/:id", element: <Soon title="취약점 상세" /> },
   { path: "scans/:id", element: <Soon title="스캔 상세" /> },
-  { path: "scan", element: <Soon title="스캔하기" /> },
-  { path: "exceptions", element: <Soon title="예외" /> },
-  { path: "exceptions/approvals", element: <Soon title="예외 승인" /> },
-  { path: "advisories/*", element: <Soon title="사내 Advisory" /> },
-  { path: "reports/*", element: <Soon title="보고서" /> },
+  { path: "scan", element: <ScanNew /> },
+  { path: "exceptions", element: <Exceptions /> },
+  { path: "exceptions/approvals", element: <Exceptions /> },
+  { path: "advisories", element: <Advisories /> },
+  { path: "advisories/new", element: <AdvisoryEdit /> },
+  { path: "advisories/:id", element: <AdvisoryEdit /> },
+  { path: "reports", element: <Reports /> },
+  { path: "reports/:key", element: <ProjectReport /> },
   // admin
   {
     path: "admin", element: <AdminLayout />,
