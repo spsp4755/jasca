@@ -163,8 +163,11 @@ export interface SyncSettings {
   last_run: string | null; last_error: string;
 }
 export type SyncSettingsPut = Omit<SyncSettings, "client_secret_set" | "last_run" | "last_error"> & { client_secret?: string };
+export type TrivyScanner = "vuln" | "secret" | "misconfig";
 export interface TrivyStatus {
-  db_version: string; updated_at: string | null; next_update: string | null; java_db: unknown; scanners: string[]; trivy_version: string;
+  /** schema version of the installed DB; 0 = none installed. java_db is {updated_at} or null. */
+  db_version: number; updated_at: string | null; next_update: string | null; java_db: { updated_at: string } | null;
+  scanners: TrivyScanner[]; trivy_version: string;
 }
 export interface RecheckRun {
   id: number; reason: "trivydb" | "manual"; state: "running" | "done" | "failed" | "canceled"; total: number; done: number;

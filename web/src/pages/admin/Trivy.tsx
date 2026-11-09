@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/PageHeader";
 import Button from "../../components/Button";
 import { useApi } from "../../api/hooks";
-import { API_BASE } from "../../api/client";
+import { API_BASE, ApiError, api } from "../../api/client";
 import { daysUntil, fmtDateTime } from "../../lib/format";
 import { useToast } from "../../components/Toast";
-import type { TrivyStatus } from "../../api/types";
+import type { TrivyScanner, TrivyStatus } from "../../api/types";
 import { Loading, Panel } from "./parts";
 import { RecheckRuns } from "./Recheck";
 
@@ -30,12 +30,43 @@ function upload(file: File, onProgress: (pct: number) => void): Promise<void> {
   });
 }
 
-function javaDb(v: unknown): string {
-  if (!v) return "없음";
-  if (typeof v === "string") return v;
-  const o = v as Record<string, unknown>;
-  const ver = o.version ?? o.db_version, at = o.updated_at;
-  return [ver && `v${ver}`, typeof at === "string" && fmtDateTime(at)].filter(Boolean).join(" · ") || JSON.stringify(v);
+const SCANNERS: [TrivyScanner, string, string][] = [
+  ["vuln", "취약점", "OS·라이브러리 패키지의 알려진 취약점"],
+  ["secret", "비밀값", "코드·이미지에 들어간 키, 비밀번호"],
+  ["misconfig", "설정 오류", "Dockerfile, Kubernetes YAML 등의 잘못된 설정"],
+];
+
+/** Which scanners server-side scans (uploads, Harbor) run. */
+function ScannerSettings({ current }: { current: TrivyScanner[] }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [sel, setSel] = useState<TrivyScanner[]>(current);
+  const save = useMutation<TrivyStatus, ApiError, TrivyScanner[]>({
+    mutationFn: (scanners) => api.put<TrivyStatus>("/admin/trivy", { scanners }),
+    onSuccess: (st) => { qc.setQueryData(["/admin/trivy"], st); toast("스캐너 설정을 저장했습니다.", "ok"); },
+    onError: (e) => toast(e.message, "error"),
+  });
+  const changed = sel.length !== current.length || sel.some((x) => !current.includes(x));
+  return (
+    <Panel title="서버 스캔에 쓸 스캐너" meta="파일 업로드 스캔과 Harbor 이미지에 적용됩니다">
+      <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+        <legend className="sr-only">스캐너</legend>
+        <div className="stack" style={{ gap: 6 }}>
+          {SCANNERS.map(([k, label, hint]) => (
+            <label key={k} className="check-row">
+              <input type="checkbox" checked={sel.includes(k)}
+                onChange={() => setSel((c) => (c.includes(k) ? c.filter((x) => x !== k) : SCANNERS.map(([s]) => s).filter((s) => s === k || c.includes(s))))} />
+              <b>{label}</b> <span className="muted">{hint}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {sel.length === 0 && <p className="field-err" role="alert">하나 이상 고르세요.</p>}
+      <div className="admin-actions" style={{ marginTop: 12 }}>
+        <Button variant="primary" disabled={!changed || sel.length === 0} loading={save.isPending} onClick={() => save.mutate(sel)}>저장</Button>
+      </div>
+    </Panel>
+  );
 }
 
 export default function Trivy() {
@@ -68,14 +99,15 @@ export default function Trivy() {
       {s && (
         <Panel title="현재 상태" meta={s.trivy_version && `Trivy ${s.trivy_version}`}>
           <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "6px 20px", margin: 0 }}>
-            <dt className="muted">DB 버전</dt><dd className="num" style={{ margin: 0 }}>{s.db_version || "없음"}</dd>
+            <dt className="muted">DB 버전</dt><dd className="num" style={{ margin: 0 }}>{s.db_version ? `v${s.db_version}` : "없음"}</dd>
             <dt className="muted">DB 갱신일</dt><dd style={{ margin: 0 }}>{s.updated_at ? fmtDateTime(s.updated_at) : "-"}</dd>
             <dt className="muted">다음 갱신 예정</dt><dd style={{ margin: 0 }}>{s.next_update ? fmtDateTime(s.next_update) : "-"}</dd>
-            <dt className="muted">Java DB</dt><dd style={{ margin: 0 }}>{javaDb(s.java_db)}</dd>
+            <dt className="muted">Java DB</dt><dd style={{ margin: 0 }}>{s.java_db ? `있음 · ${fmtDateTime(s.java_db.updated_at)}` : "없음"}</dd>
             <dt className="muted">스캐너</dt><dd style={{ margin: 0 }}>{(s.scanners ?? []).join(", ") || "-"}</dd>
           </dl>
         </Panel>
       )}
+      {s && <ScannerSettings key={(s.scanners ?? []).join(",")} current={s.scanners ?? []} />}
       <Panel title="DB 올리기">
         <div className="admin-actions">
           <input ref={input} type="file" accept=".gz,.tgz,application/gzip" hidden onChange={(e) => pick(e.target.files?.[0])} />
