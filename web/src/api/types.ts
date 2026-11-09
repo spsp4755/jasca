@@ -106,7 +106,7 @@ export interface ExceptionCreate {
   resolution: ExceptionResolution; reason: string; expires_at: string;
 }
 export interface Decision { note: string }
-export interface AdvisoryAffected { ecosystem: string; package: string; range: string; fixed: string }
+export interface AdvisoryAffected { ecosystem: string; name: string; range: string; fixed: string }
 export interface Advisory {
   id: string; title: string; description: string; severity: Severity; affected: AdvisoryAffected[]; refs: string[];
   active: boolean; created_at: string; updated_at: string;
@@ -188,3 +188,15 @@ export type DefaultPolicy = Policy;
 export interface SMTPSettings { host: string; port: number; username: string; password_set: boolean; from: string; tls: "starttls" | "tls" | "none" }
 /** PUT body: an empty or omitted password keeps the stored one. */
 export type SMTPSettingsPut = Omit<SMTPSettings, "password_set"> & { password?: string };
+
+// --- reports (t17) ---
+/** Assumed shape of GET /projects/{key}/report (Task 13); every section is optional and the page skips what is missing. */
+export interface ProjectReportData {
+  project?: { key: string; name: string; description?: string };
+  generated_at?: string;
+  totals?: Partial<Counts>;
+  policy?: PolicyResult | null;
+  targets?: { name: string; kind: TargetKind; last_scan_at: string | null; counts: Partial<Counts> }[];
+  findings?: DashboardFinding[];
+  exceptions?: { id: number; vuln_id: string | null; scope: ExceptionScope; resolution: ExceptionResolution; status: ExceptionStatus; expires_at: string; reason?: string }[];
+}

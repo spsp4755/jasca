@@ -1,0 +1,19 @@
+.report-doc { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px 28px; display: flex; flex-direction: column; gap: 18px; }
+.report-doc h2 { font-size: 16px; margin: 0 0 8px; }
+.report-doc .sev-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.report-split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+
+@page { size: A4; margin: 16mm 14mm; }
+@media print {
+  .sidebar, .topbar, .no-print, .tabs, .toast-region { display: none !important; }
+  html, body { background: #fff !important; color: #000 !important; }
+  body, .app, .app-main, main, .content { display: block !important; height: auto !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; }
+  .report-split { display: block; }
+  .report-doc { border: 0; padding: 0; gap: 14px; background: #fff; color: #000; }
+  .report-doc section, .report-doc tr, .report-doc .md { break-inside: avoid; }
+  .report-doc h2 { break-after: avoid; }
+  .report-doc .page-break { break-before: page; }
+  .report-doc table { font-size: 10.5px; }
+  .report-doc thead { display: table-header-group; }
+  a { color: inherit; text-decoration: none; }
+}
