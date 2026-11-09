@@ -4,6 +4,7 @@
 //	FAKETRIVY_LOG        each call appends "<kind> <input> [files=...]" (fs lists the extracted files)
 //	FAKETRIVY_WAIT_CALL  on this call number (1-based, counted in the log) wait for FAKETRIVY_WAIT_FILE to exist
 //	FAKETRIVY_FAIL       exit 2 with an error on stderr
+//	FAKETRIVY_ARGS       file that gets the last call's arguments, one per line
 package main
 
 import (
@@ -52,6 +53,9 @@ func main() {
 				time.Sleep(20 * time.Millisecond)
 			}
 		}
+	}
+	if p := os.Getenv("FAKETRIVY_ARGS"); p != "" {
+		os.WriteFile(p, []byte(strings.Join(args, "\n")), 0o644)
 	}
 	if os.Getenv("FAKETRIVY_FAIL") != "" {
 		fmt.Fprintln(os.Stderr, "fake failure")

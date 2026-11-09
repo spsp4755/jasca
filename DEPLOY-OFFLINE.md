@@ -145,22 +145,22 @@ SSO로 **처음 로그인하는 순간** 부서는 다음 중 하나가 맞을 �
 
 ## Trivy DB 오프라인 갱신
 
-Trivy 취약점 DB는 인터넷 PC에서 받아 관리자 화면으로 올립니다. 서버는 DB를 받으러 밖으로 나가지 않습니다(Trivy를 항상 `--skip-db-update --skip-java-db-update --offline-scan`으로 실행).
+Trivy 취약점 DB는 인터넷 PC에서 받아 관리자 화면으로 올립니다. 서버는 DB를 받으러 밖으로 나가지 않습니다(Trivy를 항상 `--skip-db-update --skip-java-db-update --offline-scan --skip-version-check --disable-telemetry`로 실행하므로 버전 확인 요청도 보내지 않습니다).
 
 인터넷이 되는 PC에서(oras 필요):
 
 ```sh
 oras pull ghcr.io/aquasecurity/trivy-db:2          # db.tar.gz (trivy.db, metadata.json)
-oras pull ghcr.io/aquasecurity/trivy-java-db:1     # javadb.tar.gz (자바 JAR 스캔용, 선택)
+oras pull ghcr.io/aquasecurity/trivy-java-db:1     # javadb.tar.gz (자바 JAR 스캔용, 선택: 없으면 서버 스캔이 JAR/WAR/EAR을 건너뜀)
 sha256sum db.tar.gz javadb.tar.gz > trivy-db.sha256
 ```
 
 반입 매체로 옮긴 뒤 **관리 → Trivy DB → DB 올리기**에서 `db.tar.gz`와 `javadb.tar.gz`를 **각각 따로** 올립니다.
 
 - 올린 파일은 검사한 뒤 한 번에 교체합니다. 올바른 번들이 아니면 거부하고 기존 DB를 그대로 씁니다. 파일 크기는 `JASCA_MAX_SCAN_UPLOAD_MB`(Ingress `proxy-body-size` 포함), 풀었을 때 크기는 `JASCA_MAX_EXTRACT_MB`가 상한입니다.
-- 교체가 끝나면 **재검사가 자동으로 시작**됩니다. 저장된 모든 대상(Harbor 보고서 대상 제외)의 최신 패키지 목록을 새 DB로 다시 평가하고, 새로 걸린 취약점은 "재평가"로 표시되며 알림이 갑니다. 진행 상황은 **관리 → 재검사**에서 봅니다. 스캔을 다시 돌릴 필요가 없습니다.
-- 현재 DB의 생성 시각과 다음 갱신 예정 시각이 **관리 → Trivy DB → 현재 상태**에 보입니다. 갱신 예정이 지나면 경고가 보이니 주기적으로(예: 매주) 같은 절차를 반복하세요. DB가 오래되면 새 취약점이 탐지되지 않습니다.
-- 설치 직후 DB를 올리기 전에는 서버 스캔이 동작하지 않고, 재검사도 걸러낼 DB가 없습니다.
+- 교체가 끝나면 **재평가가 자동으로 시작**됩니다. 저장된 모든 대상(Harbor 보고서 대상 제외)의 최신 패키지 목록을 새 DB로 다시 평가하고, 새로 걸린 취약점은 "재평가"로 표시되며 알림이 갑니다. 진행 상황은 **관리 → 재평가**에서 봅니다. 스캔을 다시 돌릴 필요가 없습니다.
+- 현재 DB의 생성 시각과 다음 갱신 예정 시각이 **관리 → Trivy DB → 현재 상태**에 보입니다. 갱신 예정에서 7일 넘게 지나면 경고가 보이니(DB의 갱신 예정은 생성 하루 뒤라 폐쇄망에서는 늘 조금 지나 있습니다) 주기적으로(예: 매주) 같은 절차를 반복하세요. DB가 오래되면 새 취약점이 탐지되지 않습니다.
+- 설치 직후 DB를 올리기 전에는 서버 스캔이 동작하지 않고, 재평가도 걸러낼 DB가 없습니다.
 
 ## 업그레이드
 

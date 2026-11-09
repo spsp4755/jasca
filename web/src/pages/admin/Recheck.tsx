@@ -13,11 +13,11 @@ const REASON = { trivydb: "Trivy DB 갱신", manual: "수동" };
 /** Run list with progress; polls while a run is going. Shared with the Trivy page. */
 export function RecheckRuns() {
   const q = useApi<RecheckRun[]>("/admin/recheck", { refetchInterval: (query) => (query.state.data?.some((r) => r.state === "running") ? 3000 : false) });
-  const start = useSave(() => api.post("/admin/recheck"), { ok: "재검사를 시작했습니다.", invalidate: ["/admin/recheck"] });
+  const start = useSave(() => api.post("/admin/recheck"), { ok: "재평가를 시작했습니다.", invalidate: ["/admin/recheck"] });
   return (
-    <Panel title="재검사 실행 기록" meta={<Button size="sm" icon="scan" loading={start.isPending} onClick={() => start.mutate(undefined)}>지금 재검사</Button>}>
+    <Panel title="재평가 실행 기록" meta={<Button size="sm" icon="scan" loading={start.isPending} onClick={() => start.mutate(undefined)}>지금 재평가</Button>}>
       <p className="muted">저장된 스캔 결과를 최신 Trivy DB로 다시 대조합니다. DB를 올리면 자동으로 실행됩니다. 새로 알려진 취약점은 알림 대상이 됩니다.</p>
-      <Table<RecheckRun> dense rowKey={(r) => r.id} rows={q.data ?? []} loading={q.isLoading} caption="재검사 실행 기록" empty={<span className="muted">아직 실행 기록이 없습니다.</span>}
+      <Table<RecheckRun> dense rowKey={(r) => r.id} rows={q.data ?? []} loading={q.isLoading} caption="재평가 실행 기록" empty={<span className="muted">아직 실행 기록이 없습니다.</span>}
         columns={[
           { key: "at", header: "시작", nowrap: true, render: (r) => fmtDateTime(r.started_at) },
           { key: "reason", header: "사유", nowrap: true, render: (r) => REASON[r.reason] ?? r.reason },
@@ -34,5 +34,5 @@ export function RecheckRuns() {
 }
 
 export default function Recheck() {
-  return <><PageHeader title="재검사" /><RecheckRuns /></>;
+  return <><PageHeader title="재평가" /><RecheckRuns /></>;
 }

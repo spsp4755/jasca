@@ -10,11 +10,11 @@ const ITEMS: { to: string; label: string; security?: boolean; group?: string }[]
   { to: "sync", label: "Keycloak 동기화" },
   { to: "default-policy", label: "기본 정책", security: true, group: "스캔" },
   { to: "trivy", label: "Trivy DB" },
-  { to: "recheck", label: "재검사" },
+  { to: "recheck", label: "재평가" },
   { to: "harbor", label: "Harbor", group: "연동" },
   { to: "ai", label: "AI" },
   { to: "channels", label: "알림 채널" },
-  { to: "retention", label: "보관 기간", group: "운영" },
+  { to: "retention", label: "보존 기간", group: "운영" },
   { to: "audit", label: "감사 로그" },
 ];
 

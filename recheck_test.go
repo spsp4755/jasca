@@ -360,3 +360,21 @@ func TestCycloneDXUploadIsEvaluated(t *testing.T) {
 		t.Fatalf("trivy failure: policy %+v", res.Policy)
 	}
 }
+
+func TestCycloneDXUploadRealTrivy(t *testing.T) {
+	if os.Getenv("JASCA_TEST_TRIVY") != "1" {
+		t.Skip("set JASCA_TEST_TRIVY=1, JASCA_TRIVY_BIN and JASCA_TRIVY_CACHE")
+	}
+	s := testServer(t)
+	s.cfg.TrivyBin = os.Getenv("JASCA_TRIVY_BIN")
+	if err := os.Symlink(os.Getenv("JASCA_TRIVY_CACHE"), filepath.Join(s.cfg.DataDir, "trivy")); err != nil {
+		t.Fatal(err)
+	}
+	_, ck := memberSession(t, s)
+	res := mustUpload(t, s, "web", "", readFixture(t, "cyclonedx/image.json"), ck)
+	n := qInt(t, s, `select count(*) from findings where target_id=$1 and kind='vuln'`, res.TargetID)
+	if n == 0 || res.Summary["open"] != n {
+		t.Fatalf("SBOM upload findings %d, summary %v, policy %+v", n, res.Summary, res.Policy)
+	}
+	t.Logf("CycloneDX upload: %d vulnerability findings, policy passed=%v %v", n, res.Policy.Passed, res.Policy.Reasons)
+}

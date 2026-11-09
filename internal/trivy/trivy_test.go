@@ -2,11 +2,15 @@ package trivy
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -47,6 +51,76 @@ func TestArgsNoShell(t *testing.T) {
 	if slices.Contains(sb, "--skip-check-update") || !slices.Contains(sb, "--offline-scan") {
 		t.Fatalf("sbom flags: %v", sb)
 	}
+	// no call to check.trivy.dev from the air gap, and no ever-growing layer cache
+	for _, args := range [][]string{a, im, sb} {
+		for _, f := range []string{"--skip-version-check", "--disable-telemetry"} {
+			if !slices.Contains(args, f) {
+				t.Fatalf("missing %s: %v", f, args)
+			}
+		}
+		if i := slices.Index(args, "--cache-backend"); i < 0 || args[i+1] != "memory" {
+			t.Fatalf("cache backend: %v", args)
+		}
+		if slices.Contains(args, "--skip-files") {
+			t.Fatalf("jars skipped although a Java DB is there: %v", args)
+		}
+	}
+	// without a Java DB, Trivy fails the whole image scan at the first JAR: skip Java archives instead
+	o.NoJavaDB = true
+	for _, k := range []string{"fs", "image"} {
+		if args := Args(k, "/x", o); !slices.Contains(args, "**/*.jar") || !slices.Contains(args, "**/*.war") {
+			t.Fatalf("%s without java db: %v", k, args)
+		}
+	}
+	if slices.Contains(Args("sbom", "/x", o), "--skip-files") {
+		t.Fatal("sbom has no files to skip")
+	}
+}
+
+// dockerArchive builds a one-layer `docker save` tar whose layer holds files.
+func dockerArchive(t *testing.T, files map[string][]byte) []byte {
+	t.Helper()
+	tarOf := func(fs map[string][]byte) []byte {
+		var b bytes.Buffer
+		tw := tar.NewWriter(&b)
+		for _, n := range slices.Sorted(maps.Keys(fs)) {
+			tw.WriteHeader(&tar.Header{Name: n, Mode: 0o644, Size: int64(len(fs[n])), Typeflag: tar.TypeReg})
+			tw.Write(fs[n])
+		}
+		tw.Close()
+		return b.Bytes()
+	}
+	layer := tarOf(files)
+	sum := sha256.Sum256(layer)
+	cfg, _ := json.Marshal(map[string]any{"architecture": "amd64", "os": "linux", "config": map[string]any{},
+		"rootfs": map[string]any{"type": "layers", "diff_ids": []string{"sha256:" + hex.EncodeToString(sum[:])}}})
+	man, _ := json.Marshal([]map[string]any{{"Config": "config.json", "RepoTags": []string{"jar-test:1"}, "Layers": []string{"layer.tar"}}})
+	return tarOf(map[string][]byte{"manifest.json": man, "config.json": cfg, "layer.tar": layer})
+}
+
+// Trivy 0.76.1 fails an image scan that meets a JAR when no Java DB is installed; with NoJavaDB it succeeds.
+func TestRunRealTrivyJarWithoutJavaDB(t *testing.T) {
+	if os.Getenv("JASCA_TEST_TRIVY") != "1" {
+		t.Skip("set JASCA_TEST_TRIVY=1 (and JASCA_TRIVY_BIN, JASCA_TRIVY_CACHE)")
+	}
+	var jar bytes.Buffer
+	zw := zip.NewWriter(&jar)
+	w, _ := zw.Create("META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties")
+	w.Write([]byte("groupId=org.apache.logging.log4j\nartifactId=log4j-core\nversion=2.14.1\n"))
+	zw.Close()
+	img := filepath.Join(t.TempDir(), "img.tar")
+	os.WriteFile(img, dockerArchive(t, map[string][]byte{"app/lib/log4j-core-2.14.1.jar": jar.Bytes()}), 0o644)
+	cache := os.Getenv("JASCA_TRIVY_CACHE")
+	st, err := Status(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	o := Options{Bin: os.Getenv("JASCA_TRIVY_BIN"), CacheDir: cache, Scanners: []string{"vuln"}, Timeout: 2 * time.Minute, NoJavaDB: !st.JavaDB}
+	if err := Run(context.Background(), o, "image", img, &b); err != nil {
+		t.Fatalf("java db %v: %v", st.JavaDB, err)
+	}
+	t.Logf("image with a JAR, java db installed=%v: ok, %d bytes of report", st.JavaDB, b.Len())
 }
 
 func TestCycloneDXWithOS(t *testing.T) {

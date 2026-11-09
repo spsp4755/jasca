@@ -48,7 +48,7 @@ function ScannerSettings({ current }: { current: TrivyScanner[] }) {
   });
   const changed = sel.length !== current.length || sel.some((x) => !current.includes(x));
   return (
-    <Panel title="서버 스캔에 쓸 스캐너" meta="파일 업로드 스캔과 Harbor 이미지에 적용됩니다">
+    <Panel title="서버 스캔에 쓸 스캐너" meta="서버 스캔(파일을 올려 서버에서 돌리는 스캔)에 적용됩니다. Harbor는 Harbor의 보고서를 그대로 가져옵니다.">
       <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
         <legend className="sr-only">스캐너</legend>
         <div className="stack" style={{ gap: 6 }}>
@@ -76,14 +76,15 @@ export default function Trivy() {
   const input = useRef<HTMLInputElement>(null);
   const [pct, setPct] = useState<number | null>(null);
   const s = q.data;
-  const stale = !!s?.next_update && daysUntil(s.next_update) < 0;
+  // trivy-db's next_update is about a day after its build, so an air-gapped copy is always a little past it
+  const stale = !!s?.next_update && daysUntil(s.next_update) <= -7;
 
   async function pick(file?: File) {
     if (!file) return;
     setPct(0);
     try {
       await upload(file, setPct);
-      toast("DB를 적용했습니다. 재검사가 시작됩니다.", "ok");
+      toast("DB를 적용했습니다. 재평가가 시작됩니다.", "ok");
       qc.invalidateQueries({ queryKey: ["/admin/trivy"] });
       qc.invalidateQueries({ queryKey: ["/admin/recheck"] });
     } catch (e) { toast((e as Error).message, "error"); }
@@ -95,14 +96,14 @@ export default function Trivy() {
     <>
       <PageHeader title="Trivy DB" description="폐쇄망이라 취약점 DB는 인터넷 PC에서 받아 직접 올립니다. 잘못된 파일은 거부되고 기존 DB가 유지됩니다." />
       <Loading q={q} />
-      {stale && <div className="alert alert-warn" role="alert">DB가 오래되었습니다. 다음 갱신 예정일({fmtDateTime(s!.next_update!)})이 지났습니다. 새 DB를 올려 주세요.</div>}
+      {stale && <div className="alert alert-warn" role="alert">DB가 오래되었습니다. 다음 갱신 예정일({fmtDateTime(s!.next_update!)})에서 7일 넘게 지났습니다. 새 DB를 올려 주세요.</div>}
       {s && (
         <Panel title="현재 상태" meta={s.trivy_version && `Trivy ${s.trivy_version}`}>
           <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "6px 20px", margin: 0 }}>
             <dt className="muted">DB 버전</dt><dd className="num" style={{ margin: 0 }}>{s.db_version ? `v${s.db_version}` : "없음"}</dd>
             <dt className="muted">DB 갱신일</dt><dd style={{ margin: 0 }}>{s.updated_at ? fmtDateTime(s.updated_at) : "-"}</dd>
             <dt className="muted">다음 갱신 예정</dt><dd style={{ margin: 0 }}>{s.next_update ? fmtDateTime(s.next_update) : "-"}</dd>
-            <dt className="muted">Java DB</dt><dd style={{ margin: 0 }}>{s.java_db ? `있음 · ${fmtDateTime(s.java_db.updated_at)}` : "없음"}</dd>
+            <dt className="muted">Java DB</dt><dd style={{ margin: 0 }}>{s.java_db ? `있음 · ${fmtDateTime(s.java_db.updated_at)}` : "없음 · 서버 스캔은 JAR/WAR/EAR 파일을 건너뜁니다"}</dd>
             <dt className="muted">스캐너</dt><dd style={{ margin: 0 }}>{(s.scanners ?? []).join(", ") || "-"}</dd>
           </dl>
         </Panel>

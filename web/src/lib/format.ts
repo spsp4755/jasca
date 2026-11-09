@@ -56,8 +56,8 @@ export function fmtRelative(iso?: string | null, now = Date.now()): string {
 /** Whole days from iso to now (age of an open finding). */
 export const daysSince = (iso: string, now = Date.now()) => Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86_400_000));
 
-/** Whole days from now until iso, rounded up (0 = today or past). */
-export const daysUntil = (iso: string, now = Date.now()) => Math.max(0, Math.ceil((new Date(iso).getTime() - now) / 86_400_000));
+/** Whole days from now until iso, rounded up: 0 = within the next day, negative = that many days past. */
+export const daysUntil = (iso: string, now = Date.now()) => Math.ceil((new Date(iso).getTime() - now) / 86_400_000);
 
 // Korean labels; the API enum stays visible as a tooltip where it matters (SeverityBadge title).
 export const SEVERITY_LABEL: Record<Severity, string> = { CRITICAL: "치명", HIGH: "높음", MEDIUM: "중간", LOW: "낮음", UNKNOWN: "알 수 없음" };

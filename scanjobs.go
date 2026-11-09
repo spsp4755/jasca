@@ -294,7 +294,8 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 	defer out.Close()
 	// shortcut: no s.trivy.mu here (a scan may take SCAN_TIMEOUT_MIN and would block DB uploads); a scan that opens
 	// the DB in the instant between InstallBundle's two renames fails with a Trivy error and is simply retried.
-	err = trivy.Run(ctx, trivy.Options{Bin: s.cfg.TrivyBin, CacheDir: s.trivyCacheDir(), Scanners: scanners}, p.Kind, input, out)
+	db, _ := trivy.Status(s.trivyCacheDir()) // without a java-db, JAR/WAR/EAR files are skipped (shown on the admin Trivy page)
+	err = trivy.Run(ctx, trivy.Options{Bin: s.cfg.TrivyBin, CacheDir: s.trivyCacheDir(), Scanners: scanners, NoJavaDB: !db.JavaDB}, p.Kind, input, out)
 	if err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("%w (%v)", context.Cause(ctx), err)

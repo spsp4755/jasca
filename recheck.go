@@ -68,7 +68,7 @@ func (s *server) startRecheck(ctx context.Context, reason string) (int64, error)
 				return errRecheckRunning
 			}
 		} else if _, err := tx.Exec(ctx, `update recheck_runs set state = 'canceled', finished_at = now(),
-			error = '새 DB가 올라와 재검사를 다시 시작했습니다.' where state = 'running'`); err != nil {
+			error = '새 DB가 올라와 재평가를 다시 시작했습니다.' where state = 'running'`); err != nil {
 			return err
 		}
 		if err := tx.QueryRow(ctx, `insert into recheck_runs(reason) values($1) returning id`, reason).Scan(&runID); err != nil {
@@ -102,7 +102,7 @@ func (s *server) handleRecheckStart(w http.ResponseWriter, r *http.Request, c *r
 	ctx := r.Context()
 	id, err := s.startRecheck(ctx, "manual")
 	if errors.Is(err, errRecheckRunning) {
-		writeErr(w, 409, "conflict", "재검사가 이미 진행 중입니다. 끝난 뒤 다시 시작하세요.")
+		writeErr(w, 409, "conflict", "재평가가 이미 진행 중입니다. 끝난 뒤 다시 시작하세요.")
 		return
 	}
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *server) runRecheck(ctx context.Context, j *job) error {
 	err := s.recheckItems(ctx, p.RunID)
 	if err != nil && !errors.Is(err, errJobYield) && ctx.Err() == nil {
 		if _, e := s.db.Exec(context.WithoutCancel(ctx), `update recheck_runs set state = 'failed', finished_at = now(),
-			error = '재검사 중 오류가 발생했습니다.' where id = $1 and state = 'running'`, p.RunID); e != nil {
+			error = '재평가 중 오류가 발생했습니다.' where id = $1 and state = 'running'`, p.RunID); e != nil {
 			log.Printf("recheck run %d: mark failed: %v", p.RunID, e)
 		}
 	}
@@ -197,7 +197,7 @@ func (s *server) finishRecheck(ctx context.Context, runID int64) error {
 	}
 	msg := ""
 	if failed > 0 {
-		msg = fmt.Sprintf("대상 %d개를 재검사하지 못했습니다. 서버 로그를 확인하세요.", failed)
+		msg = fmt.Sprintf("대상 %d개를 재평가하지 못했습니다. 서버 로그를 확인하세요.", failed)
 	}
 	tag, err := s.db.Exec(ctx, `update recheck_runs set state = 'done', finished_at = now(), error = $2
 		where id = $1 and state = 'running'`, runID, msg)

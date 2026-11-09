@@ -142,6 +142,8 @@ func TestScanJobWithFakeTrivy(t *testing.T) {
 	pid, ck := memberSession(t, s)
 	// the report has only an os-pkgs result, so only the scanners setting can mark secret:trivy complete
 	logPath := useFakeTrivy(t, s, trivyDoc("x", []tv{{ID: "CVE-2024-1111"}}, nil))
+	argsPath := filepath.Join(t.TempDir(), "args")
+	t.Setenv("FAKETRIVY_ARGS", argsPath)
 	if err := s.putSetting(ctx, "trivy", map[string]any{"scanners": []string{"vuln", "secret"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -196,6 +198,20 @@ func TestScanJobWithFakeTrivy(t *testing.T) {
 	work = filepath.Join(s.cfg.DataDir, "work", itoa(id))
 	if calls := readLog(logPath); len(calls) != 2 || calls[1] != "image|"+work+"/upload" {
 		t.Fatalf("trivy calls: %v", calls)
+	}
+	// no Java DB installed: Java archives are skipped, or real Trivy fails the whole scan at the first JAR
+	if args, _ := os.ReadFile(argsPath); !strings.Contains(string(args), "--skip-files\n**/*.jar") {
+		t.Fatalf("no java db, args:\n%s", args)
+	}
+	fakeTrivyDB(t, s)
+	os.MkdirAll(filepath.Join(s.trivyCacheDir(), "java-db"), 0o755)
+	os.WriteFile(filepath.Join(s.trivyCacheDir(), "java-db", "metadata.json"), []byte(`{"Version":1,"UpdatedAt":"2026-11-01T00:00:00Z"}`), 0o644)
+	mustScanJob(t, s, ck, "app", "image", mkTarGz(t, false, arEnt{name: "manifest.json", body: "[1]"}))
+	if ran, err := s.runNextJob(ctx); !ran || err != nil {
+		t.Fatal(ran, err)
+	}
+	if args, _ := os.ReadFile(argsPath); strings.Contains(string(args), "--skip-files") {
+		t.Fatalf("java db installed, args:\n%s", args)
 	}
 	var kind string
 	s.db.QueryRow(ctx, `select t.kind from scans s join targets t on t.id=s.target_id where s.id=$1`, id).Scan(&kind)

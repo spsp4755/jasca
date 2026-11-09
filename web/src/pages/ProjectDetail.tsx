@@ -111,7 +111,7 @@ function ProjectExceptions({ project }: { project: Project }) {
           { key: "status", header: "상태", width: 100, render: (x) => <StatusBadge status={x.status} /> },
           { key: "exp", header: "만료", width: 120, align: "right", render: (x) => (
             <span title={fmtDate(x.expires_at)} className={x.status === "approved" && daysUntil(x.expires_at) <= 7 ? "due due-soon" : "muted"}>
-              {x.status === "approved" ? `D-${daysUntil(x.expires_at)}` : fmtDate(x.expires_at)}
+              {x.status === "approved" ? `D-${Math.max(0, daysUntil(x.expires_at))}` : fmtDate(x.expires_at)}
             </span>) },
         ]} />
     </div>

@@ -62,7 +62,7 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
         ) : (
           <ul className="list">
             {d.expiring_exceptions.map((x) => {
-              const left = daysUntil(x.expires_at);
+              const left = Math.max(0, daysUntil(x.expires_at));
               return (
                 <li key={x.id} className="list-row">
                   <div className="list-main">

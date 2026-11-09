@@ -7,7 +7,7 @@
 | 상황 | 하는 일 | 코드 수정 |
 |---|---|---|
 | 공개 DB에 없는 사내 취약점, 자체 라이브러리의 문제, 공개 DB 심각도·수정 버전이 틀려 우리 기준으로 보강 | **사내 Advisory**를 화면(보안 담당)이나 CSV로 등록 | 없음 |
-| 공개 취약점이 새로 나왔는데 우리가 모름 | 인터넷 PC에서 **Trivy DB를 받아 관리 → Trivy DB로 올림**(자동 재검사) | 없음 |
+| 공개 취약점이 새로 나왔는데 우리가 모름 | 인터넷 PC에서 **Trivy DB를 받아 관리 → Trivy DB로 올림**(자동 재평가) | 없음 |
 | 지금 못 읽는 **도구의 결과 파일**(새 스캐너, 새 SARIF가 아닌 JSON 등) | **스캔 형식 추가**(아래) | `internal/formats/<이름>.go` + 픽스처 + 테스트 |
 | 도구가 SARIF 2.1을 내보냄 | 코드 수정 없이 SARIF로 업로드 | 없음 |
 | 패키지 생태계의 **버전 비교가 틀리거나 모르는 생태계**(Advisory 범위가 안 맞음, 화면에 "일반 비교" 경고) | **버전 비교 생태계 추가**(아래) | `internal/versions` + `cases.json` |
@@ -66,7 +66,7 @@ Trivy 실행 파일은 `Dockerfile`에서 공식 이미지(`aquasec/trivy:<버�
 3. 문서의 버전 표기를 바꿉니다: `DEPLOY-OFFLINE.md`(릴리스 파일 표, 서드파티 라이선스), `internal/trivy/trivy_test.go`의 주석에 적힌 버전, 필요하면 CHANGELOG.
 4. 실제 Trivy로 통합 테스트를 돌립니다(아래 "테스트" 의 `JASCA_TEST_TRIVY=1`). Trivy가 CLI 플래그를 바꾸면 `internal/trivy/run.go`의 `Args`와 그 테스트가 먼저 실패합니다(예: `sbom`은 `--skip-check-update`를 받지 않음).
 5. Trivy DB 스키마는 Trivy 버전과 묶여 있습니다. 새 버전이 요구하는 DB(`trivy-db:2` 등)를 올려도 `metadata.json` 검사에서 통과하는지 확인하고, 필요하면 DEPLOY-OFFLINE.md의 `oras pull` 태그를 고칩니다.
-6. 이미지를 빌드해 서버 스캔 한 건과 재검사 한 번을 직접 확인한 뒤 릴리스합니다.
+6. 이미지를 빌드해 서버 스캔 한 건과 재평가 한 번을 직접 확인한 뒤 릴리스합니다.
 
 ## 테스트
 
@@ -74,11 +74,11 @@ Trivy 실행 파일은 `Dockerfile`에서 공식 이미지(`aquasec/trivy:<버�
 # 단위 테스트만(데이터베이스 없이): DB가 필요한 테스트는 건너뜀
 go vet ./... && go test ./...
 
-# 데이터베이스 통합 테스트(권한 행렬, 업로드, 예외, 재검사 포함)
+# 데이터베이스 통합 테스트(권한 행렬, 업로드, 예외, 재평가 포함)
 export JASCA_TEST_DATABASE_URL='postgres://jasca:<암호>@127.0.0.1:55440/jasca_test'
 go test ./...
 
-# 실제 Trivy를 쓰는 테스트(서버 스캔, DB 번들, 재검사)
+# 실제 Trivy를 쓰는 테스트(서버 스캔, DB 번들, 재평가)
 JASCA_TEST_TRIVY=1 JASCA_TRIVY_BIN=/path/to/trivy JASCA_TRIVY_CACHE=/path/to/trivy-cache \
   JASCA_TEST_DATABASE_URL=... go test ./... ./internal/trivy/
 

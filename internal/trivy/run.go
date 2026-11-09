@@ -17,6 +17,7 @@ type Options struct {
 	Bin, CacheDir string
 	Scanners      []string
 	Timeout       time.Duration
+	NoJavaDB      bool // no java-db installed: skip Java archives, or Trivy 0.76.1 fails the scan at the first JAR
 }
 
 // Args builds the argv (without the binary). Every flag and value is its own element; no shell is involved.
@@ -25,10 +26,18 @@ func Args(kind, input string, o Options) []string {
 	if kind == "sbom" || scanners == "" {
 		scanners = "vuln"
 	}
+	// --skip-version-check/--disable-telemetry: otherwise every run calls check.trivy.dev. --cache-backend memory: the
+	// fs layer cache would grow with every image and is never pruned; the DB itself still comes from --cache-dir.
 	a := []string{kind, "--format", "json", "--list-all-pkgs", "--skip-db-update", "--skip-java-db-update",
-		"--offline-scan", "--cache-dir", o.CacheDir, "--scanners", scanners, "--quiet"}
+		"--offline-scan", "--cache-dir", o.CacheDir, "--cache-backend", "memory", "--skip-version-check", "--disable-telemetry",
+		"--scanners", scanners, "--quiet"}
 	if kind != "sbom" { // sbom has no misconfig checks and rejects the flag
 		a = append(a, "--skip-check-update")
+		if o.NoJavaDB {
+			for _, g := range []string{"**/*.jar", "**/*.war", "**/*.ear", "**/*.par"} {
+				a = append(a, "--skip-files", g)
+			}
+		}
 	}
 	if kind == "image" {
 		return append(a, "--input", input)
