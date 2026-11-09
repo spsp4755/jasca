@@ -80,6 +80,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	time.Local = time.UTC // pgx returns timestamptz in time.Local; JSON times must be UTC (display zone is cfg.Loc)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	db, err := openDB(ctx, cfg.DatabaseURL)
