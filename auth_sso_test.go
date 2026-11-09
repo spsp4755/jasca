@@ -233,6 +233,17 @@ func TestAuthConfig(t *testing.T) {
 	if json.Unmarshal(rec.Body.Bytes(), &out); !out.SSOEnabled {
 		t.Fatalf("configured: %s", rec.Body.String())
 	}
+	// the web asks here (a public 200) whether to load /me, so a signed-out visit logs no 401
+	var si struct {
+		SignedIn *bool `json:"signed_in"`
+	}
+	if json.Unmarshal(rec.Body.Bytes(), &si); si.SignedIn == nil || *si.SignedIn {
+		t.Fatalf("signed out: %s", rec.Body.String())
+	}
+	rec = do(t, s, "GET", "/api/v1/auth/config", nil, loginAs(t, s, mkUser(t, s, "kim", "")))
+	if json.Unmarshal(rec.Body.Bytes(), &si); si.SignedIn == nil || !*si.SignedIn {
+		t.Fatalf("signed in: %s", rec.Body.String())
+	}
 }
 
 func TestSSOStartRejectsExternalNext(t *testing.T) {

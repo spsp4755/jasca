@@ -24,7 +24,7 @@ export function RecheckRuns() {
           { key: "state", header: "상태", render: (r) => <><StatusBadge status={r.state === "done" ? "done" : r.state === "canceled" ? "canceled" : r.state} />{r.error && <div className="muted">{r.error}</div>}</> },
           { key: "prog", header: "진행", render: (r) => {
             const pct = r.total ? Math.round((r.done / r.total) * 100) : r.state === "done" ? 100 : 0;
-            return <div style={{ display: "flex", gap: 8, alignItems: "center" }}><div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div><span className="num nw">{r.done}/{r.total}</span></div>;
+            return <div style={{ display: "flex", gap: 8, alignItems: "center" }}><div className="progress" role="progressbar" aria-label={`재평가 #${r.id} 진행률`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div><span className="num nw">{r.done}/{r.total}</span></div>;
           } },
           { key: "new", header: "새 취약점", align: "right", render: (r) => <span className="num">{r.new_findings}</span> },
           { key: "end", header: "종료", nowrap: true, render: (r) => (r.finished_at ? fmtDateTime(r.finished_at) : "-") },

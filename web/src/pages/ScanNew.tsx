@@ -112,7 +112,7 @@ function UploadTab({ projects }: { projects: Project[] }) {
         </div>
         {uploading && (
           <div className="row-gap" role="status">
-            <div className="progress" style={{ flex: 1 }} role="progressbar" aria-valuenow={pct ?? 0} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div>
+            <div className="progress" style={{ flex: 1 }} role="progressbar" aria-label="파일 업로드 진행률" aria-valuenow={pct ?? 0} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div>
             <span className="num">{pct}%</span>
             <Button size="sm" onClick={() => xhr.current?.abort()}>업로드 취소</Button>
           </div>

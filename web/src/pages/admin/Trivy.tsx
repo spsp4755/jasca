@@ -113,7 +113,7 @@ export default function Trivy() {
         <div className="admin-actions">
           <input ref={input} type="file" accept=".gz,.tgz,application/gzip" hidden onChange={(e) => pick(e.target.files?.[0])} />
           <Button variant="primary" icon="arrowRight" disabled={pct !== null} onClick={() => input.current?.click()}>파일 선택 (db.tar.gz / javadb.tar.gz)</Button>
-          {pct !== null && <><div className="progress" style={{ width: 200 }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div><span className="num">{pct}%{pct === 100 && " · 검증 중"}</span></>}
+          {pct !== null && <><div className="progress" style={{ width: 200 }} role="progressbar" aria-label="DB 업로드 진행률" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div><span className="num">{pct}%{pct === 100 && " · 검증 중"}</span></>}
         </div>
         <h3 style={{ margin: "18px 0 0", fontSize: 13.5 }}>인터넷 PC에서 파일 받는 방법</h3>
         <ol className="steps">

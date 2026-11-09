@@ -1,5 +1,6 @@
 import { NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
 import Empty from "../../components/Empty";
+import PageHeader from "../../components/PageHeader";
 import { isAdmin, isSecurity, useMe } from "../../api/hooks";
 import "../../styles/admin.css";
 
@@ -23,7 +24,7 @@ export default function AdminLayout() {
   const { pathname } = useLocation();
   const visible = ITEMS.filter((i) => (i.security ? isSecurity(me) : isAdmin(me)));
   const cur = ITEMS.find((i) => pathname === `/admin/${i.to}` || pathname.startsWith(`/admin/${i.to}/`));
-  if (!visible.length) return <div className="panel"><Empty icon="alert" title="권한이 없습니다" description="관리 화면은 관리자 또는 보안 담당만 볼 수 있습니다." /></div>;
+  if (!visible.length) return <><PageHeader title="관리" /><div className="panel"><Empty icon="alert" title="권한이 없습니다" description="관리 화면은 관리자 또는 보안 담당만 볼 수 있습니다." /></div></>;
   if (!cur) return <Navigate to={`/admin/${visible[0].to}`} replace />;
   const allowed = visible.includes(cur);
   return (
@@ -37,7 +38,7 @@ export default function AdminLayout() {
         ))}
       </nav>
       <div className="admin-main">
-        {allowed ? <Outlet /> : <div className="panel"><Empty icon="alert" title="권한이 없습니다" description="이 화면은 관리자만 볼 수 있습니다." /></div>}
+        {allowed ? <Outlet /> : <><PageHeader title={cur.label} /><div className="panel"><Empty icon="alert" title="권한이 없습니다" description="이 화면은 관리자만 볼 수 있습니다." /></div></>}
       </div>
     </div>
   );

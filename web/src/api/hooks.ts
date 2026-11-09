@@ -20,7 +20,7 @@ export function useApi<T>(path: string | null, opts: Omit<UseQueryOptions<T, Api
   return useQuery<T, ApiError>({ queryKey: [path], queryFn: ({ signal }) => api.get<T>(path!, { signal }), enabled: path !== null, ...opts });
 }
 
-export const useMe = () => useApi<Me>("/me", { staleTime: 5 * 60_000 });
+export const useMe = (enabled = true) => useApi<Me>(enabled ? "/me" : null, { staleTime: 5 * 60_000 });
 /** Also applies the server's display time zone (cfg.tz) before anything reads the formatters. */
 export const useAuthConfig = () => useQuery<AuthConfig, ApiError>({
   queryKey: ["/auth/config"], staleTime: Infinity,

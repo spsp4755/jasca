@@ -25,7 +25,7 @@ export interface Counts { critical: number; high: number; medium: number; low: n
 
 // --- auth / me ---
 /** tz: IANA zone from JASCA_TZ; the UI shows times in it. */
-export interface AuthConfig { sso_enabled: boolean; tz?: string }
+export interface AuthConfig { sso_enabled: boolean; tz?: string; signed_in?: boolean }
 export interface LocalLoginRequest { username: string; password: string }
 export interface LocalLoginResponse { user: Me }
 export interface Me {
