@@ -185,3 +185,6 @@ export interface SyncRunResult { groups: number; users: number; error: string }
 /** Assumed shape of GET/PUT /admin/ai/prompts (contract does not spell it out). */
 export interface AIPrompts { vuln_guide: string; project_report: string }
 export type DefaultPolicy = Policy;
+export interface SMTPSettings { host: string; port: number; username: string; password_set: boolean; from: string; tls: "starttls" | "tls" | "none" }
+/** PUT body: an empty or omitted password keeps the stored one. */
+export type SMTPSettingsPut = Omit<SMTPSettings, "password_set"> & { password?: string };
