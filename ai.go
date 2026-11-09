@@ -174,6 +174,9 @@ func (s *server) handleTestAI(w http.ResponseWriter, r *http.Request, c *reqCtx)
 		writeInternal(w, "test ai", err)
 		return
 	}
+	if req.BaseURL != nil && *req.BaseURL != st.BaseURL && req.APIKey == nil {
+		st.APIKey = "" // the stored key belongs to the stored host; never send it to a host typed into the form
+	}
 	req.apply(&st)
 	if _, err := aiChat(r.Context(), st, "Reply with OK.", "ping"); err != nil {
 		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
@@ -201,9 +204,19 @@ func (s *server) handlePutAIPrompts(w http.ResponseWriter, r *http.Request, c *r
 		writeErr(w, 400, "bad_request", "프롬프트는 16KB를 넘을 수 없습니다.")
 		return
 	}
+	old, err := s.aiPromptConf(r.Context())
+	if err != nil {
+		writeInternal(w, "put ai prompts", err)
+		return
+	}
 	if err := s.putSetting(r.Context(), "ai_prompts", p); err != nil {
 		writeInternal(w, "put ai prompts", err)
 		return
+	}
+	if old.VulnGuide != p.VulnGuide { // cached general parts were written with the old prompt
+		if _, err := s.db.Exec(r.Context(), `update vulns set ai_guide='', ai_guide_at=null where ai_guide <> ''`); err != nil {
+			log.Printf("ai: clear guide cache: %v", err)
+		}
 	}
 	s.audit(r.Context(), c, "settings.update", nil, "ai_prompts", map[string]any{
 		"vuln_guide_custom": p.VulnGuide != "", "project_report_custom": p.ProjectReport != ""})
@@ -306,7 +319,7 @@ func (s *server) startRun(ctx context.Context, kind string, projectID *int64, vu
 			kind, projectID, vulnID, userID).Scan(&id); err != nil {
 			return err
 		}
-		_, err := s.enqueue(ctx, tx, "ai", nil, map[string]int64{"run_id": id}, 0)
+		_, err := s.enqueue(ctx, tx, "ai", nil, map[string]int64{"run_id": id}, 5) // ahead of a recheck
 		return err
 	})
 	return id, err
@@ -407,9 +420,9 @@ func (s *server) handleAIRun(w http.ResponseWriter, r *http.Request, c *reqCtx) 
 	writeJSON(w, 200, v)
 }
 
-// handleAIReports lists a project's report runs, newest first, without the (large) output.
+// handleAIReports lists a project's report runs, newest first, with their output (the report page shows them).
 func (s *server) handleAIReports(w http.ResponseWriter, r *http.Request, c *reqCtx) {
-	rows, _ := s.db.Query(r.Context(), fmt.Sprintf(aiRunCols, "''")+`where project_id=$1 and kind='project_report' order by id desc limit 50`, c.Project.ID)
+	rows, _ := s.db.Query(r.Context(), fmt.Sprintf(aiRunCols, "output")+`where project_id=$1 and kind='project_report' order by id desc limit 50`, c.Project.ID)
 	list, err := pgx.CollectRows(rows, pgx.RowToStructByPos[aiRunView])
 	if err != nil {
 		writeInternal(w, "ai reports", err)
@@ -438,6 +451,12 @@ func (s *server) runAIJob(ctx context.Context, j *job) error {
 		Scan(&kind, &projectID, &vulnID, &by); err != nil {
 		return err
 	}
+	defer func() { // a panic or a failed final update must not leave the run 'running'; on shutdown the job reruns it
+		if ctx.Err() == nil {
+			s.db.Exec(context.WithoutCancel(ctx), `update ai_runs set state='failed', error='AI 작업이 중단되었습니다.', finished_at=now()
+				where id=$1 and state='running'`, p.RunID)
+		}
+	}()
 	var out string
 	var err error
 	switch {
@@ -510,7 +529,9 @@ func (s *server) genGuide(ctx context.Context, vid string, by *int64) (string, e
 		if general, err = aiChat(ctx, st, system, msg); err != nil {
 			return "", err
 		}
-		s.db.Exec(ctx, `update vulns set ai_guide=$2, ai_guide_at=now() where id=$1`, vid, general)
+		if _, err := s.db.Exec(ctx, `update vulns set ai_guide=$2, ai_guide_at=now() where id=$1`, vid, general); err != nil {
+			log.Printf("ai: cache guide of %s: %v", vid, err) // the run still has its answer
+		}
 	}
 	impact := "## 내 영향\n내가 볼 수 있는 프로젝트에는 이 취약점이 열린 상태로 발견된 항목이 없습니다."
 	var u *user

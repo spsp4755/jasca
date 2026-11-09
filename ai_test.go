@@ -26,6 +26,7 @@ type fakeLLM struct {
 	paths []string
 	users []string
 	reqs  []map[string]any
+	auths []string
 	resp  func(system, user string, req map[string]any) (int, string)
 }
 
@@ -44,6 +45,7 @@ func newFakeLLM(t *testing.T, resp func(system, user string, req map[string]any)
 		f.paths = append(f.paths, r.URL.Path)
 		f.reqs = append(f.reqs, req)
 		f.users = append(f.users, usr)
+		f.auths = append(f.auths, r.Header.Get("Authorization"))
 		f.mu.Unlock()
 		code, text := f.resp(sys, usr, req)
 		if code != 200 {
@@ -357,8 +359,18 @@ func TestAISettingsNoKeyLeak(t *testing.T) {
 	f.mu.Lock()
 	last := f.reqs[len(f.reqs)-1]
 	f.mu.Unlock()
-	if last["model"] != "m2" {
+	if last["model"] != "m2" || f.auths[len(f.auths)-1] != "Bearer sk-very-secret" {
 		t.Fatalf("%v", last)
+	}
+	// a test against another host never carries the stored key there (the form must send its own key)
+	other := echoLLM(t)
+	rec = do(t, s, "POST", "/api/v1/admin/ai/test", map[string]any{"base_url": other.URL + "/v1", "model": "m2"}, admin)
+	if !strings.Contains(rec.Body.String(), `"ok":true`) || len(other.auths) != 1 || other.auths[0] != "" {
+		t.Fatalf("stored key sent to a new base_url: %v %s", other.auths, rec.Body.String())
+	}
+	do(t, s, "POST", "/api/v1/admin/ai/test", map[string]any{"base_url": other.URL + "/v1", "model": "m2", "api_key": "sk-typed"}, admin)
+	if other.auths[1] != "Bearer sk-typed" {
+		t.Fatalf("typed key not used: %v", other.auths)
 	}
 	if rec := do(t, s, "PUT", "/api/v1/admin/ai", map[string]any{"base_url": "file:///etc/passwd"}, admin); rec.Code != 400 {
 		t.Fatalf("bad url: %d", rec.Code)
@@ -377,6 +389,12 @@ func TestAISettingsNoKeyLeak(t *testing.T) {
 	s.db.QueryRow(context.Background(), `select count(*) from audit_log where action='settings.update' and target in ('ai','ai_prompts')`).Scan(&m)
 	if n != 0 || m != 3 {
 		t.Fatalf("audit: leaked=%d rows=%d", n, m)
+	}
+	// a new guide prompt drops the cached general parts written with the old one
+	sqlExec(t, s, `insert into vulns(id, ai_guide, ai_guide_at) values('CVE-2024-7777', 'old part', now())`)
+	do(t, s, "PUT", "/api/v1/admin/ai/prompts", map[string]string{"vuln_guide": "새 프롬프트", "project_report": "나의 보고서 프롬프트"}, admin)
+	if n := qInt(t, s, `select count(*) from vulns where ai_guide <> '' or ai_guide_at is not null`); n != 0 {
+		t.Fatalf("guide cache kept after prompt change: %d", n)
 	}
 }
 
