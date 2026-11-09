@@ -92,6 +92,9 @@ func main() {
 		log.Fatal(err)
 	}
 	go s.syncLoop(ctx)
+	for _, w := range workerStarters {
+		go w(ctx, s)
+	}
 	srv := &http.Server{Addr: cfg.Addr, Handler: s, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	drained := make(chan struct{})
 	go func() {
