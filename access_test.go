@@ -173,3 +173,32 @@ func TestVisibleProjectsSQL(t *testing.T) {
 		t.Errorf("nil user: %q", got)
 	}
 }
+
+// groupsFor (display split, /me) and memberPaths (access) must apply the same rule.
+func TestMembershipRuleSingleSource(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	u := mkUser(t, s, "kim", "")
+	sqlExec(t, s, `insert into kc_groups(path) values('/g'), ('/개발본부'), ('/d2')`)
+	sqlExec(t, s, `insert into kc_groups(path, deleted) values('/old', true)`)
+	sqlExec(t, s, `insert into user_groups(user_id, path) values($1, '/g/h/i')`, u.ID) // nested group
+	sqlExec(t, s, `insert into user_depts(user_id, path) values($1, '/p/q/r'), ($1, '/d2'), ($1, '/개발본부/팀/소'), ($1, '/old/x')`, u.ID)
+	// nested dept; dept == kc path; dept under kc path; dept under deleted kc group
+	groups, depts, err := s.groupsFor(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := s.memberPaths(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := append(slices.Clone(groups), depts...)
+	slices.Sort(got)
+	if !slices.Equal(got, paths) {
+		t.Errorf("groupsFor %q + %q != memberPaths %q", groups, depts, paths)
+	}
+	want := []string{"/g", "/g/h", "/g/h/i", "/old/x", "/p", "/p/q", "/p/q/r", "/개발본부/팀", "/개발본부/팀/소"}
+	if !slices.Equal(paths, want) {
+		t.Errorf("memberPaths = %q, want %q", paths, want)
+	}
+}

@@ -126,9 +126,9 @@ func expandGroups(own []string) []string {
 	return out
 }
 
-// groupsFor is the user's Keycloak groups and departments, parents included. A department path (or parent) that a
-// Keycloak group has, live or deleted, is left out (R4a): "/개발본부/X" from the attribute never grants "/개발본부".
-// Decided at read time, so a path that later turns out to be a Keycloak group stops counting at once.
+// groupsFor is the user's Keycloak groups and departments, parents included, split for display. The rule itself
+// (R4a: a department path or parent that a Keycloak group has, live or deleted, grants nothing) lives only in
+// memberPathsSQL; this keeps the parents of each source that the rule let through.
 func (s *server) groupsFor(ctx context.Context, userID int64) (groups, depts []string, err error) {
 	var gs, ds []string
 	err = s.db.QueryRow(ctx, `select array(select path from user_groups where user_id=$1), array(select path from user_depts where user_id=$1)`,
@@ -136,16 +136,13 @@ func (s *server) groupsFor(ctx context.Context, userID int64) (groups, depts []s
 	if err != nil {
 		return nil, nil, err
 	}
-	all := expandGroups(ds)
-	var known []string
-	if len(all) > 0 {
-		if err = s.db.QueryRow(ctx, `select array(select path from kc_groups where path = any($1))`, all).Scan(&known); err != nil {
-			return nil, nil, err
-		}
+	paths, err := s.memberPaths(ctx, userID)
+	if err != nil {
+		return nil, nil, err
 	}
 	depts = []string{}
-	for _, p := range all {
-		if !slices.Contains(known, p) {
+	for _, p := range expandGroups(ds) {
+		if slices.Contains(paths, p) {
 			depts = append(depts, p)
 		}
 	}
