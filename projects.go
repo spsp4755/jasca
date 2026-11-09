@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
@@ -208,9 +209,16 @@ func (s *server) handleProjectPatch(w http.ResponseWriter, r *http.Request, c *r
 
 func (s *server) handleProjectDelete(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	ctx := r.Context()
-	if _, err := s.db.Exec(ctx, `delete from projects where id=$1`, c.Project.ID); err != nil {
+	rows, _ := s.db.Query(ctx, `delete from projects where id=$1 returning (select coalesce(array_agg(id), '{}') from scans where project_id=$1 and status in ('queued', 'running'))`, c.Project.ID)
+	scans, err := pgx.CollectRows(rows, pgx.RowTo[[]int64])
+	if err != nil {
 		writeInternal(w, "project delete", err)
 		return
+	}
+	for _, ids := range scans {
+		for _, id := range ids { // the cascade drops queued jobs, which then never remove their uploads
+			os.RemoveAll(s.workDir(id))
+		}
 	}
 	// the project row is gone, so the audit row names it by key and id only
 	s.audit(ctx, c, "project.delete", nil, c.Project.Key, map[string]any{"project_id": c.Project.ID, "name": c.Project.Name})

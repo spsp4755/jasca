@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -88,6 +89,18 @@ func (s *server) enqueue(ctx context.Context, tx pgx.Tx, kind string, scanID *in
 // jobLoop is the single worker. It first re-queues jobs a previous process left running, then runs queued jobs
 // one at a time, highest priority first, until ctx ends. Started from main.
 func (s *server) jobLoop(ctx context.Context) {
+	// a server scan that was running at three starts in a row most likely killed the process (memory): stop it
+	rows, _ := s.db.Query(ctx, `with dead as (update jobs set state = 'failed', finished_at = now(),
+			error = 'stopped after 3 interrupted attempts' where state = 'running' and kind = 'server_scan' and attempts >= 3 returning scan_id)
+		update scans set status = 'failed', finished_at = now(), error = '스캔이 세 번 연속 중단되어(메모리 부족 등) 더 실행하지 않습니다. 더 작은 파일로 다시 올려 주세요.'
+		where id in (select scan_id from dead) and status in ('queued', 'running') returning id`)
+	dead, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		log.Printf("jobs: fail interrupted scans: %v", err)
+	}
+	for _, id := range dead {
+		os.RemoveAll(s.workDir(id))
+	}
 	if _, err := s.db.Exec(ctx, `update jobs set state = 'queued', started_at = null where state = 'running'`); err != nil {
 		log.Printf("jobs: re-queue running: %v", err)
 	}

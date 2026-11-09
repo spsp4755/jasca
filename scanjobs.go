@@ -37,6 +37,31 @@ func (s *server) workDir(scanID int64) string {
 	return filepath.Join(s.cfg.DataDir, "work", fmt.Sprint(scanID))
 }
 
+// sweepWork removes what a crash, a cancel or a deleted project left in DATA_DIR/work (and half-installed Trivy
+// DBs): everything except the uploads of scans whose job is still queued or running. Call it before the HTTP
+// server and the workers start, so no upload or job is writing there.
+func (s *server) sweepWork(ctx context.Context) {
+	rows, _ := s.db.Query(ctx, `select scan_id::text from jobs where scan_id is not null and state in ('queued', 'running')`)
+	live, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		log.Printf("sweep work: %v", err)
+		return
+	}
+	root := filepath.Join(s.cfg.DataDir, "work")
+	ents, _ := os.ReadDir(root)
+	for _, e := range ents {
+		if !slices.Contains(live, e.Name()) {
+			os.RemoveAll(filepath.Join(root, e.Name()))
+		}
+	}
+	ents, _ = os.ReadDir(s.trivyCacheDir())
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), ".incoming-") {
+			os.RemoveAll(filepath.Join(s.trivyCacheDir(), e.Name()))
+		}
+	}
+}
+
 // handleScanJobCreate streams the multipart file to DATA_DIR/work, then creates a queued scan and its job.
 func (s *server) handleScanJobCreate(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	ctx := r.Context()
@@ -189,6 +214,7 @@ func (s *server) handleScanCancel(w http.ResponseWriter, r *http.Request, c *req
 			return
 		}
 	}
+	os.RemoveAll(s.workDir(id)) // a queued job never runs its cleanup; a running one is stopping anyway
 	s.audit(ctx, c, "scan.cancel", &c.Project.ID, "", map[string]any{"scan_id": id})
 	w.WriteHeader(204)
 }

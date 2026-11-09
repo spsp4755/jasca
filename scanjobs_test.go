@@ -299,6 +299,9 @@ func TestScanCancel(t *testing.T) {
 	if jobState(t, s, id) != "canceled" {
 		t.Fatal("queued job not canceled")
 	}
+	if !gone(s.workDir(id)) {
+		t.Fatal("a canceled queued scan left its upload on disk")
+	}
 	if ran, _ := s.runNextJob(context.Background()); ran {
 		t.Fatal("canceled job was picked")
 	}
@@ -402,5 +405,54 @@ func TestTrivyDBUploadKeepsOldOnFailure(t *testing.T) {
 	}
 	if auditCount(t, s, "trivy.settings") != 1 {
 		t.Fatal("settings not audited")
+	}
+}
+
+// Uploads of deleted projects and files a crash left behind are removed; queued scans keep their upload.
+func TestWorkDirCleanup(t *testing.T) {
+	s := testServer(t)
+	_, ck := memberSession(t, s)
+	keep := mustScanJob(t, s, ck, "keep", "fs", mkZip(t, arEnt{name: "a.txt", body: "x"}))
+	root := filepath.Join(s.cfg.DataDir, "work")
+	junk := []string{filepath.Join(root, "incoming-123"), filepath.Join(root, "trivydb-1.tar.gz"), filepath.Join(root, "recheck-1-2.json"),
+		filepath.Join(root, "99999"), filepath.Join(s.trivyCacheDir(), ".incoming-ab")}
+	for _, j := range junk {
+		os.MkdirAll(filepath.Dir(j), 0o755)
+		if err := os.WriteFile(j, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.sweepWork(context.Background())
+	for _, j := range junk {
+		if !gone(j) {
+			t.Errorf("%s not swept", j)
+		}
+	}
+	if gone(s.workDir(keep)) {
+		t.Fatal("a queued scan's upload was swept")
+	}
+	// deleting the project removes its queued scans' uploads
+	owner := loginAs(t, s, mkUser(t, s, "own", "admin"))
+	wantCode(t, do(t, s, "DELETE", "/api/v1/projects/web", nil, owner), 204, "delete project")
+	if !gone(s.workDir(keep)) {
+		t.Fatal("a deleted project's upload stayed on disk")
+	}
+}
+
+// A server scan that took the process down three times (OOM kill) is failed instead of re-queued forever.
+func TestCrashingScanIsNotRequeuedForever(t *testing.T) {
+	s := testServer(t)
+	_, ck := memberSession(t, s)
+	useFakeTrivy(t, s, readFixture(t, "trivy/fs-mixed.json"))
+	t.Setenv("FAKETRIVY_WAIT_CALL", "1") // a re-run would hang here instead of failing on its own
+	t.Setenv("FAKETRIVY_WAIT_FILE", filepath.Join(t.TempDir(), "never"))
+	id := mustScanJob(t, s, ck, "big", "image", []byte("x"))
+	sqlExec(t, s, `update jobs set state='running', attempts=3 where scan_id=$1`, id)
+	sqlExec(t, s, `update scans set status='running' where id=$1`, id)
+	stop := startJobs(t, s)
+	waitFor(t, "job failed", func() bool { return jobState(t, s, id) == "failed" })
+	stop()
+	if st, msg := scanStatus(t, s, id); st != "failed" || msg == "" {
+		t.Fatalf("scan %s %q", st, msg)
 	}
 }

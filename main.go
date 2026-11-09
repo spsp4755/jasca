@@ -92,6 +92,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	s.sweepWork(ctx)
 	go s.syncLoop(ctx)
 	go s.notifyLoop(ctx)
 	go s.retentionLoop(ctx)
