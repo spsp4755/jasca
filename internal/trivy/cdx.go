@@ -10,7 +10,7 @@ type Package struct{ PURL, Name, Version, Ecosystem string }
 
 var purlType = map[string]string{
 	"npm": "npm", "pypi": "pypi", "pip": "pypi", "maven": "maven", "go": "golang", "golang": "golang", "gomod": "golang",
-	"cargo": "cargo", "rust": "cargo", "gem": "gem", "rubygems": "gem", "nuget": "nuget", "composer": "composer", "deb": "deb", "rpm": "rpm", "apk": "apk",
+	"cargo": "cargo", "rust": "cargo", "gem": "gem", "rubygems": "gem", "nuget": "nuget", "composer": "composer",
 }
 
 func buildPURL(p Package) string {
@@ -22,7 +22,11 @@ func buildPURL(p Package) string {
 	if t == "maven" {
 		n = strings.Replace(n, ":", "/", 1)
 	}
-	n = strings.ReplaceAll(url.PathEscape(n), "@", "%40")
+	segs := strings.Split(n, "/")
+	for i, sg := range segs { // purl spec: escape each segment, keep "/" as the namespace separator
+		segs[i] = strings.ReplaceAll(url.PathEscape(sg), "@", "%40")
+	}
+	n = strings.Join(segs, "/")
 	return "pkg:" + t + "/" + n + "@" + url.PathEscape(p.Version)
 }
 

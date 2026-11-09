@@ -179,6 +179,22 @@ func TestCycloneDXRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPURLTable(t *testing.T) {
+	for _, c := range []struct {
+		p    Package
+		want string
+	}{
+		{Package{Name: "requests", Version: "2.0.0", Ecosystem: "pypi"}, "pkg:pypi/requests@2.0.0"},
+		{Package{Name: "github.com/a/b", Version: "v1.2.3", Ecosystem: "golang"}, "pkg:golang/github.com/a/b@v1.2.3"},
+		{Package{Name: "org.apache:commons-lang3", Version: "3.0", Ecosystem: "maven"}, "pkg:maven/org.apache/commons-lang3@3.0"},
+		{Package{Name: "@scope/name", Version: "1.0.0", Ecosystem: "npm"}, "pkg:npm/%40scope/name@1.0.0"},
+	} {
+		if got := buildPURL(c.p); got != c.want {
+			t.Errorf("%+v: got %s want %s", c.p, got, c.want)
+		}
+	}
+}
+
 func TestRunCapsAndStderr(t *testing.T) {
 	sh := filepath.Join(t.TempDir(), "fake.sh")
 	os.WriteFile(sh, []byte("#!/bin/sh\necho out\necho boom >&2\nexit 3\n"), 0o755)

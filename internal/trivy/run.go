@@ -22,7 +22,7 @@ type Options struct {
 // Args builds the argv (without the binary). Every flag and value is its own element; no shell is involved.
 func Args(kind, input string, o Options) []string {
 	scanners := strings.Join(o.Scanners, ",")
-	if kind == "sbom" {
+	if kind == "sbom" || scanners == "" {
 		scanners = "vuln"
 	}
 	a := []string{kind, "--format", "json", "--list-all-pkgs", "--skip-db-update", "--skip-java-db-update",
@@ -36,12 +36,14 @@ func Args(kind, input string, o Options) []string {
 var errTooBig = errors.New("trivy output exceeds 512MB")
 
 type capWriter struct {
-	w io.Writer
-	n int64
+	w        io.Writer
+	n        int64
+	overflow bool
 }
 
 func (c *capWriter) Write(p []byte) (int, error) {
 	if c.n+int64(len(p)) > maxOutput {
+		c.overflow = true
 		return 0, errTooBig
 	}
 	c.n += int64(len(p))
@@ -72,9 +74,14 @@ func Run(ctx context.Context, o Options, kind, input string, stdout io.Writer) e
 	}
 	var se tailBuf
 	cmd := exec.CommandContext(ctx, o.Bin, Args(kind, input, o)...)
-	cmd.Stdout = &capWriter{w: stdout}
+	cw := &capWriter{w: stdout}
+	cmd.Stdout = cw
 	cmd.Stderr = &se
+	cmd.WaitDelay = 5 * time.Second
 	err := cmd.Run()
+	if cw.overflow {
+		return errTooBig
+	}
 	if err == nil {
 		return nil
 	}

@@ -60,7 +60,9 @@ func InstallBundle(cacheDir string, r io.Reader, maxBytes int64) (kind string, s
 		return
 	}
 	var rnd [6]byte
-	rand.Read(rnd[:])
+	if _, err = rand.Read(rnd[:]); err != nil {
+		return
+	}
 	inc := filepath.Join(cacheDir, ".incoming-"+hex.EncodeToString(rnd[:]))
 	if err = os.Mkdir(inc, 0o755); err != nil {
 		return
@@ -110,6 +112,9 @@ func InstallBundle(cacheDir string, r io.Reader, maxBytes int64) (kind string, s
 	dbFile := "trivy.db"
 	kind = "db"
 	if _, ok := sizes["trivy-java.db"]; ok {
+		if _, both := sizes["trivy.db"]; both {
+			return "", st, errors.New("bundle contains both trivy.db and trivy-java.db")
+		}
 		dbFile, kind = "trivy-java.db", "java-db"
 	}
 	if _, ok := sizes["metadata.json"]; !ok {
