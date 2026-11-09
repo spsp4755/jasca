@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useLogout, useMe } from "../api/hooks";
+import { useAuthConfig, useLogout, useMe } from "../api/hooks";
 import type { Me } from "../api/types";
 import { useHotkeys } from "../lib/hotkeys";
 import { getTheme, setTheme, type ThemeMode } from "../lib/theme";
@@ -22,6 +22,7 @@ export function searchTarget(q: string): string {
 /** Signed-in shell: sidebar, top bar (search, theme, user menu), global hotkeys, then the page. */
 export default function Layout() {
   const me = useMe();
+  const cfg = useAuthConfig(); // sets the display time zone; on failure times stay in Asia/Seoul
   const navigate = useNavigate();
   const loc = useLocation();
   const [help, setHelp] = useState(false);
@@ -39,7 +40,7 @@ export default function Layout() {
   // move focus to the new page's heading for screen readers and keyboard users
   useEffect(() => { document.querySelector<HTMLElement>("main h1")?.focus({ preventScroll: true }); }, [loc.pathname]);
 
-  if (me.isPending || (me.isError && me.error.status === 401)) {
+  if (me.isPending || cfg.isPending || (me.isError && me.error.status === 401)) {
     return <div className="splash" aria-busy="true"><span className="brand-mark splash-mark" /><span className="sr-only">불러오는 중</span></div>;
   }
   if (me.isError) {

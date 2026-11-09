@@ -18,9 +18,12 @@ const FALLBACK: Record<number, string> = {
   429: "요청이 너무 많습니다. 잠시 후 다시 시도하세요.",
 };
 
-/** A relative path inside this app; anything else (//host, /\host, https:) becomes "/". */
+/**
+ * A relative path inside this app; anything else becomes "/": //host, https:, any backslash, and control
+ * characters (URL parsers drop tabs/newlines, so "/\t/host" would turn into "//host").
+ */
 export function safeNext(next: string | null | undefined): string {
-  return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+  return next && next.startsWith("/") && !next.startsWith("//") && !/[\\\u0000-\u001f\u007f]/.test(next) ? next : "/";
 }
 
 export function loginUrl(): string {

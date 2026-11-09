@@ -1,13 +1,25 @@
 import type { ExceptionResolution, ExceptionScope, FindingOrigin, ScanSource, Severity } from "../api/types";
 
-// shortcut: JASCA_TZ is not exposed by the API yet, so the default zone is fixed here; read it from /auth/config when it is.
-export const TZ = "Asia/Seoul";
+export const DEFAULT_TZ = "Asia/Seoul";
+/** Zone every time is shown in (JASCA_TZ, from GET /auth/config). Set by useAuthConfig before signed-in pages render. */
+export let TZ = DEFAULT_TZ;
 
-const dateFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
-const dtFmt = new Intl.DateTimeFormat("ko-KR", {
-  timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-});
-const mdFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: TZ, month: "numeric", day: "numeric" });
+let dateFmt: Intl.DateTimeFormat, dtFmt: Intl.DateTimeFormat, mdFmt: Intl.DateTimeFormat;
+const build = (timeZone: string) => {
+  dateFmt = new Intl.DateTimeFormat("ko-KR", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+  dtFmt = new Intl.DateTimeFormat("ko-KR", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  });
+  mdFmt = new Intl.DateTimeFormat("ko-KR", { timeZone, month: "numeric", day: "numeric" });
+};
+build(TZ);
+
+/** Switches the display zone; an empty or unknown name (Intl throws RangeError) keeps Asia/Seoul. */
+export function setTimeZone(tz?: string) {
+  const next = tz || DEFAULT_TZ;
+  if (next === TZ) return;
+  try { build(next); TZ = next; } catch { build(DEFAULT_TZ); TZ = DEFAULT_TZ; }
+}
 const numFmt = new Intl.NumberFormat("ko-KR");
 
 const valid = (iso?: string | null) => (iso ? new Date(iso) : null);

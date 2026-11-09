@@ -1,4 +1,5 @@
 import { QueryClient, useMutation, useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
+import { setTimeZone } from "../lib/format";
 import { ApiError, api } from "./client";
 import type { AuthConfig, Dashboard, LocalLoginRequest, LocalLoginResponse, Me } from "./types";
 
@@ -20,8 +21,19 @@ export function useApi<T>(path: string | null, opts: Omit<UseQueryOptions<T, Api
 }
 
 export const useMe = () => useApi<Me>("/me", { staleTime: 5 * 60_000 });
-export const useAuthConfig = () => useApi<AuthConfig>("/auth/config", { staleTime: Infinity });
-export const useDashboard = () => useApi<Dashboard>("/dashboard", { refetchInterval: 60_000 });
+/** Also applies the server's display time zone (cfg.tz) before anything reads the formatters. */
+export const useAuthConfig = () => useQuery<AuthConfig, ApiError>({
+  queryKey: ["/auth/config"], staleTime: Infinity,
+  queryFn: ({ signal }) => api.get<AuthConfig>("/auth/config", { signal }).then((c) => { setTimeZone(c.tz); return c; }),
+});
+// Go marshals nil slices as null; the page always gets arrays.
+export const useDashboard = () => useApi<Dashboard>("/dashboard", {
+  refetchInterval: 60_000,
+  select: (d) => ({
+    ...d, trend: d.trend ?? [], oldest_critical: d.oldest_critical ?? [], expiring_exceptions: d.expiring_exceptions ?? [],
+    recent_scans: d.recent_scans ?? [], newly_known: d.newly_known ?? [],
+  }),
+});
 
 export const isAdmin = (me?: Me) => me?.system_role === "admin";
 /** security perm = security or admin. */

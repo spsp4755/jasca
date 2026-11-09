@@ -24,7 +24,8 @@ export interface ApiErrorBody { error: string; message: string }
 export interface Counts { critical: number; high: number; medium: number; low: number; unknown: number; open: number }
 
 // --- auth / me ---
-export interface AuthConfig { sso_enabled: boolean }
+/** tz: IANA zone from JASCA_TZ; the UI shows times in it. */
+export interface AuthConfig { sso_enabled: boolean; tz?: string }
 export interface LocalLoginRequest { username: string; password: string }
 export interface LocalLoginResponse { user: Me }
 export interface Me {
