@@ -316,3 +316,29 @@ func httpReq(t *testing.T, s *server, method, path string, body *bytes.Reader, c
 	s.ServeHTTP(rec, req)
 	return rec
 }
+
+// A package-less scan (SARIF, a recheck's scan row) is not the target's inventory: it never fixes advisory findings.
+func TestAdvisoryInventoryIgnoresPackagelessScans(t *testing.T) {
+	e := newExEnv(t)
+	pid, mck, _ := e.project(t, "web")
+	up := mustUpload(t, e.s, "web", "target=app&kind=fs", pkgDoc("app", "npm", [2]string{"left-pad", "1.3.0"}), mck)
+	wantCode(t, do(t, e.s, "POST", "/api/v1/advisories", advBody("INT-2026-001", "npm", "left-pad", "<1.3.1"), e.secA), 201, "create")
+	if o, f := advFindings(t, e.s, "INT-2026-001"); o != 1 || f != 0 {
+		t.Fatalf("before: open=%d fixed=%d", o, f)
+	}
+	sarif := []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep"}},"results":[]}]}`)
+	mustUpload(t, e.s, "web", "target=app&kind=fs", sarif, mck)
+	if o, f := advFindings(t, e.s, "INT-2026-001"); o != 1 || f != 0 {
+		t.Fatalf("after SARIF: open=%d fixed=%d", o, f)
+	}
+	// the scan row a recheck writes when it adds findings, then an unchanged advisory save
+	sqlExec(t, e.s, `insert into scans(project_id, target_id, source, format, status, finished_at) values($1, $2, 'recheck', 'trivy', 'done', now())`,
+		pid, up.TargetID)
+	wantCode(t, do(t, e.s, "PUT", "/api/v1/advisories/INT-2026-001", advBody("INT-2026-001", "npm", "left-pad", "<1.3.1"), e.secA), 200, "put")
+	if o, f := advFindings(t, e.s, "INT-2026-001"); o != 1 || f != 0 {
+		t.Fatalf("after recheck scan + save: open=%d fixed=%d", o, f)
+	}
+	if n := qInt(t, e.s, `select coalesce(max(reopened_count), 0) from findings where rule_id='INT-2026-001'`); n != 0 {
+		t.Fatalf("reopened %d times", n)
+	}
+}

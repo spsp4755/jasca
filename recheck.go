@@ -46,8 +46,8 @@ const recheckRunCols = `id, reason, state, total, done, new_findings, started_at
 
 var errRecheckRunning = errors.New("a recheck run is already running")
 
-// latestInventorySQL is the newest done scan of target t that has packages: the inventory a recheck evaluates
-// (recheck scans store no packages, so they never count).
+// latestInventorySQL is the newest done scan of target t that has packages: the target's current inventory, used by
+// the recheck and the advisory matcher alike (a SARIF or recheck scan row has no packages and never counts)
 const latestInventorySQL = `(select sc.id from scans sc where sc.target_id = t.id and sc.status = 'done'
 	and exists (select 1 from packages p where p.scan_id = sc.id) order by sc.id desc limit 1)`
 

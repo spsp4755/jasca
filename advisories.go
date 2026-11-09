@@ -190,7 +190,7 @@ type advMatch struct {
 	uncertain                   bool
 }
 
-// findAdvMatches compares the packages of each non-excluded target's latest finished scan (one target when
+// findAdvMatches compares the packages of each non-excluded target's inventory (latestInventorySQL; one target when
 // targetID > 0) with the affected items of advs. shortcut: package names match exactly or lower-cased, an
 // index-friendly approximation of case-insensitive names; upgrade if a registry needs more normalisation.
 func findAdvMatches(ctx context.Context, q queryer, advs []*advisory, targetID int64) ([]advMatch, error) {
@@ -198,12 +198,10 @@ func findAdvMatches(ctx context.Context, q queryer, advs []*advisory, targetID i
 	for _, a := range advs {
 		for _, it := range a.Affected {
 			rows, _ := q.Query(ctx, `select t.id, t.project_id, pr.key, t.name, p.scan_id, p.name, p.version, p.path
-				from packages p
-				join scans sc on sc.id = p.scan_id
-				join targets t on t.id = sc.target_id
+				from targets t
 				join projects pr on pr.id = t.project_id
+				join packages p on p.scan_id = `+latestInventorySQL+`
 				where p.ecosystem = $1 and p.name = any($2) and not t.recheck_excluded and ($3 = 0 or t.id = $3)
-				and sc.id = (select id from scans s2 where s2.target_id = t.id and s2.status = 'done' order by s2.created_at desc, s2.id desc limit 1)
 				order by t.id, p.name, p.path`, it.Ecosystem, []string{it.Package, strings.ToLower(it.Package)}, targetID)
 			for rows.Next() {
 				m := advMatch{adv: a, item: it}
