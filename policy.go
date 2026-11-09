@@ -65,10 +65,7 @@ func (s *server) policyCount(ctx context.Context, projectID, scanID int64) (poli
 			and f.status = 'open' and f.severity = any($3)
 			and (not $4 or f.first_seen_at = s.finished_at)
 			and (not $5 or f.fixed_version <> '')
-			and not exists (select 1 from exceptions e where e.status = 'approved' and e.expires_at > now() and (
-				e.scope = 'finding' and e.finding_id = f.id
-				or e.scope = 'project_vuln' and e.project_id = f.project_id and e.vuln_id = f.rule_id
-				or e.scope = 'global_vuln' and e.vuln_id = f.rule_id))
+			and not exists (select 1 from exceptions e where e.status = 'approved' and e.expires_at > now() and `+exceptionMatchSQL+`)
 		where s.id = $1 and s.project_id = $2 group by s.id`,
 		scanID, projectID, policySeverities[:i+1], p.NewOnly, p.FixableOnly).Scan(&n)
 	return p, n, err

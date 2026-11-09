@@ -497,7 +497,7 @@ func (s *server) syncLoop(ctx context.Context) {
 		wait := 15 * time.Minute
 		if sy, err := s.syncConf(ctx); err == nil {
 			wait = time.Duration(sy.IntervalMin) * time.Minute
-			if sy.ClientID != "" {
+			if sy.ClientID != "" && sy.ClientSecret != "" { // a half-filled form would only fail and audit every interval
 				if err := s.syncKeycloak(ctx); err != nil {
 					log.Printf("keycloak sync: %v", err)
 					s.audit(ctx, nil, "sync.run", nil, "", map[string]any{"error": err.Error()}) // only failures, to keep the log quiet

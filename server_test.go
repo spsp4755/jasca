@@ -61,6 +61,27 @@ func TestUnauthenticatedGets401(t *testing.T) {
 	}
 }
 
+// Every admin and security route refuses a plain signed-in user with 403, and every admin-only route refuses a
+// security user (spec 3.3).
+func TestRoleRoutesGet403(t *testing.T) {
+	s := testServer(t)
+	plain, sec := loginAs(t, s, mkUser(t, s, "plain", "")), loginAs(t, s, mkUser(t, s, "sec", "security"))
+	n := 0
+	for _, ri := range s.routes {
+		who := map[string][]*http.Cookie{"admin": {plain, sec}, "security": {plain}}[ri.perm.kind]
+		method, path, _ := strings.Cut(ri.pattern, " ")
+		for _, ck := range who {
+			n++
+			if rec := do(t, s, method, pathParam.ReplaceAllString(path, "1"), nil, ck); rec.Code != 403 {
+				t.Errorf("%s: %d %s", ri.pattern, rec.Code, rec.Body.String())
+			}
+		}
+	}
+	if n < 20 {
+		t.Fatalf("only %d checks: perm kinds renamed?", n)
+	}
+}
+
 func TestHealthz(t *testing.T) {
 	s := testServer(t)
 	for _, p := range []string{"/healthz", "/readyz"} {

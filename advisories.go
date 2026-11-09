@@ -67,12 +67,18 @@ type advisoryReq struct {
 
 var advIDRe = regexp.MustCompile(`^[A-Z][A-Z0-9-]{2,40}$`)
 
+// scannerIDRe: ids that scanners use. An advisory with one would share the scanner finding's fingerprint (the tool
+// is not part of it) and overwrite its severity and the shared catalog row.
+var scannerIDRe = regexp.MustCompile(`^(CVE|GHSA|GO|PYSEC|RUSTSEC|OSV|DLA|DSA|RHSA|ALAS|USN|ELSA|SUSE)-`)
+
 // check normalises a in place and returns a Korean message for the first problem. needID is false for previews.
 func (a *advisoryReq) check(needID bool) string {
 	a.ID, a.Title, a.Severity = strings.TrimSpace(a.ID), strings.TrimSpace(a.Title), strings.ToUpper(strings.TrimSpace(a.Severity))
 	switch {
 	case needID && !advIDRe.MatchString(a.ID):
 		return "id는 대문자로 시작하는 대문자·숫자·하이픈 3~41자여야 합니다(예: INT-2026-001)."
+	case needID && scannerIDRe.MatchString(a.ID):
+		return "CVE-, GHSA- 같은 공개 취약점 ID는 쓸 수 없습니다. 사내 ID(예: INT-2026-001)를 쓰세요."
 	case a.Title == "" || utf8.RuneCountInString(a.Title) > 300:
 		return "제목을 1~300자로 입력하세요."
 	case !slices.Contains([]string{"CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"}, a.Severity):
@@ -468,7 +474,8 @@ func (s *server) handleAdvisoryPreview(w http.ResponseWriter, r *http.Request, c
 // row rejects the whole file.
 func (s *server) handleAdvisoryImport(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	ctx := r.Context()
-	var src io.Reader = http.MaxBytesReader(w, r.Body, 10<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // also bounds ParseMultipartForm, which reads r.Body
+	var src io.Reader = r.Body
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/") {
 		if err := r.ParseMultipartForm(10 << 20); err != nil {
 			writeBodyErr(w, err)
@@ -562,7 +569,9 @@ func parseAdvisoryCSV(data []byte) ([]*advisoryReq, string) {
 			return nil, fmt.Sprintf("%d행: %s", row, msg)
 		}
 		if first := byID[one.ID]; first != nil {
-			first.Affected = append(first.Affected, one.Affected...)
+			if first.Affected = append(first.Affected, one.Affected...); len(first.Affected) > 200 {
+				return nil, fmt.Sprintf("%d행: %s의 영향 패키지가 200개를 넘습니다.", row, one.ID)
+			}
 			continue
 		}
 		byID[one.ID] = &one

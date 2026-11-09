@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -341,4 +342,24 @@ func TestAdvisoryInventoryIgnoresPackagelessScans(t *testing.T) {
 	if n := qInt(t, e.s, `select coalesce(max(reopened_count), 0) from findings where rule_id='INT-2026-001'`); n != 0 {
 		t.Fatalf("reopened %d times", n)
 	}
+}
+
+// Advisory input limits: no scanner-style ids, the 200-item cap holds for merged CSV rows, and a multipart
+// import is size-bounded like a raw one.
+func TestAdvisoryInputLimits(t *testing.T) {
+	e := newExEnv(t)
+	for _, id := range []string{"CVE-2026-0001", "GHSA-ABCD-1234"} {
+		wantCode(t, do(t, e.s, "POST", "/api/v1/advisories", advBody(id, "npm", "left-pad", "<1.3.1"), e.secA), 400, id)
+	}
+	var rows []string
+	for i := range 201 {
+		rows = append(rows, fmt.Sprintf("INT-2026-001,t,HIGH,npm,pkg-%d,<1,1.0.0,,", i))
+	}
+	wantCode(t, do(t, e.s, "POST", "/api/v1/advisories/import", csvBody(rows...), e.secA), 400, "201 merged items")
+	var b bytes.Buffer
+	mw := multipart.NewWriter(&b)
+	fw, _ := mw.CreateFormFile("file", "a.csv")
+	fw.Write(bytes.Repeat([]byte("x"), 11<<20))
+	mw.Close()
+	wantCode(t, httpReq(t, e.s, "POST", "/api/v1/advisories/import", bytes.NewReader(b.Bytes()), mw.FormDataContentType(), e.secA), 413, "11MB multipart")
 }
