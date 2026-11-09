@@ -24,7 +24,7 @@ L.run(async () => {
   L.ok((await admin.api.get("/admin/recheck")).length === runsBefore, "no recheck run started for the bad bundle");
 
   await page.locator('input[type="file"]').setInputFiles(bundle);
-  await page.getByText("DB를 적용했습니다. 재검사가 시작됩니다.").waitFor({ timeout: 120000 });
+  await page.getByText("DB를 적용했습니다. 재평가가 시작됩니다.").waitFor({ timeout: 120000 });
   L.ok(true, "good bundle installed");
   const run = await L.until(async () => {
     const runs = await admin.api.get("/admin/recheck");
@@ -33,7 +33,7 @@ L.run(async () => {
   }, "recheck run of the new DB finishes", 180000);
   L.ok(run.state === "done" && run.total > 0 && run.done === run.total, `recheck run done (${run.done}/${run.total} targets, ${run.new_findings} new findings)`);
   await page.reload();
-  await page.getByRole("table", { name: "재검사 실행 기록" }).getByText("Trivy DB 갱신").first().waitFor();
+  await page.getByRole("table", { name: "재평가 실행 기록" }).getByText("Trivy DB 갱신").first().waitFor();
   L.ok(true, "run listed on the Trivy DB screen");
   await browser.close();
 });
