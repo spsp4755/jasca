@@ -30,15 +30,24 @@ func buildPURL(p Package) string {
 	return "pkg:" + t + "/" + n + "@" + url.PathEscape(p.Version)
 }
 
+// OSInfo is the operating system of an image, e.g. {alpine 3.12.12} or {debian 11.6}.
+type OSInfo struct{ Family, Name string }
+
 // CycloneDX renders a minimal CycloneDX 1.5 BOM. Packages with no purl and no derivable one are skipped.
-func CycloneDX(pkgs []Package) ([]byte, error) {
+func CycloneDX(pkgs []Package) ([]byte, error) { return CycloneDXWithOS(nil, pkgs) }
+
+// CycloneDXWithOS adds an operating-system component when osi is set; without it trivy sbom ignores OS packages.
+func CycloneDXWithOS(osi *OSInfo, pkgs []Package) ([]byte, error) {
 	type comp struct {
 		Type    string `json:"type"`
 		Name    string `json:"name"`
 		Version string `json:"version"`
-		PURL    string `json:"purl"`
+		PURL    string `json:"purl,omitempty"`
 	}
 	comps := []comp{}
+	if osi != nil {
+		comps = append(comps, comp{Type: "operating-system", Name: osi.Family, Version: osi.Name})
+	}
 	for _, p := range pkgs {
 		purl := p.PURL
 		if purl == "" {
