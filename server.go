@@ -76,9 +76,18 @@ func newServer(ctx context.Context, cfg config, db *pgxpool.Pool) (*server, erro
 	s.principalRoutes()
 	s.ssoRoutes()
 	s.syncRoutes()
+	s.scanRoutes()
+	s.findingRoutes()
+	s.vulnRoutes()
+	for _, reg := range routeRegistrars {
+		reg(s)
+	}
 	s.handle("GET /", permPublic, s.serveWeb)
 	return s, nil
 }
+
+// routeRegistrars lets feature files register their routes from init() without editing newServer.
+var routeRegistrars []func(*server)
 
 // ServeHTTP is the outer middleware: recover, then security headers, then the routes.
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
