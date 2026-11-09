@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { isAdmin, isSecurity } from "../api/hooks";
+import { isSecurity } from "../api/hooks";
 import type { Me } from "../api/types";
 import Icon, { type IconName } from "./Icon";
 
@@ -24,7 +24,7 @@ export const NAV: { title?: string; items: NavItem[] }[] = [
       { to: "/reports", label: "보고서", icon: "fileText" },
     ],
   },
-  { title: "시스템", items: [{ to: "/admin", label: "관리", icon: "settings", show: isAdmin }] },
+  { title: "시스템", items: [{ to: "/admin", label: "관리", icon: "settings", show: isSecurity }] },
 ];
 
 export default function Sidebar({ me, onHelp }: { me?: Me; onHelp: () => void }) {

@@ -177,3 +177,11 @@ export interface AISettings {
 export type AISettingsPut = Omit<AISettings, "api_key_set"> & { api_key?: string };
 export interface NotifyChannel { id: number; kind: ChannelKind; name: string; config: Record<string, unknown>; enabled: boolean; created_at: string }
 export interface Retention { raw_per_target: number; raw_days: number }
+
+// --- admin (t18) ---
+export interface DeptLogin { user: string; at: string; source: "claim" | "claim_empty" | "admin_api" | "missing" | "error" | string; depts: string[] }
+export interface SyncStatus extends SyncSettings { groups: number; users: number }
+export interface SyncRunResult { groups: number; users: number; error: string }
+/** Assumed shape of GET/PUT /admin/ai/prompts (contract does not spell it out). */
+export interface AIPrompts { vuln_guide: string; project_report: string }
+export type DefaultPolicy = Policy;
