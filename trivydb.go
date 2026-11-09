@@ -136,7 +136,7 @@ func (s *server) handleTrivyDB(w http.ResponseWriter, r *http.Request, c *reqCtx
 			return
 		}
 		s.audit(ctx, c, "trivy.db_upload", nil, kind, map[string]any{"version": st.Version, "updated_at": st.UpdatedAt})
-		runID, err := s.startRecheck(ctx, "trivydb")
+		runID, err := s.startRecheck(context.WithoutCancel(ctx), "trivydb") // the new DB is live even if the client left
 		if err != nil {
 			writeInternal(w, "trivy db: start recheck", err)
 			return

@@ -319,7 +319,7 @@ func (s *server) startRun(ctx context.Context, kind string, projectID *int64, vu
 			kind, projectID, vulnID, userID).Scan(&id); err != nil {
 			return err
 		}
-		_, err := s.enqueue(ctx, tx, "ai", nil, map[string]int64{"run_id": id}, 5) // ahead of a recheck
+		_, err := s.enqueue(ctx, tx, "ai", nil, map[string]int64{"run_id": id}, prioAI)
 		return err
 	})
 	return id, err

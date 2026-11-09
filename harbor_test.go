@@ -182,10 +182,14 @@ func runHarborJob(t *testing.T, s *server) bool {
 	t.Helper()
 	ctx := context.Background()
 	j := &job{}
-	err := s.db.QueryRow(ctx, `select id, kind, scan_id, payload, created_by from jobs where kind = 'harbor_fetch' and state = 'queued'
-		order by id limit 1`).Scan(&j.ID, &j.Kind, &j.ScanID, &j.Payload, &j.CreatedBy)
+	var prio int
+	err := s.db.QueryRow(ctx, `select id, kind, scan_id, payload, created_by, priority from jobs where kind = 'harbor_fetch' and state = 'queued'
+		order by id limit 1`).Scan(&j.ID, &j.Kind, &j.ScanID, &j.Payload, &j.CreatedBy, &prio)
 	if err != nil {
 		return false
+	}
+	if prio != 10 { // a new report goes ahead of a recheck run (which yields to any priority > 0)
+		t.Errorf("harbor_fetch priority %d", prio)
 	}
 	if err := s.harborFetch(ctx, j); err != nil {
 		t.Fatalf("harborFetch: %v", err)

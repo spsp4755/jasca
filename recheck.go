@@ -82,7 +82,7 @@ func (s *server) startRecheck(ctx context.Context, reason string) (int64, error)
 		if _, err := tx.Exec(ctx, `update recheck_runs set total = $2 where id = $1`, runID, tag.RowsAffected()); err != nil {
 			return err
 		}
-		_, err = s.enqueue(ctx, tx, "recheck", nil, map[string]int64{"run_id": runID}, 0)
+		_, err = s.enqueue(ctx, tx, "recheck", nil, map[string]int64{"run_id": runID}, prioRecheck)
 		return err
 	})
 	return runID, err

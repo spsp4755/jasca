@@ -163,7 +163,7 @@ func (s *server) handleScanJobCreate(w http.ResponseWriter, r *http.Request, c *
 			values($1, $2, 'server', 'trivy', 'queued', $3) returning id`, c.Project.ID, targetID, c.User.ID).Scan(&scanID); err != nil {
 			return err
 		}
-		if _, err := s.enqueue(ctx, tx, "server_scan", &scanID, p, 10); err != nil {
+		if _, err := s.enqueue(ctx, tx, "server_scan", &scanID, p, prioScan); err != nil {
 			return err
 		}
 		return os.Rename(tmp, s.workDir(scanID)) // before the commit, so the worker always finds the file

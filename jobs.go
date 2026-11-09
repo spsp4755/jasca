@@ -57,6 +57,15 @@ func (s *server) jobWake() chan struct{} {
 	return s.jobs.wake
 }
 
+// Job priorities, highest first. A recheck run yields to any queued job above prioRecheck, so new scans and
+// Harbor reports never wait for a whole run.
+const (
+	prioScan    = 10 // server_scan
+	prioHarbor  = 10 // harbor_fetch
+	prioAI      = 5
+	prioRecheck = 0
+)
+
 // enqueue queues a job, in tx when given (it then runs only after the commit), else directly. created_by is the
 // scan's creator when scanID is set.
 func (s *server) enqueue(ctx context.Context, tx pgx.Tx, kind string, scanID *int64, payload any, priority int) (int64, error) {

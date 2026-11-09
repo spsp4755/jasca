@@ -363,7 +363,7 @@ func (s *server) handleHarborAssign(w http.ResponseWriter, r *http.Request, c *r
 			on conflict do nothing`, p.LinkID, p.HarborProject, escapePattern(p.Repository), body.ProjectID); err != nil {
 			return err
 		}
-		_, err = s.enqueue(r.Context(), tx, "harbor_fetch", nil, p, 0)
+		_, err = s.enqueue(r.Context(), tx, "harbor_fetch", nil, p, prioHarbor)
 		return err
 	})
 	switch {
@@ -471,7 +471,7 @@ func (s *server) handleHarborHook(w http.ResponseWriter, r *http.Request, c *req
 				}
 				continue
 			}
-			if _, err := s.enqueue(ctx, tx, "harbor_fetch", nil, harborFetchPayload{id, ns, repo, res.Digest, res.Tag, pid}, 0); err != nil {
+			if _, err := s.enqueue(ctx, tx, "harbor_fetch", nil, harborFetchPayload{id, ns, repo, res.Digest, res.Tag, pid}, prioHarbor); err != nil {
 				return err
 			}
 		}
