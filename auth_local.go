@@ -25,6 +25,7 @@ var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("jasca-dummy-password"), b
 func (s *server) authLocalRoutes() {
 	s.handle("POST /api/v1/auth/local", permPublic, s.handleLocalLogin)
 	s.handle("POST /api/v1/auth/logout", permUser, s.handleLogout)
+	s.handle("POST /api/v1/me/password", permUser, s.handleMePassword)
 	s.handle("GET /api/v1/me", permUser, func(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 		u := *c.User
 		var err error
@@ -132,6 +133,63 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request, c *reqCtx)
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secure(r)})
 	s.audit(r.Context(), c, "auth.logout", nil, c.User.Username, nil)
+	w.WriteHeader(204)
+}
+
+// handleMePassword changes a local user's own password. Other sessions of the user end; this one stays.
+func (s *server) handleMePassword(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+	ctx := r.Context()
+	if c.User == nil || c.User.Source != "local" {
+		writeErr(w, 403, "forbidden", "SSO 계정의 비밀번호는 Keycloak에서 바꾸세요.")
+		return
+	}
+	if !s.limiter.allow(c.IP, time.Now()) {
+		writeErr(w, 429, "rate_limited", "요청이 너무 많습니다. 잠시 후 다시 시도하세요.")
+		return
+	}
+	var req struct {
+		Current string `json:"current_password"`
+		New     string `json:"new_password"`
+	}
+	if err := readJSON(r, 4<<10, &req); err != nil {
+		writeBodyErr(w, err)
+		return
+	}
+	if n := len(req.New); n < 12 || n > 72 { // bcrypt reads at most 72 bytes
+		badRequest(w, "새 비밀번호는 12~72자(바이트)여야 합니다.")
+		return
+	}
+	var hash *string
+	if err := s.db.QueryRow(ctx, `select password_hash from users where id=$1`, c.User.ID).Scan(&hash); err != nil {
+		writeInternal(w, "password", err)
+		return
+	}
+	if hash == nil || bcrypt.CompareHashAndPassword([]byte(*hash), []byte(req.Current)) != nil {
+		s.audit(ctx, c, "auth.password_change_failed", nil, c.User.Username, nil)
+		badRequest(w, "현재 비밀번호가 올바르지 않습니다.")
+		return
+	}
+	nh, err := bcrypt.GenerateFromPassword([]byte(req.New), bcryptCost)
+	if err != nil {
+		writeInternal(w, "password hash", err)
+		return
+	}
+	var keep []byte
+	if ck, err := r.Cookie(sessionCookie); err == nil {
+		keep = tokenHash(ck.Value)
+	}
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `update users set password_hash=$2, failed_logins=0, locked_until=null where id=$1`, c.User.ID, string(nh)); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `delete from sessions where user_id=$1 and token_hash is distinct from $2`, c.User.ID, keep)
+		return err
+	})
+	if err != nil {
+		writeInternal(w, "password", err)
+		return
+	}
+	s.audit(ctx, c, "auth.password_change", nil, c.User.Username, nil)
 	w.WriteHeader(204)
 }
 

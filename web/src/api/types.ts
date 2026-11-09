@@ -29,7 +29,7 @@ export interface AuthConfig { sso_enabled: boolean; tz?: string }
 export interface LocalLoginRequest { username: string; password: string }
 export interface LocalLoginResponse { user: Me }
 export interface Me {
-  id: number; username: string; name: string; email: string; system_role: SystemRole; depts: string[]; groups: string[];
+  id: number; username: string; name: string; email: string; system_role: SystemRole; source: "local" | "sso"; depts: string[]; groups: string[];
 }
 export interface Principal { kind: "user" | "group"; principal: string; display: string }
 

@@ -116,3 +116,47 @@ func TestLoginRateLimiter(t *testing.T) {
 		t.Error("not refilled after 3s")
 	}
 }
+
+func TestMePassword(t *testing.T) {
+	s := testServer(t)
+	_, ck, _ := login(t, s, "admin", testBootstrapPassword)
+	_, other, _ := login(t, s, "admin", testBootstrapPassword)
+	pw := func(ck *http.Cookie, cur, nw string) int {
+		return do(t, s, "POST", "/api/v1/me/password", map[string]string{"current_password": cur, "new_password": nw}, ck).Code
+	}
+	if c := pw(ck, "wrong-password", "new-password-123"); c != 400 {
+		t.Fatalf("wrong current: %d", c)
+	}
+	if c := pw(ck, testBootstrapPassword, "short"); c != 400 {
+		t.Fatalf("short: %d", c)
+	}
+	if c := pw(ck, testBootstrapPassword, "new-password-123"); c != 204 {
+		t.Fatalf("change: %d", c)
+	}
+	if c := do(t, s, "GET", "/api/v1/me", nil, ck).Code; c != 200 {
+		t.Fatalf("this session ended: %d", c)
+	}
+	if c := do(t, s, "GET", "/api/v1/me", nil, other).Code; c != 401 {
+		t.Fatalf("other session kept: %d", c)
+	}
+	if code, _, _ := login(t, s, "admin", testBootstrapPassword); code != 401 {
+		t.Fatal("old password still works")
+	}
+	if code, _, _ := login(t, s, "admin", "new-password-123"); code != 200 {
+		t.Fatal("new password refused")
+	}
+	if n := auditCount(t, s, "auth.password_change"); n != 1 {
+		t.Fatalf("audit %d", n)
+	}
+	// a restart with the bootstrap password set never resets the changed password
+	if _, err := newServer(context.Background(), s.cfg, s.db); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ := login(t, s, "admin", "new-password-123"); code != 200 {
+		t.Fatal("restart reset the admin password")
+	}
+	// SSO users have no local password
+	if c := pw(loginAs(t, s, mkUser(t, s, "bob", "")), "x", "new-password-123"); c != 403 {
+		t.Fatalf("sso user: %d", c)
+	}
+}

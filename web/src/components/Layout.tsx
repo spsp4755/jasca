@@ -4,7 +4,12 @@ import { useAuthConfig, useLogout, useMe } from "../api/hooks";
 import type { Me } from "../api/types";
 import { useHotkeys } from "../lib/hotkeys";
 import { getTheme, setTheme, type ThemeMode } from "../lib/theme";
+import { useMutation } from "@tanstack/react-query";
+import { ApiError, api } from "../api/client";
 import Button from "./Button";
+import Dialog from "./Dialog";
+import Field from "./Field";
+import { useToast } from "./Toast";
 import Icon, { type IconName } from "./Icon";
 import ShortcutHelp from "./ShortcutHelp";
 import Sidebar from "./Sidebar";
@@ -102,6 +107,7 @@ function ThemeButton() {
 
 function UserMenu({ me }: { me: Me }) {
   const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const logout = useLogout();
   useEffect(() => {
@@ -129,11 +135,46 @@ function UserMenu({ me }: { me: Me }) {
               {me.depts.slice(0, 2).map((d) => <span key={d} className="tag tag-quiet" title={d}>{d.split("/").pop()}</span>)}
             </p>
           </div>
+          {me.source === "local" && (
+            <button type="button" className="menu-item" onClick={() => { setOpen(false); setPw(true); }}>
+              <Icon name="key" />비밀번호 바꾸기
+            </button>
+          )}
           <button type="button" className="menu-item" onClick={() => logout.mutate()} disabled={logout.isPending}>
             <Icon name="logout" />로그아웃
           </button>
         </div>
       )}
+      <PasswordDialog open={pw} onClose={() => setPw(false)} />
     </div>
+  );
+}
+
+/** Local accounts only (the bootstrap admin); SSO users change theirs in Keycloak. */
+function PasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const toast = useToast();
+  const [cur, setCur] = useState("");
+  const [nw, setNw] = useState("");
+  const [again, setAgain] = useState("");
+  const close = () => { setCur(""); setNw(""); setAgain(""); change.reset(); onClose(); };
+  const change = useMutation<void, ApiError>({
+    mutationFn: () => api.post<void>("/me/password", { current_password: cur, new_password: nw }),
+    onSuccess: () => { toast("비밀번호를 바꿨습니다. 다른 기기의 로그인은 끝났습니다.", "ok"); close(); },
+  });
+  const bytes = new TextEncoder().encode(nw).length;
+  const nwErr = nw && (bytes < 12 || bytes > 72) ? "12~72자(바이트)로 정하세요." : undefined;
+  const againErr = again && again !== nw ? "새 비밀번호와 같지 않습니다." : undefined;
+  const ok = cur && nw && !nwErr && again === nw;
+  return (
+    <Dialog open={open} onClose={close} title="비밀번호 바꾸기" description="바꾸면 이 브라우저를 뺀 다른 로그인은 모두 끝납니다."
+      footer={<><Button onClick={close}>취소</Button><Button variant="primary" disabled={!ok} loading={change.isPending} onClick={() => change.mutate()}>바꾸기</Button></>}>
+      <form className="stack" onSubmit={(e) => { e.preventDefault(); if (ok) change.mutate(); }}>
+        <Field label="현재 비밀번호" required><input className="input" type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} /></Field>
+        <Field label="새 비밀번호" required error={nwErr} hint={nwErr ? undefined : "12~72자"}><input className="input" type="password" autoComplete="new-password" value={nw} onChange={(e) => setNw(e.target.value)} /></Field>
+        <Field label="새 비밀번호 확인" required error={againErr}><input className="input" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} /></Field>
+        {change.error && <div className="alert alert-danger" role="alert" style={{ margin: 0 }}>{change.error.message}</div>}
+        <button type="submit" hidden />
+      </form>
+    </Dialog>
   );
 }

@@ -58,6 +58,7 @@ type user struct {
 	Name       string   `json:"name"`
 	Email      string   `json:"email"`
 	SystemRole string   `json:"system_role"`
+	Source     string   `json:"source"` // local | sso
 	Depts      []string `json:"depts"`
 	Groups     []string `json:"groups"`
 }

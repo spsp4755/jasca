@@ -139,10 +139,10 @@ func (s *server) authenticate(r *http.Request, c *reqCtx) (err error) {
 
 func (s *server) loadUser(ctx context.Context, id int64) (*user, error) {
 	u := &user{}
-	err := s.db.QueryRow(ctx, `select id, username, name, email, system_role,
+	err := s.db.QueryRow(ctx, `select id, username, name, email, system_role, source,
 			array(select path from user_depts where user_id=u.id order by path),
 			array(select path from user_groups where user_id=u.id order by path)
-		from users u where id=$1`, id).Scan(&u.ID, &u.Username, &u.Name, &u.Email, &u.SystemRole, &u.Depts, &u.Groups)
+		from users u where id=$1`, id).Scan(&u.ID, &u.Username, &u.Name, &u.Email, &u.SystemRole, &u.Source, &u.Depts, &u.Groups)
 	if err != nil {
 		return nil, err
 	}
