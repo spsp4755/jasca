@@ -3,23 +3,32 @@
 # Usage: sh scripts/check-forbidden.sh [image:tag]
 set -eu
 LIST=${FORBIDDEN_WORDS:-$HOME/.config/jasca/forbidden-words.txt}
-[ -s "$LIST" ] || { echo "forbidden-words list missing or empty: $LIST" >&2; exit 1; }
+{ [ -f "$LIST" ] && grep -q '[^[:space:]]' "$LIST"; } || { echo "forbidden-words list missing or empty: $LIST" >&2; exit 1; }
 cd "$(dirname "$0")/.."
+# blank lines would match everything under grep -F, so use a cleaned copy
+CLEAN=$(mktemp); trap 'rm -f "$CLEAN"' EXIT
+grep '[^[:space:]]' "$LIST" > "$CLEAN"; LIST=$CLEAN
 fail=0
-hits=$(git ls-files -z | xargs -0 grep -nIiF -f "$LIST" 2>/dev/null || true)
-[ -z "$hits" ] || { echo "tracked files:"; echo "$hits"; fail=1; }
-if [ -d web/dist ]; then
-  hits=$(grep -rnIiF -f "$LIST" web/dist 2>/dev/null || true)
-  [ -z "$hits" ] || { echo "web/dist:"; echo "$hits"; fail=1; }
-fi
+# grep exit 1 = no match (fine); >=2 = error (fail). Prints matches on stdout.
+scan() {
+  rc=0; out=$("$@") || rc=$?
+  [ "$rc" -le 1 ] || { echo "grep failed (exit $rc): $*" >&2; exit 1; }
+  [ -z "$out" ] || { echo "$LABEL:"; echo "$out"; fail=1; }
+}
+LABEL="tracked files"; scan git grep -nIiF -f "$LIST"
+if [ -d web/dist ]; then LABEL="web/dist"; scan grep -rnIiF -f "$LIST" web/dist; fi
 if [ -n "${1:-}" ]; then
-  # a scratch image cannot be run or listed, so unpack the layers and grep the text files
-  tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+  # a scratch image cannot be run or listed, so unpack the layers named in manifest.json (legacy and OCI-layout saves) and grep the text files
+  tmp=$(mktemp -d); trap 'rm -rf "$tmp" "$CLEAN"' EXIT
   mkdir "$tmp/img" "$tmp/fs"
   "${CONTAINER_ENGINE:-docker}" save "$1" | tar -x -C "$tmp/img"
-  for l in $(find "$tmp/img" -type f \( -name layer.tar -o -name '*.tar' \)); do tar -x -C "$tmp/fs" -f "$l" 2>/dev/null || true; done
-  hits=$(grep -rnIiF -f "$LIST" "$tmp/fs" "$tmp/img" 2>/dev/null | sed "s#$tmp/##" || true)
-  [ -z "$hits" ] || { echo "image $1:"; echo "$hits"; fail=1; }
+  n=0
+  for l in $(python3 -I -c 'import json,sys;[print(x) for m in json.load(open(sys.argv[1])) for x in m["Layers"]]' "$tmp/img/manifest.json"); do
+    tar -x -C "$tmp/fs" -f "$tmp/img/$l" 2>/dev/null || true # device nodes and the like cannot be extracted unprivileged
+    n=$((n+1))
+  done
+  [ "$n" -gt 0 ] && [ -n "$(ls -A "$tmp/fs")" ] || { echo "image $1: no layers extracted, cannot scan" >&2; exit 1; }
+  LABEL="image $1"; scan sh -c 'grep -rnIiF -f "$1" "$2" "$3" | sed "s#^$4/##"' _ "$LIST" "$tmp/fs" "$tmp/img" "$tmp"
 fi
 [ "$fail" -eq 0 ] || exit 1
 echo "forbidden-words check: clean"
