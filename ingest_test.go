@@ -408,14 +408,13 @@ func TestSeverityIsPerFinding(t *testing.T) {
 	if a.Summary["low"] != 1 || b.Summary["high"] != 1 {
 		t.Errorf("summaries %v %v", a.Summary, b.Summary)
 	}
-	// a newer record replaces the shared text (but never blanks a field), and never a finding's severity
+	// uploads only fill empty fields: a newer or older record never replaces the shared text
 	mustUpload(t, s, "web", "", trivyDoc("C", []tv{{ID: z, Sev: "CRITICAL", Title: "newer title", Modified: "2025-01-01T00:00:00Z"}}, nil), ck)
-	if title, desc, mod := catalog(); title != "newer title" || desc != "filled later" || mod != "2025" {
+	if title, desc, mod := catalog(); title != "first title" || desc != "filled later" || mod != "2024" {
 		t.Errorf("catalog after newer record %q %q %s", title, desc, mod)
 	}
-	// an older record changes nothing
 	mustUpload(t, s, "web", "", trivyDoc("D", []tv{{ID: z, Title: "stale title", Modified: "2023-01-01T00:00:00Z"}}, nil), ck)
-	if title, _, mod := catalog(); title != "newer title" || mod != "2025" {
+	if title, _, mod := catalog(); title != "first title" || mod != "2024" {
 		t.Errorf("catalog after older record %q %s", title, mod)
 	}
 	if sev(a.TargetID) != "LOW" || sev(b.TargetID) != "HIGH" {
@@ -622,4 +621,22 @@ func TestPostCommitSurvivesCancel(t *testing.T) {
 	u := mkUser(t, s, "dev2", "")
 	addMember(t, s, pid, "user", itoa(u.ID), "member")
 	mustUpload(t, s, "web", "", trivyDoc("A", nil, nil), loginAs(t, s, u))
+}
+
+// No uploader can rewrite the shared catalog text for every project, and a future date is dropped.
+func TestCatalogCannotBePoisoned(t *testing.T) {
+	e := newExEnv(t)
+	e.project(t, "pa")
+	_, bck, _ := e.project(t, "pb")
+	mustUpload(t, e.s, "pb", "target=app&kind=fs", trivyDoc("app", []tv{{ID: "CVE-2024-7777", Title: "real", Desc: "real", Modified: "2026-10-01T00:00:00Z"}}, nil), bck)
+	mustUpload(t, e.s, "pb", "target=app&kind=fs", trivyDoc("app", []tv{{ID: "CVE-2024-7777", Title: "evil", Desc: "go to http://evil", Modified: "9999-01-01T00:00:00Z"}}, nil), bck)
+	var title, desc string
+	e.s.db.QueryRow(context.Background(), `select title, description from vulns where id='CVE-2024-7777'`).Scan(&title, &desc)
+	if title != "real" || desc != "real" {
+		t.Errorf("catalog text replaced: %q %q", title, desc)
+	}
+	mustUpload(t, e.s, "pb", "target=app&kind=fs", trivyDoc("app", []tv{{ID: "CVE-2024-8888", Title: "t", Modified: "9999-01-01T00:00:00Z"}}, nil), bck)
+	if n := qInt(t, e.s, `select count(*) from vulns where last_modified_at > now() or published_at > now()`); n != 0 {
+		t.Errorf("%d catalog rows keep a future date", n)
+	}
 }

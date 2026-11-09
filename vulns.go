@@ -18,24 +18,30 @@ func (s *server) vulnRoutes() {
 	s.handle("GET /api/v1/vulns/{id}", permUser, s.handleVulnGet)
 }
 
-// vulnUpsertSQL adds a catalog row or merges into it. A record with a newer last_modified_at replaces each field it
-// has; an older or undated one only fills empty fields. The catalog holds no severity: that is per finding.
+// vulnUpsertSQL adds a catalog row or fills its empty fields; it never replaces stored text, because any project's
+// upload writes here and the text is shown to (and given to the AI for) everyone. The catalog holds no severity.
 var vulnUpsertSQL = func() string {
-	newer := `excluded.last_modified_at > coalesce(vulns.last_modified_at, '-infinity')`
-	sets := []string{`last_modified_at = greatest(vulns.last_modified_at, excluded.last_modified_at)`}
+	sets := []string{}
 	for _, c := range []struct{ col, empty string }{{"title", "''"}, {"description", "''"}, {"cvss_vector", "''"},
-		{"refs", "'{}'"}, {"cwe_ids", "'{}'"}, {"cvss_score", ""}, {"published_at", ""}} {
-		in, cur := "excluded."+c.col, "vulns."+c.col
+		{"refs", "'{}'"}, {"cwe_ids", "'{}'"}, {"cvss_score", ""}, {"published_at", ""}, {"last_modified_at", ""}} {
+		cur := "vulns." + c.col
 		if c.empty != "" {
-			in, cur = "nullif("+in+", "+c.empty+")", "nullif("+cur+", "+c.empty+")"
+			cur = "nullif(" + cur + ", " + c.empty + ")"
 		}
-		sets = append(sets, fmt.Sprintf("%[1]s = case when %[2]s then coalesce(%[3]s, vulns.%[1]s) else coalesce(%[4]s, excluded.%[1]s) end",
-			c.col, newer, in, cur))
+		sets = append(sets, fmt.Sprintf("%[1]s = coalesce(%[2]s, excluded.%[1]s)", c.col, cur))
 	}
 	return `insert into vulns(id, title, description, cvss_score, cvss_vector, refs, cwe_ids, published_at, last_modified_at)
 		values($1, $2, $3, $4, $5, coalesce($6::text[], '{}'), coalesce($7::text[], '{}'), $8, $9)
 		on conflict (id) do update set ` + strings.Join(sets, ", ")
 }()
+
+// pastOnly drops a date in the future: an uploaded report's dates are not trusted.
+func pastOnly(t *time.Time) *time.Time {
+	if t != nil && t.After(time.Now()) {
+		return nil
+	}
+	return t
+}
 
 // upsertVulns gives every vuln finding's id a catalog row.
 func upsertVulns(ctx context.Context, tx pgx.Tx, fs []formats.Finding) error {
@@ -51,7 +57,7 @@ func upsertVulns(ctx context.Context, tx pgx.Tx, fs []formats.Finding) error {
 		if v == nil {
 			v = &formats.VulnInfo{}
 		}
-		b.Queue(vulnUpsertSQL, ids[i], v.Title, v.Description, v.CVSSScore, v.CVSSVector, v.Refs, v.CWEs, v.Published, v.Modified)
+		b.Queue(vulnUpsertSQL, ids[i], v.Title, v.Description, v.CVSSScore, v.CVSSVector, v.Refs, v.CWEs, pastOnly(v.Published), pastOnly(v.Modified))
 	})
 }
 
