@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Button from "../../components/Button";
 import Field from "../../components/Field";
@@ -10,6 +10,8 @@ export function SecretField({ label, isSet, value, onChange, hint }: {
   label: string; isSet: boolean; value: string; onChange: (v: string) => void; hint?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
+  // the page clears the value after a save (or the user empties it): either way the stored secret stays, so show "설정됨"
+  useEffect(() => { if (!value) setEditing(false); }, [value]);
   if (isSet && !editing) {
     return (
       <div className="field">

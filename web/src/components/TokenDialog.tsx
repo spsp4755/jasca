@@ -40,7 +40,7 @@ export default function TokenDialog({ open, onClose, projectKey }: { open: boole
 
   if (token) {
     return (
-      <Dialog open={open} onClose={close} title="토큰을 만들었습니다" size="md"
+      <Dialog open={open} onClose={close} title="토큰을 만들었습니다" size="md" dismissable={false}
         footer={<Button variant="primary" onClick={close}>복사했습니다, 닫기</Button>}>
         <div className="alert alert-warn" role="alert" style={{ margin: 0 }}>
           <Icon name="alert" />이 토큰은 지금 한 번만 보입니다. 창을 닫으면 다시 볼 수 없으니 CI 비밀 변수에 바로 저장하세요.

@@ -3,10 +3,11 @@ import Icon from "./Icon";
 
 /**
  * Modal on the native <dialog>: focus is trapped and Esc closes it (cancel -> onClose).
- * A click on the backdrop closes it too. Put the buttons in `footer`.
+ * A click on the backdrop closes it too. Put the buttons in `footer`. `dismissable={false}` keeps it open on Esc and
+ * backdrop clicks (for content that is lost on close, like a new token); the buttons still close it.
  */
-export default function Dialog({ open, onClose, title, description, children, footer, size = "md" }: {
-  open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children?: ReactNode; footer?: ReactNode;
+export default function Dialog({ open, onClose, title, description, children, footer, size = "md", dismissable = true }: {
+  open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children?: ReactNode; footer?: ReactNode; dismissable?: boolean;
   size?: "sm" | "md" | "lg" | "drawer"; // drawer: full-height panel on the right
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -20,8 +21,8 @@ export default function Dialog({ open, onClose, title, description, children, fo
   return (
     <dialog ref={ref} className={`dialog dialog-${size}`} aria-labelledby={`${id}-t`} aria-describedby={description ? `${id}-d` : undefined}
       aria-modal={open ? "true" : undefined}
-      onCancel={(e) => { e.preventDefault(); onClose(); }}
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      onCancel={(e) => { e.preventDefault(); if (dismissable) onClose(); }}
+      onMouseDown={(e) => { if (dismissable && e.target === e.currentTarget) onClose(); }}>
       {open && (
         <div className="dialog-inner">
           <header className="dialog-head">

@@ -107,7 +107,7 @@ function UploadTab({ projects }: { projects: Project[] }) {
         <div className={`dropzone${over ? " over" : ""}`} role="button" tabIndex={0} aria-label="파일 선택"
           onClick={() => input.current?.click()} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), input.current?.click())}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={drop}>
-          {file ? <><strong>{file.name}</strong> <span className="muted">({(file.size / 1048576).toFixed(1)} MB)</span></> : "여기에 파일을 끌어다 놓거나 눌러서 선택하세요."}
+          {file ? <><strong>{file.name}</strong> <span className="muted">({(file.size / 1048576).toFixed(1)} MB)</span></> : "여기에 파일을 끌어다 놓거나 눌러서 선택하세요. (기본 최대 2GB)"}
           <input ref={input} type="file" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </div>
         {uploading && (

@@ -26,8 +26,8 @@ function inline(text: string, key: string): ReactNode[] {
 const cells = (row: string) => row.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
 const isTableSep = (row = "") => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(row);
 
-export function renderMarkdown(src: string): ReactNode {
-  const lines = src.replace(/\r\n?/g, "\n").split("\n");
+export function renderMarkdown(src: string | null | undefined): ReactNode {
+  const lines = (src ?? "").replace(/\r\n?/g, "\n").split("\n");
   const blocks: ReactNode[] = [];
   let i = 0;
   const key = () => `b${blocks.length}`;
