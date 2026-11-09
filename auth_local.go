@@ -25,7 +25,15 @@ var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("jasca-dummy-password"), b
 func (s *server) authLocalRoutes() {
 	s.handle("POST /api/v1/auth/local", permPublic, s.handleLocalLogin)
 	s.handle("POST /api/v1/auth/logout", permUser, s.handleLogout)
-	s.handle("GET /api/v1/me", permUser, func(w http.ResponseWriter, r *http.Request, c *reqCtx) { writeJSON(w, 200, c.User) })
+	s.handle("GET /api/v1/me", permUser, func(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+		u := *c.User
+		var err error
+		if u.Groups, u.Depts, err = s.groupsFor(r.Context(), u.ID); err != nil { // parents expanded, R4a applied
+			writeInternal(w, "me", err)
+			return
+		}
+		writeJSON(w, 200, u)
+	})
 }
 
 // bootstrapAdmin creates the local admin on an empty database. A later start never changes its password.
