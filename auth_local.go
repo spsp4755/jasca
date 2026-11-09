@@ -115,7 +115,10 @@ func (s *server) handleLocalLogin(w http.ResponseWriter, r *http.Request, c *req
 		writeInternal(w, "login session", err)
 		return
 	}
-	if c.User, err = s.loadUser(ctx, id); err != nil {
+	if c.User, err = s.loadUser(ctx, id); err == nil {
+		c.User.Groups, c.User.Depts, err = s.groupsFor(ctx, id) // the same expanded view as /me
+	}
+	if err != nil {
 		writeInternal(w, "login user", err)
 		return
 	}

@@ -109,6 +109,10 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if secure(r) {
 		h.Set("Strict-Transport-Security", "max-age=31536000")
 	}
+	if _, pattern := s.mux.Handler(r); pattern == "" && strings.HasPrefix(r.URL.Path, "/api/") {
+		writeErr(w, 405, "method_not_allowed", "이 주소는 이 요청 방식을 지원하지 않습니다.") // the mux would answer in plain text
+		return
+	}
 	s.mux.ServeHTTP(w, r)
 }
 
@@ -194,7 +198,7 @@ func readJSON(r *http.Request, max int64, v any) error {
 	if err := dec.Decode(v); err != nil {
 		return err
 	}
-	if dec.More() {
+	if _, err := dec.Token(); err != io.EOF {
 		return errors.New("trailing data after JSON body")
 	}
 	return nil

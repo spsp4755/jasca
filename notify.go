@@ -183,7 +183,7 @@ func (m notifyMsg) mattermostText() string {
 	for _, l := range lines[1:] {
 		b.WriteString(strings.NewReplacer("@", "@​", "`", "'").Replace(l) + "\n")
 	}
-	return strings.ReplaceAll(b.String(), "@​", "@​")
+	return b.String()
 }
 
 // --- sending ---
@@ -234,7 +234,7 @@ func (s *server) sendChannel(ctx context.Context, kind string, cfg []byte, m not
 			return errors.New("Webhook URL 형식이 올바르지 않습니다.")
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := (&http.Client{Timeout: sendTimeout}).Do(req)
+		resp, err := (&http.Client{Timeout: sendTimeout, CheckRedirect: noRedirect}).Do(req)
 		if err != nil {
 			if e := sendErr(err); e != err {
 				return e

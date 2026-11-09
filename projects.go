@@ -111,7 +111,11 @@ func (s *server) handleProjectList(w http.ResponseWriter, r *http.Request, c *re
 
 func (s *server) writeProject(w http.ResponseWriter, r *http.Request, c *reqCtx, status int) {
 	list, err := s.projectViews(r.Context(), c.User, c.Project.ID)
-	if err != nil || len(list) != 1 {
+	if err == nil && len(list) != 1 { // deleted while this request ran
+		writeErr(w, 404, "not_found", "찾을 수 없습니다.")
+		return
+	}
+	if err != nil {
 		writeInternal(w, "project get", err)
 		return
 	}

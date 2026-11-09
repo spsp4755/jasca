@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"time"
@@ -141,6 +142,9 @@ func (s *server) memberPaths(ctx context.Context, userID int64) ([]string, error
 //	cond, args := s.visibleProjectsSQL(c.User, "f", 2)
 //	rows, err := s.db.Query(ctx, `select ... from findings f where f.status = $1 and `+cond, append([]any{"open"}, args...)...)
 func (s *server) visibleProjectsSQL(u *user, alias string, argN int) (cond string, args []any) {
+	if !sqlAliasRe.MatchString(alias) {
+		panic("visibleProjectsSQL: bad alias " + alias)
+	}
 	switch {
 	case u == nil:
 		return "false", nil
@@ -254,5 +258,7 @@ func (s *server) authorize(w http.ResponseWriter, r *http.Request, p perm, c *re
 	c.Project, c.Role = pr, role
 	return true
 }
+
+var sqlAliasRe = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }

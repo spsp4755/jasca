@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -263,5 +264,22 @@ func TestWebFallback(t *testing.T) {
 	rec = do(t, s, "GET", "/api/v1/nosuch", nil)
 	if rec.Code != 404 || errCode(t, rec) != "not_found" {
 		t.Errorf("unknown api: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAPIErrorsAreJSON(t *testing.T) {
+	s := testServer(t)
+	if rec := do(t, s, "DELETE", "/api/v1/me", nil); rec.Code != 405 || errCode(t, rec) != "method_not_allowed" {
+		t.Fatalf("wrong method: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(t, s, "GET", "/api/v1/nope", nil); rec.Code != 404 || errCode(t, rec) != "not_found" {
+		t.Fatalf("unknown: %d %s", rec.Code, rec.Body.String())
+	}
+	req := httptest.NewRequest("POST", "/api/v1/auth/local", strings.NewReader(`{"username":"a","password":"b"}]`))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != 400 {
+		t.Fatalf("trailing data accepted: %d %s", rec.Code, rec.Body.String())
 	}
 }

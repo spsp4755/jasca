@@ -38,7 +38,10 @@ func (s *server) harborRoutes() {
 	s.handle("POST /api/v1/hooks/harbor/{id}", permPublic, s.handleHarborHook)
 }
 
-var harborHTTP = &http.Client{Timeout: 30 * time.Second}
+var harborHTTP = &http.Client{Timeout: 30 * time.Second, CheckRedirect: noRedirect}
+
+// noRedirect: outbound calls carry credentials, so a redirect to another host is never followed.
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 type harborLinkBody struct {
 	Name, BaseURL, RobotUser, RobotSecret string
@@ -402,6 +405,10 @@ func (s *server) handleHarborHook(w http.ResponseWriter, r *http.Request, c *req
 	var want []byte
 	if err == nil {
 		err = s.db.QueryRow(ctx, `select webhook_secret_hash from harbor_links where id=$1`, id).Scan(&want)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			writeInternal(w, "harbor hook", err) // a DB failure is ours, not a bad secret: Harbor should retry
+			return
+		}
 	}
 	got := sha256.Sum256([]byte(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")))
 	if err != nil {

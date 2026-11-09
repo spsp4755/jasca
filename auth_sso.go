@@ -331,10 +331,11 @@ func (s *server) ssoUpsert(ctx context.Context, sub, username, name, email, role
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		var source string
 		var fromSSO bool
-		const cols = `select id, source, active, system_role, role_from_sso from users `
-		e := tx.QueryRow(ctx, cols+`where oidc_sub=$1 for update`, sub).Scan(&id, &source, &active, &before, &fromSSO)
+		var bySync bool
+		const cols = `select id, source, active, system_role, role_from_sso, disabled_by_sync from users `
+		e := tx.QueryRow(ctx, cols+`where oidc_sub=$1 for update`, sub).Scan(&id, &source, &active, &before, &fromSSO, &bySync)
 		if errors.Is(e, pgx.ErrNoRows) {
-			e = tx.QueryRow(ctx, cols+`where username=$1 for update`, username).Scan(&id, &source, &active, &before, &fromSSO)
+			e = tx.QueryRow(ctx, cols+`where username=$1 for update`, username).Scan(&id, &source, &active, &before, &fromSSO, &bySync)
 		}
 		if errors.Is(e, pgx.ErrNoRows) {
 			before, after, active = "", role, true
@@ -351,7 +352,11 @@ func (s *server) ssoUpsert(ctx context.Context, sub, username, name, email, role
 		if fromSSO {
 			after = role
 		}
-		_, e = tx.Exec(ctx, `update users set username=$2, name=$3, email=$4, oidc_sub=$5, system_role=$6, last_login_at=now() where id=$1`,
+		if bySync && !active { // the sync disabled it, and this Keycloak login proves Keycloak enabled it again
+			active = true
+		}
+		_, e = tx.Exec(ctx, `update users set username=$2, name=$3, email=$4, oidc_sub=$5, system_role=$6, last_login_at=now(),
+			active = active or disabled_by_sync, disabled_by_sync = false where id=$1`,
 			id, username, name, email, sub, after)
 		return e
 	})

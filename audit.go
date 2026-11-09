@@ -106,7 +106,7 @@ func (s *server) audit(ctx context.Context, c *reqCtx, action string, projectID 
 	if details == nil {
 		details = map[string]any{}
 	}
-	_, err := s.db.Exec(ctx, `insert into audit_log(actor_user, actor_token, ip, action, project_id, target, details)
+	_, err := s.db.Exec(context.WithoutCancel(ctx), `insert into audit_log(actor_user, actor_token, ip, action, project_id, target, details)
 		values($1, $2, $3, $4, $5, $6, $7)`, userID, tokenID, ip, action, projectID, target, details)
 	if err != nil {
 		log.Printf("audit %s: %v", action, err)
