@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-11-09T01:02:03.000Z",
+  "artifact": {"repository": "library/web", "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "tags": ["1.4.2"], "mime_type": "application/vnd.docker.distribution.manifest.v2+json"},
+  "scanner": {"name": "Trivy", "vendor": "Aqua Security", "version": "0.76.1"},
+  "severity": "Critical",
+  "vulnerabilities": [
+    {"id": "CVE-2022-37434", "package": "zlib", "version": "1.2.12-r0", "fix_version": "1.2.12-r2", "severity": "Critical",
+     "description": "zlib through 1.2.12 has a heap-based buffer over-read or buffer overflow in inflate.",
+     "links": ["https://avd.aquasec.com/nvd/cve-2022-37434"],
+     "preferred_cvss": {"score_v3": 9.8, "vector_v3": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},
+     "cwe_ids": ["CWE-787", "CWE-120"]},
+    {"id": "CVE-2021-23337", "package": "lodash", "version": "4.17.20", "fix_version": "4.17.21", "severity": "High",
+     "description": "Command injection via template.", "links": [], "cwe_ids": ["CWE-77"]},
+    {"id": "CVE-2020-00001", "package": "busybox", "version": "1.31.1", "fix_version": "", "severity": "Negligible",
+     "description": "Minor issue.", "links": []}
+  ]
+}
