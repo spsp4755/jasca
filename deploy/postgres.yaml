@@ -1,0 +1,123 @@
+# 전용 PostgreSQL이 필요할 때만 적용합니다. 사내 DB를 쓰면 이 파일 대신 jasca-config의 JASCA_DATABASE_URL과
+# jasca-postgres-secrets(POSTGRES_PASSWORD)를 준비하세요. 워커에 postgres-v17.11-jasca1.tar.gz를 반입하세요.
+# 프로젝트·스캔 결과·사용자 데이터가 모두 이 DB에 저장됩니다. DB PVC는 절대 삭제하지 마세요.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jasca-postgres-secrets
+  namespace: jasca
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: "CHANGE_ME"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jasca-postgres
+  namespace: jasca
+spec:
+  clusterIP: None
+  selector: { app: jasca-postgres }
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jasca-postgres
+  namespace: jasca
+spec:
+  serviceName: jasca-postgres
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels: { app: jasca-postgres }
+  template:
+    metadata:
+      labels: { app: jasca-postgres }
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector: { kubernetes.io/os: linux, kubernetes.io/arch: amd64 }
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: postgres
+          image: postgres:v17.11-jasca1
+          imagePullPolicy: IfNotPresent
+          # 앱↔DB 구간 암호화: 시작할 때 이 Pod 전용 자체서명 인증서를 만들어 TLS를 켭니다. 키는 Pod가 지워지면 함께 사라지는 /tmp(emptyDir)에만 있습니다.
+          command: [sh, -c]
+          args:
+            - |
+              set -e
+              openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj /CN=jasca-postgres -keyout /tmp/tls.key -out /tmp/tls.crt 2>/dev/null
+              chmod 600 /tmp/tls.key
+              exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/tls.crt -c ssl_key_file=/tmp/tls.key
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          env:
+            - { name: POSTGRES_USER, value: jasca }
+            - { name: POSTGRES_DB, value: jasca }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: jasca-postgres-secrets, key: POSTGRES_PASSWORD }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          startupProbe:
+            exec: { command: [pg_isready, -h, 127.0.0.1, -U, jasca, -d, jasca] }
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            exec: { command: [pg_isready, -h, 127.0.0.1, -U, jasca, -d, jasca] }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec: { command: [pg_isready, -h, 127.0.0.1, -U, jasca, -d, jasca] }
+            periodSeconds: 30
+            timeoutSeconds: 5
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        # storageClassName: your-block-storage-class
+        resources:
+          requests: { storage: 20Gi }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jasca-postgres
+  namespace: jasca
+spec:
+  podSelector:
+    matchLabels: { app: jasca-postgres }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app, operator: In, values: [jasca] }
+      ports:
+        - { protocol: TCP, port: 5432 }
