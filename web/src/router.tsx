@@ -1,8 +1,13 @@
 import { createBrowserRouter, type RouteObject } from "react-router-dom";
-import Empty from "./components/Empty";
 import Layout from "./components/Layout";
-import PageHeader from "./components/PageHeader";
 import Home from "./pages/Home";
+// Task 16: projects, findings, vulns, scans
+import Findings from "./pages/Findings";
+import ProjectDetail from "./pages/ProjectDetail";
+import Projects from "./pages/Projects";
+import Scan from "./pages/Scan";
+import Vuln from "./pages/Vuln";
+import "./styles/pages.css";
 // admin
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminAI from "./pages/admin/AI";
@@ -25,24 +30,14 @@ import ScanNew from "./pages/ScanNew";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
-/** Stand-in until the page's task lands; replace the element in `pages` below. */
-function Soon({ title }: { title: string }) {
-  return (
-    <>
-      <PageHeader title={title} />
-      <div className="panel"><Empty icon="clock" title="준비 중" description="이 화면은 곧 추가됩니다." /></div>
-    </>
-  );
-}
-
 // Signed-in pages (rendered inside Layout). Add a route here and, for top-level sections, an entry in Sidebar NAV.
 export const pages: RouteObject[] = [
   { index: true, element: <Home /> },
-  { path: "projects", element: <Soon title="프로젝트" /> },
-  { path: "projects/:key/*", element: <Soon title="프로젝트" /> },
-  { path: "findings", element: <Soon title="취약점" /> },
-  { path: "vulns/:id", element: <Soon title="취약점 상세" /> },
-  { path: "scans/:id", element: <Soon title="스캔 상세" /> },
+  { path: "projects", element: <Projects /> },
+  { path: "projects/:key/*", element: <ProjectDetail /> },
+  { path: "findings", element: <Findings /> },
+  { path: "vulns/:id", element: <Vuln /> },
+  { path: "scans/:id", element: <Scan /> },
   { path: "scan", element: <ScanNew /> },
   { path: "exceptions", element: <Exceptions /> },
   { path: "exceptions/approvals", element: <Exceptions /> },

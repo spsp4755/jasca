@@ -7,7 +7,7 @@ import Icon from "./Icon";
  */
 export default function Dialog({ open, onClose, title, description, children, footer, size = "md" }: {
   open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children?: ReactNode; footer?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "drawer"; // drawer: full-height panel on the right
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
