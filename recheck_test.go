@@ -257,6 +257,7 @@ func TestRecheckRealTrivy(t *testing.T) {
 	pid := mkProject(t, s, "web")
 	img := seedInventory(t, s, pid, "image", "alpine", "trivy/image-alpine.json", false)
 	src := seedInventory(t, s, pid, "fs", "web-src", "trivy/fs-mixed.json", false)
+	deb := seedInventory(t, s, pid, "image", "debian", "trivy/image-debian.json", false)
 	if _, err := s.startRecheck(ctx, "manual"); err != nil {
 		t.Fatal(err)
 	}
@@ -283,6 +284,12 @@ func TestRecheckRealTrivy(t *testing.T) {
 			t.Fatalf("target %d: %s on %s not found again by recheck (%v)", tid, f.RuleID, f.PkgName, err)
 		}
 		t.Logf("recheck found %s %s path=%q", f.RuleID, f.PkgName, path)
+	}
+	// Debian advisories are keyed by the source package (openssl), which the CycloneDX must carry
+	if n := qInt(t, s, `select count(*) from findings where target_id=$1 and pkg_name='libssl1.1' and origin='recheck'`, deb); n == 0 {
+		t.Fatal("recheck found nothing for libssl1.1 on debian: source package not passed to trivy")
+	} else {
+		t.Logf("debian libssl1.1 recheck findings: %d", n)
 	}
 	t.Logf("recheck findings: %d", qInt(t, s, `select count(*) from findings where origin='recheck'`))
 }

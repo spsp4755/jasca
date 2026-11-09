@@ -1,0 +1,75 @@
+{
+ "SchemaVersion": 2,
+ "ArtifactName": "debian:11-slim",
+ "ArtifactType": "container_image",
+ "Metadata": {
+  "OS": {
+   "Family": "debian",
+   "Name": "11.11",
+   "EOSL": true
+  }
+ },
+ "Results": [
+  {
+   "Target": "debian:11-slim (debian 11.11)",
+   "Class": "os-pkgs",
+   "Type": "debian",
+   "Packages": [
+    {
+     "ID": "libssl1.1@1.1.1w-0+deb11u8",
+     "Name": "libssl1.1",
+     "Identifier": {
+      "PURL": "pkg:deb/debian/libssl1.1@1.1.1w-0%2Bdeb11u8?arch=amd64&distro=debian-11.11"
+     },
+     "Version": "1.1.1w",
+     "Release": "0+deb11u8",
+     "Arch": "amd64",
+     "SrcName": "openssl",
+     "SrcVersion": "1.1.1w",
+     "SrcRelease": "0+deb11u8"
+    },
+    {
+     "ID": "zlib1g@1:1.2.11.dfsg-2+deb11u2",
+     "Name": "zlib1g",
+     "Identifier": {
+      "PURL": "pkg:deb/debian/zlib1g@1.2.11.dfsg-2%2Bdeb11u2?arch=amd64&distro=debian-11.11&epoch=1"
+     },
+     "Version": "1.2.11.dfsg",
+     "Release": "2+deb11u2",
+     "Epoch": 1,
+     "Arch": "amd64",
+     "SrcName": "zlib",
+     "SrcVersion": "1.2.11.dfsg",
+     "SrcRelease": "2+deb11u2",
+     "SrcEpoch": 1
+    }
+   ],
+   "Vulnerabilities": [
+    {
+     "VulnerabilityID": "CVE-2026-84782",
+     "PkgID": "libssl1.1@1.1.1w-0+deb11u8",
+     "PkgName": "libssl1.1",
+     "PkgIdentifier": {
+      "PURL": "pkg:deb/debian/libssl1.1@1.1.1w-0%2Bdeb11u8?arch=amd64&distro=debian-11.11"
+     },
+     "InstalledVersion": "1.1.1w-0+deb11u8",
+     "Status": "affected",
+     "Title": "openssl: compat-openssl: openssl: Information disclosure via DTLS handshake retransmission",
+     "Severity": "HIGH"
+    },
+    {
+     "VulnerabilityID": "CVE-2026-42772",
+     "PkgID": "libssl1.1@1.1.1w-0+deb11u8",
+     "PkgName": "libssl1.1",
+     "PkgIdentifier": {
+      "PURL": "pkg:deb/debian/libssl1.1@1.1.1w-0%2Bdeb11u8?arch=amd64&distro=debian-11.11"
+     },
+     "InstalledVersion": "1.1.1w-0+deb11u8",
+     "Status": "affected",
+     "Title": "openssl: openssl: Denial of Service via inefficient QUIC stream reassembly",
+     "Severity": "MEDIUM"
+    }
+   ]
+  }
+ ]
+}

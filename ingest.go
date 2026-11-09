@@ -95,10 +95,10 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 		if err != nil {
 			return err
 		}
-		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"packages"}, []string{"scan_id", "purl", "name", "version", "ecosystem", "path"},
+		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"packages"}, []string{"scan_id", "purl", "name", "version", "ecosystem", "path", "src_name", "src_version"},
 			pgx.CopyFromSlice(len(rep.Packages), func(i int) ([]any, error) {
 				p := rep.Packages[i]
-				return []any{res.ScanID, p.PURL, p.Name, p.Version, p.Ecosystem, p.Path}, nil
+				return []any{res.ScanID, p.PURL, p.Name, p.Version, p.Ecosystem, p.Path, p.SrcName, p.SrcVersion}, nil
 			})); err != nil {
 			return err
 		}

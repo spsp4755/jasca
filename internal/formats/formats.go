@@ -44,7 +44,23 @@ func (r *Report) add(f Finding) {
 	r.Findings = append(r.Findings, f)
 }
 
-type Package struct{ PURL, Name, Version, Ecosystem, Path string }
+// Package is one installed package. SrcName/SrcVersion are the OS source package (Debian/Ubuntu advisories are
+// keyed by it); empty when the report does not say.
+type Package struct{ PURL, Name, Version, Ecosystem, Path, SrcName, SrcVersion string }
+
+// fullVersion renders epoch:version-release the way Trivy prints InstalledVersion.
+func fullVersion(epoch int, ver, rel string) string {
+	if ver == "" {
+		return ""
+	}
+	if rel != "" {
+		ver += "-" + rel
+	}
+	if epoch > 0 {
+		ver = fmt.Sprintf("%d:%s", epoch, ver)
+	}
+	return ver
+}
 
 type Finding struct {
 	Kind, Tool, RuleID, Title, Severity                  string // Kind: vuln|misconfig|secret|sast

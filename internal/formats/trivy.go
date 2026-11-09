@@ -18,8 +18,9 @@ func (trivyParser) Detect(head []byte) bool {
 }
 
 type trivyPkg struct {
-	Name, Version, FilePath string
-	Identifier              struct{ PURL string }
+	Name, Version, Release, FilePath, SrcName, SrcVersion, SrcRelease string
+	Epoch, SrcEpoch                                                   int
+	Identifier                                                        struct{ PURL string }
 }
 
 type trivyVuln struct {
@@ -153,7 +154,7 @@ func addTrivyResult(rep *Report, res *trivyResult) {
 	}
 	eco := trivyEco(res.Class, res.Type)
 	seen := map[[2]string]bool{}
-	addPkg := func(name, ver, purl, fp string) {
+	addPkg := func(name, ver, purl, fp, srcName, srcVer string) {
 		key := [2]string{name, ver}
 		if seen[key] {
 			return
@@ -167,13 +168,14 @@ func addTrivyResult(rep *Report, res *trivyResult) {
 		if fp != "" {
 			p = fp
 		}
-		rep.Packages = append(rep.Packages, Package{PURL: purl, Name: name, Version: ver, Ecosystem: e, Path: p})
+		rep.Packages = append(rep.Packages, Package{PURL: purl, Name: name, Version: ver, Ecosystem: e, Path: p, SrcName: srcName, SrcVersion: srcVer})
 	}
-	for _, p := range res.Packages {
-		addPkg(p.Name, p.Version, p.Identifier.PURL, p.FilePath)
+	for _, p := range res.Packages { // OS packages split epoch/version/release; findings carry the full version
+		addPkg(p.Name, fullVersion(p.Epoch, p.Version, p.Release), p.Identifier.PURL, p.FilePath,
+			p.SrcName, fullVersion(p.SrcEpoch, p.SrcVersion, p.SrcRelease))
 	}
 	for _, v := range res.Vulnerabilities {
-		addPkg(v.PkgName, v.InstalledVersion, v.PkgIdentifier.PURL, v.PkgPath)
+		addPkg(v.PkgName, v.InstalledVersion, v.PkgIdentifier.PURL, v.PkgPath, "", "")
 		fp := path
 		if v.PkgPath != "" {
 			fp = v.PkgPath

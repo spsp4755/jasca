@@ -244,12 +244,12 @@ func (s *server) recheckTarget(ctx context.Context, runID, targetID int64) error
 	var pkgs []trivy.Package
 	paths := map[[2]string][]string{} // name+version -> the files they were found in; trivy sbom drops them
 	seen := map[trivy.Package]bool{}
-	rows, _ := s.db.Query(ctx, `select distinct purl, name, version, ecosystem, path from packages where scan_id = $1
+	rows, _ := s.db.Query(ctx, `select distinct purl, name, version, ecosystem, path, src_name, src_version from packages where scan_id = $1
 		order by name, version, path`, *scanID)
 	for rows.Next() {
 		var p trivy.Package
 		var path string
-		if err := rows.Scan(&p.PURL, &p.Name, &p.Version, &p.Ecosystem, &path); err != nil {
+		if err := rows.Scan(&p.PURL, &p.Name, &p.Version, &p.Ecosystem, &path, &p.SrcName, &p.SrcVersion); err != nil {
 			rows.Close()
 			return err
 		}

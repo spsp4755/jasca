@@ -246,3 +246,33 @@ func TestSARIFDedupAndZeroScore(t *testing.T) {
 		t.Fatalf("%+v", r.Findings)
 	}
 }
+
+// Debian packages: Trivy lists version and release apart; the package keeps the full version (as findings print
+// it) and the source package, which the recheck needs.
+func TestTrivyDebianSourcePackage(t *testing.T) {
+	r := parse(t, "trivy", "testdata/trivy/image-debian.json")
+	got := map[string]Package{}
+	for _, p := range r.Packages {
+		if _, dup := got[p.Name]; dup {
+			t.Fatalf("package %s listed twice: %+v", p.Name, r.Packages)
+		}
+		got[p.Name] = p
+	}
+	if p := got["libssl1.1"]; p.Version != "1.1.1w-0+deb11u8" || p.SrcName != "openssl" || p.SrcVersion != "1.1.1w-0+deb11u8" || p.Ecosystem != "debian" {
+		t.Fatalf("libssl1.1: %+v", p)
+	}
+	if p := got["zlib1g"]; p.Version != "1:1.2.11.dfsg-2+deb11u2" || p.SrcName != "zlib" || p.SrcVersion != "1:1.2.11.dfsg-2+deb11u2" {
+		t.Fatalf("zlib1g: %+v", p)
+	}
+	cdx := `{"bomFormat":"CycloneDX","components":[{"type":"library","name":"libssl1.1","version":"1.1.1w-0+deb11u8",
+		"purl":"pkg:deb/debian/libssl1.1@1.1.1w-0%2Bdeb11u8?distro=debian-11.11","properties":[
+		{"name":"aquasecurity:trivy:SrcName","value":"openssl"},{"name":"aquasecurity:trivy:SrcVersion","value":"1.1.1w"},
+		{"name":"aquasecurity:trivy:SrcRelease","value":"0+deb11u8"},{"name":"aquasecurity:trivy:SrcEpoch","value":"1"}]}]}`
+	c, err := cdxParser{}.Parse(strings.NewReader(cdx))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := c.Packages[0]; p.SrcName != "openssl" || p.SrcVersion != "1:1.1.1w-0+deb11u8" {
+		t.Fatalf("cyclonedx: %+v", p)
+	}
+}

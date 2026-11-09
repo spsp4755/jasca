@@ -63,6 +63,11 @@ func TestCycloneDXWithOS(t *testing.T) {
 		bom.Components[0].Version != "3.12.12" || bom.Components[1].Name != "zlib" {
 		t.Fatalf("%+v", bom.Components)
 	}
+	deb, _ := CycloneDX([]Package{{PURL: "pkg:deb/debian/libssl1.1@1.1.1w-0%2Bdeb11u8?distro=debian-11.11", Name: "libssl1.1",
+		Version: "1.1.1w-0+deb11u8", Ecosystem: "debian", SrcName: "openssl", SrcVersion: "1.1.1w-0+deb11u8"}})
+	if !bytes.Contains(deb, []byte(`{"name":"aquasecurity:trivy:SrcName","value":"openssl"},{"name":"aquasecurity:trivy:SrcVersion","value":"1.1.1w-0+deb11u8"}`)) {
+		t.Fatalf("source package properties missing: %s", deb)
+	}
 	plain, _ := CycloneDX([]Package{{PURL: "pkg:npm/a@1", Name: "a", Version: "1"}})
 	if bytes.Contains(plain, []byte("operating-system")) {
 		t.Fatal("OS component without OS")

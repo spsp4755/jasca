@@ -6,7 +6,9 @@ import (
 	"strings"
 )
 
-type Package struct{ PURL, Name, Version, Ecosystem string }
+// Package is one inventory entry. SrcName/SrcVersion (the OS source package, full version) are needed for
+// Debian/Ubuntu, whose advisories are keyed by source package.
+type Package struct{ PURL, Name, Version, Ecosystem, SrcName, SrcVersion string }
 
 var purlType = map[string]string{
 	"npm": "npm", "pypi": "pypi", "pip": "pypi", "maven": "maven", "go": "golang", "golang": "golang", "gomod": "golang",
@@ -38,11 +40,16 @@ func CycloneDX(pkgs []Package) ([]byte, error) { return CycloneDXWithOS(nil, pkg
 
 // CycloneDXWithOS adds an operating-system component when osi is set; without it trivy sbom ignores OS packages.
 func CycloneDXWithOS(osi *OSInfo, pkgs []Package) ([]byte, error) {
+	type prop struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}
 	type comp struct {
-		Type    string `json:"type"`
-		Name    string `json:"name"`
-		Version string `json:"version"`
-		PURL    string `json:"purl,omitempty"`
+		Type       string `json:"type"`
+		Name       string `json:"name"`
+		Version    string `json:"version"`
+		PURL       string `json:"purl,omitempty"`
+		Properties []prop `json:"properties,omitempty"`
 	}
 	comps := []comp{}
 	if osi != nil {
@@ -56,7 +63,14 @@ func CycloneDXWithOS(osi *OSInfo, pkgs []Package) ([]byte, error) {
 		if purl == "" {
 			continue
 		}
-		comps = append(comps, comp{"library", p.Name, p.Version, purl})
+		c := comp{Type: "library", Name: p.Name, Version: p.Version, PURL: purl}
+		if p.SrcName != "" {
+			c.Properties = append(c.Properties, prop{"aquasecurity:trivy:SrcName", p.SrcName})
+		}
+		if p.SrcVersion != "" {
+			c.Properties = append(c.Properties, prop{"aquasecurity:trivy:SrcVersion", p.SrcVersion})
+		}
+		comps = append(comps, c)
 	}
 	return json.Marshal(map[string]any{"bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1, "components": comps})
 }

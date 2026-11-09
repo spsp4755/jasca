@@ -57,15 +57,29 @@ func (cdxParser) Parse(r io.Reader) (*Report, error) {
 					return nil
 				}
 				eco := ecoFromPURL(c.PURL)
+				var srcName, srcVer, srcRel string
+				srcEpoch := 0
 				for _, p := range c.Properties {
-					if eco == "" && p.Name == "aquasecurity:trivy:PkgType" {
-						eco = p.Value
+					switch p.Name {
+					case "aquasecurity:trivy:PkgType":
+						if eco == "" {
+							eco = p.Value
+						}
+					case "aquasecurity:trivy:SrcName":
+						srcName = p.Value
+					case "aquasecurity:trivy:SrcVersion":
+						srcVer = p.Value
+					case "aquasecurity:trivy:SrcRelease":
+						srcRel = p.Value
+					case "aquasecurity:trivy:SrcEpoch":
+						fmt.Sscan(p.Value, &srcEpoch)
 					}
 				}
 				if eco == "" && strings.HasPrefix(c.PURL, "pkg:") {
 					eco, _, _ = strings.Cut(strings.TrimPrefix(c.PURL, "pkg:"), "/")
 				}
-				rep.Packages = append(rep.Packages, Package{PURL: c.PURL, Name: c.Name, Version: c.Version, Ecosystem: eco})
+				rep.Packages = append(rep.Packages, Package{PURL: c.PURL, Name: c.Name, Version: c.Version, Ecosystem: eco,
+					SrcName: srcName, SrcVersion: fullVersion(srcEpoch, srcVer, srcRel)})
 				return nil
 			})
 		default:
