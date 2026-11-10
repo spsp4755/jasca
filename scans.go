@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"slices"
 	"strconv"
@@ -248,7 +249,15 @@ func (s *server) handleScanRaw(w http.ResponseWriter, r *http.Request, c *reqCtx
 		writeErr(w, 404, "not_found", "원본 보고서가 없습니다. 보존 기간이 지나 삭제되었습니다.")
 		return
 	}
-	w.Header().Set("Content-Type", "application/gzip")
-	w.Header().Set("Content-Disposition", `attachment; filename="scan-`+strconv.FormatInt(id, 10)+`.json.gz"`)
-	w.Write(raw)
+	// stored gzipped, sent as the JSON it was: decompressed as it goes out, never whole in memory
+	zr, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		writeInternal(w, "scan raw", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="scan-`+strconv.FormatInt(id, 10)+`.json"`)
+	if _, err := io.Copy(w, zr); err != nil {
+		log.Printf("scan raw %d: %v", id, err)
+	}
 }

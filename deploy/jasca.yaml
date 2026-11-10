@@ -33,7 +33,7 @@ data:
   JASCA_MAX_SCAN_UPLOAD_MB: "2048" # Trivy 스캔용 파일/이미지 업로드 상한. Ingress proxy-body-size와 함께 조정하세요.
   JASCA_MAX_EXTRACT_MB: "4096" # 압축 해제 후 총 크기 상한
   JASCA_TRIVY_BIN: "/usr/local/bin/trivy"
-  JASCA_SCAN_TIMEOUT_MIN: "15" # 스캔 1건의 제한 시간
+  JASCA_SCAN_TIMEOUT_MIN: "15" # 스캔 1건의 제한 시간(관리 → Trivy DB의 스캔 옵션에서 정하면 그 값이 우선)
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

@@ -494,7 +494,9 @@ func TestScanRoutes(t *testing.T) {
 	}
 
 	rec := do(t, s, "GET", fmt.Sprintf("/api/v1/scans/%d/raw", s1.ScanID), nil, ck)
-	if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/gzip" || !bytes.Equal(gunzip(t, rec.Body.Bytes()), doc1) {
+	// the report as it was uploaded: plain JSON, not the gzip it is stored as
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/json" || !bytes.Equal(rec.Body.Bytes(), doc1) ||
+		rec.Header().Get("Content-Disposition") != fmt.Sprintf(`attachment; filename="scan-%d.json"`, s1.ScanID) {
 		t.Errorf("raw: %d %s", rec.Code, rec.Header())
 	}
 	sqlExec(t, s, `update scans set raw = null where id=$1`, s1.ScanID)

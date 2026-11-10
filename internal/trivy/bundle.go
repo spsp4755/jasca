@@ -41,15 +41,18 @@ func readMeta(dir string) (meta, error) {
 	return m, nil
 }
 
+// Status reads the installed DBs. Without a vulnerability DB it returns an error, and the status still says
+// whether a Java DB is there (it may be uploaded first).
 func Status(cacheDir string) (DBStatus, error) {
-	m, err := readMeta(filepath.Join(cacheDir, "db"))
-	if err != nil {
-		return DBStatus{}, err
-	}
-	st := DBStatus{Version: m.Version, UpdatedAt: m.UpdatedAt, NextUpdate: m.NextUpdate}
+	var st DBStatus
 	if j, err := readMeta(filepath.Join(cacheDir, "java-db")); err == nil {
 		st.JavaDB, st.JavaUpdatedAt = true, j.UpdatedAt
 	}
+	m, err := readMeta(filepath.Join(cacheDir, "db"))
+	if err != nil {
+		return st, err
+	}
+	st.Version, st.UpdatedAt, st.NextUpdate = m.Version, m.UpdatedAt, m.NextUpdate
 	return st, nil
 }
 
@@ -165,5 +168,8 @@ func InstallBundle(cacheDir string, r io.Reader, maxBytes int64) (kind string, s
 	}
 	os.RemoveAll(prev)
 	st, err = Status(cacheDir)
+	if kind == "java-db" { // installed; that the vulnerability DB is not there yet is no failure of this upload
+		err = nil
+	}
 	return kind, st, err
 }

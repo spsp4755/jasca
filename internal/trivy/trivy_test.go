@@ -68,12 +68,88 @@ func TestArgsNoShell(t *testing.T) {
 	// without a Java DB, Trivy fails the whole image scan at the first JAR: skip Java archives instead
 	o.NoJavaDB = true
 	for _, k := range []string{"fs", "image"} {
-		if args := Args(k, "/x", o); !slices.Contains(args, "**/*.jar") || !slices.Contains(args, "**/*.war") {
+		if args := Args(k, "/x", o); !slices.Contains(args, "--skip-files=**/*.jar") || !slices.Contains(args, "--skip-files=**/*.war") {
 			t.Fatalf("%s without java db: %v", k, args)
 		}
 	}
 	if slices.Contains(Args("sbom", "/x", o), "--skip-files") {
 		t.Fatal("sbom has no files to skip")
+	}
+}
+
+// allOptions sets every admin-selectable option, with patterns that would break a naive argv or CSV.
+func allOptions() Options {
+	return Options{CacheDir: "/c", Scanners: []string{"vuln", "secret"}, Timeout: 30 * time.Minute, NoJavaDB: true,
+		IgnoreUnfixed: true, IncludeDevDeps: true, Severities: []string{"CRITICAL", "HIGH"}, PkgTypes: []string{"library"},
+		DetectionPriority: "comprehensive", SkipDirs: []string{"-rf", "a,b"}, SkipFiles: []string{"**/*.min.js", `we"ird`}}
+}
+
+// Each option reaches exactly the subcommands that accept its flag in Trivy 0.76.1 (checked against --help;
+// TestRunRealTrivyAllOptions proves it with the binary).
+func TestArgsOptions(t *testing.T) {
+	kinds := []string{"fs", "image", "sbom"}
+	for _, c := range []struct{ arg, kinds string }{
+		{"--ignore-unfixed", "fs image sbom"},
+		{"--severity=CRITICAL,HIGH", "fs image sbom"},
+		{"--pkg-types=library", "fs image sbom"},
+		{"--detection-priority=comprehensive", "fs image sbom"},
+		{"--timeout=31m0s", "fs image sbom"}, // a minute more than ours, so our own limit is the one that fires
+		{"--include-dev-deps", "fs"},
+		{"--skip-dirs=-rf", "fs image"},
+		{`--skip-dirs="a,b"`, "fs image"}, // Trivy reads the value as CSV: a comma or quote must be quoted
+		{"--skip-files=**/*.min.js", "fs image"},
+		{`--skip-files="we""ird"`, "fs image"},
+		{"--skip-files=**/*.jar", "fs image"}, // the automatic skip without a Java DB stays next to the admin's patterns
+	} {
+		for _, k := range kinds {
+			if got, want := slices.Contains(Args(k, "/in", allOptions()), c.arg), slices.Contains(strings.Fields(c.kinds), k); got != want {
+				t.Errorf("%s %s: present=%v, want %v", k, c.arg, got, want)
+			}
+		}
+	}
+	for _, k := range kinds {
+		// a pattern is always glued to its flag, so one that starts with "-" cannot become a flag
+		if a := Args(k, "/in", allOptions()); slices.Contains(a, "-rf") || slices.Contains(a, "a,b") {
+			t.Errorf("%s: bare pattern in argv: %v", k, a)
+		}
+		// no options: nothing but the fixed flags
+		for _, e := range Args(k, "/in", Options{CacheDir: "/c"}) {
+			for _, f := range []string{"--ignore-unfixed", "--severity", "--pkg-types", "--detection-priority", "--timeout", "--include-dev-deps", "--skip-dirs", "--skip-files"} {
+				if strings.HasPrefix(e, f) {
+					t.Errorf("%s without options has %s", k, e)
+				}
+			}
+		}
+	}
+}
+
+// A flag Trivy does not know for a subcommand fails here, not in production.
+func TestRunRealTrivyAllOptions(t *testing.T) {
+	if os.Getenv("JASCA_TEST_TRIVY") != "1" {
+		t.Skip("set JASCA_TEST_TRIVY=1 (and JASCA_TRIVY_BIN, JASCA_TRIVY_CACHE)")
+	}
+	o := allOptions()
+	o.Bin, o.CacheDir, o.Timeout, o.Scanners = os.Getenv("JASCA_TRIVY_BIN"), os.Getenv("JASCA_TRIVY_CACHE"), 2*time.Minute, []string{"vuln", "secret", "misconfig"}
+	dir := t.TempDir()
+	bom, err := CycloneDX([]Package{{PURL: "pkg:npm/lodash@4.17.15", Name: "lodash", Version: "4.17.15", Ecosystem: "npm"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "bom.json"), bom, 0o644)
+	os.WriteFile(filepath.Join(dir, "img.tar"), dockerArchive(t, map[string][]byte{"app/a.txt": []byte("x")}), 0o644)
+	for kind, input := range map[string]string{"fs": "testdata/fs", "image": filepath.Join(dir, "img.tar"), "sbom": filepath.Join(dir, "bom.json")} {
+		var b bytes.Buffer
+		if err := Run(context.Background(), o, kind, input, &b); err != nil {
+			t.Errorf("%s with every option: %v\nargs: %v", kind, err, Args(kind, input, o))
+			continue
+		}
+		t.Logf("%s with every option: ok, %d bytes of report", kind, b.Len())
+	}
+	// the filters do filter: lodash 4.17.15 has HIGH findings, and none of them is left when only UNKNOWN is asked for
+	o.Severities, o.SkipFiles, o.SkipDirs = []string{"UNKNOWN"}, nil, nil
+	var b bytes.Buffer
+	if err := Run(context.Background(), o, "sbom", filepath.Join(dir, "bom.json"), &b); err != nil || strings.Contains(b.String(), `"VulnerabilityID"`) {
+		t.Fatalf("severity filter not applied to sbom: %v, %.300s", err, b.String())
 	}
 }
 
