@@ -25,8 +25,8 @@ export interface Counts { critical: number; high: number; medium: number; low: n
 
 // --- auth / me ---
 /** tz: IANA zone from JASCA_TZ; the UI shows times in it. */
-/** ai_enabled and max_scan_upload_mb come only when signed in. */
-export interface AuthConfig { sso_enabled: boolean; tz?: string; signed_in?: boolean; ai_enabled?: boolean; max_scan_upload_mb?: number }
+/** ai_enabled, max_scan_upload_mb and trivy_db_ready (false: no vulnerability DB yet, scans are refused) come only when signed in. */
+export interface AuthConfig { sso_enabled: boolean; tz?: string; signed_in?: boolean; ai_enabled?: boolean; max_scan_upload_mb?: number; trivy_db_ready?: boolean }
 export interface LocalLoginRequest { username: string; password: string }
 export interface LocalLoginResponse { user: Me }
 export interface Me {
@@ -61,7 +61,8 @@ export interface PolicyResult { passed: boolean; reasons: string[]; error?: stri
 export interface Scan {
   id: number; project_id: number; target_id: number; target_kind: TargetKind; target_name: string; source: ScanSource;
   format: string; ref: string; status: JobState; error: string; created_by_user: number | null; created_by_token: number | null; created_by: string;
-  summary: Partial<Counts> & { os?: { family: string; name: string } }; policy: PolicyResult | null; has_raw: boolean;
+  /** packages: how many the scan examined. warnings: what it could not examine (Java archives without a Java DB, nothing recognisable). */
+  summary: Partial<Counts> & { os?: { family: string; name: string }; packages?: number; warnings?: string[] }; policy: PolicyResult | null; has_raw: boolean;
   created_at: string; finished_at: string | null;
 }
 export interface ScanPage { items: Scan[]; next_before: number | null }

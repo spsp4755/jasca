@@ -8,11 +8,14 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -191,6 +194,91 @@ func (x *extractor) tar(r io.Reader) error {
 			}
 		} // symlinks, hardlinks, devices and fifos are skipped
 	}
+}
+
+var (
+	errImageAsSource = &archiveError{"컨테이너 이미지 tar로 보입니다. 파일 종류를 '컨테이너 이미지'로 골라 다시 올리세요."}
+	errImageInside   = &archiveError{"압축 파일 안에 이미지 tar가 들어 있습니다. tar 파일을 그대로 올리세요."}
+	javaArchiveExts  = []string{".jar", ".war", ".ear", ".par"} // what Trivy's jar analyser opens
+)
+
+// sourceTree looks at an unpacked source upload before Trivy does. A container image (a docker save or OCI layout
+// at the root, or one image tar and nothing else) is refused: trivy fs finds nothing in layer blobs and the scan
+// would look clean. It returns the Java archives, by their path under src.
+func sourceTree(ctx context.Context, src string) (jars []string, err error) {
+	if _, e := os.Stat(filepath.Join(src, "oci-layout")); e == nil {
+		if _, e := os.Stat(filepath.Join(src, "index.json")); e == nil {
+			return nil, errImageAsSource
+		}
+	}
+	if f, e := os.Open(filepath.Join(src, "manifest.json")); e == nil {
+		b, _ := io.ReadAll(io.LimitReader(f, 1<<20))
+		f.Close()
+		if dockerManifest(b) {
+			return nil, errImageAsSource
+		}
+	}
+	files, only := 0, ""
+	err = filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		files, only = files+1, p
+		if slices.Contains(javaArchiveExts, strings.ToLower(filepath.Ext(p))) {
+			rel, err := filepath.Rel(src, p)
+			if err != nil {
+				return err
+			}
+			jars = append(jars, rel)
+		}
+		return ctx.Err()
+	})
+	if err == nil && files == 1 && isImageTar(ctx, only) {
+		err = errImageInside
+	}
+	return jars, err
+}
+
+// dockerManifest: b is the manifest.json of a docker save archive, [{"Config": "x.json", "Layers": ["y/layer.tar"]}].
+// A web app's manifest.json is an object, or lists other things.
+func dockerManifest(b []byte) bool {
+	var m []struct {
+		Config string
+		Layers []string
+	}
+	return json.Unmarshal(b, &m) == nil && len(m) > 0 && m[0].Config != "" && len(m[0].Layers) > 0
+}
+
+// isImageTar: the file is a tar or tar.gz with a docker save manifest or an OCI layout marker at its root.
+func isImageTar(ctx context.Context, name string) bool {
+	f, err := os.Open(name)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var r io.Reader = f // a plain tar is read by seeking from header to header
+	magic := make([]byte, 2)
+	if n, _ := f.ReadAt(magic, 0); n == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		if r, err = gzip.NewReader(f); err != nil {
+			return false
+		}
+	}
+	tr := tar.NewReader(r)
+	for ctx.Err() == nil {
+		h, err := tr.Next()
+		if err != nil {
+			return false
+		}
+		switch path.Clean(h.Name) {
+		case "oci-layout":
+			return true
+		case "manifest.json":
+			if b, _ := io.ReadAll(io.LimitReader(tr, 1<<20)); dockerManifest(b) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // zipPrecheck enforces maxExtractEntries before zip.NewReader, which keeps a *zip.File (~230 bytes) for every

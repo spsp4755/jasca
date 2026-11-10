@@ -1,4 +1,5 @@
 import { QueryClient, useMutation, useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { setTimeZone } from "../lib/format";
 import { ApiError, api } from "./client";
 import type { AuthConfig, Dashboard, LocalLoginRequest, LocalLoginResponse, Me } from "./types";
@@ -26,6 +27,15 @@ export const useAuthConfig = () => useQuery<AuthConfig, ApiError>({
   queryKey: ["/auth/config"], staleTime: Infinity,
   queryFn: ({ signal }) => api.get<AuthConfig>("/auth/config", { signal }).then((c) => { setTimeZone(c.tz); return c; }),
 });
+/** While `on` (an upload is going), a reload or closing the tab asks the browser's leave-page confirmation. */
+export function useUnloadGuard(on: boolean) {
+  useEffect(() => {
+    if (!on) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [on]);
+}
 // Go marshals nil slices as null; the page always gets arrays.
 export const useDashboard = () => useApi<Dashboard>("/dashboard", {
   refetchInterval: 60_000,

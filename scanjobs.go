@@ -65,6 +65,10 @@ func (s *server) sweepWork(ctx context.Context) {
 // handleScanJobCreate streams the multipart file to DATA_DIR/work, then creates a queued scan and its job.
 func (s *server) handleScanJobCreate(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	ctx := r.Context()
+	if !s.trivyDBReady() { // before the body: nobody uploads 2GB to learn this
+		writeErr(w, 409, "no_trivy_db", "취약점 DB가 아직 설치되지 않아 스캔할 수 없습니다. 관리자가 관리 → Trivy DB에서 db.tar.gz를 올려야 합니다.")
+		return
+	}
 	max := s.cfg.MaxScanUploadMB << 20
 	tooLarge := func() {
 		writeErr(w, 413, "too_large", fmt.Sprintf("파일은 %dMB 이하만 올릴 수 있습니다.", s.cfg.MaxScanUploadMB))
@@ -147,7 +151,11 @@ func (s *server) handleScanJobCreate(w http.ResponseWriter, r *http.Request, c *
 		badRequest(w, "대상 이름(target)은 1~512자로 지정하세요.")
 		return
 	}
-	if size <= 0 {
+	if size == 0 {
+		badRequest(w, "빈 파일입니다. 내용이 있는 파일을 올리세요.")
+		return
+	}
+	if size < 0 {
 		badRequest(w, "스캔할 파일(file)을 올리세요.")
 		return
 	}
@@ -255,8 +263,10 @@ func (s *server) runServerScan(ctx context.Context, j *job) error {
 		msg = ae.msg
 	} else if errors.Is(err, context.DeadlineExceeded) {
 		msg = fmt.Sprintf("제한 시간(%d분)을 넘겨 스캔을 중단했습니다.", int(opts.Timeout.Minutes()))
-	} else if errors.Is(err, errTrivyRun) {
-		msg = "Trivy 실행에 실패했습니다. 이미지 tar(docker save) 또는 압축 파일이 맞는지 확인하세요."
+	} else if errors.Is(err, trivy.ErrInput) {
+		msg = "이 파일을 컨테이너 이미지로 읽지 못했습니다. docker save 또는 podman save로 만든 tar가 맞는지, 파일 종류를 맞게 골랐는지 확인하세요."
+	} else if errors.Is(err, errTrivyRun) { // the cause is in the server log; it is rarely the file
+		msg = "Trivy 실행에 실패했습니다. 다시 시도해도 같으면 관리자에게 서버 로그 확인을 요청하세요."
 	} else if ctx.Err() != nil {
 		msg = "서버가 재시작되어 스캔이 중단되었습니다. 다시 올려 주세요."
 	}
@@ -271,8 +281,17 @@ func (s *server) runServerScan(ctx context.Context, j *job) error {
 
 var errTrivyRun = errors.New("trivy failed")
 
+// What a finished scan says it could not examine (summary.warnings), and why a scan that examined nothing does not
+// pass the policy.
+const (
+	warnJavaFiles    = "Java DB가 설치되지 않아 JAR/WAR/EAR 파일 %d개는 검사하지 않았습니다. 관리자가 관리 → Trivy DB에서 javadb.tar.gz를 올린 뒤 다시 스캔하세요."
+	warnJavaImage    = "Java DB가 설치되지 않아 이미지 안의 JAR/WAR/EAR 파일은 검사하지 않았습니다. 관리자가 관리 → Trivy DB에서 javadb.tar.gz를 올린 뒤 다시 스캔하세요."
+	warnNothing      = "검사할 수 있는 패키지나 설정 파일을 찾지 못했습니다. 지원 형식: 패키지 잠금 파일(package-lock.json, go.mod, pom.xml, requirements.txt 등), JAR/WAR/EAR(Java DB 필요), 컨테이너 이미지. 파일 종류와 압축한 폴더가 맞는지 확인하세요."
+	notJudgedNothing = "검사한 패키지나 설정 파일이 없어 정책을 통과로 판정하지 않았습니다."
+)
+
 func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scanJobPayload, opts trivy.Options) error {
-	if opts.Timeout > 0 { // the whole scan: unpacking, Trivy, storing the result
+	if opts.Timeout > 0 { // the whole scan: unpacking, Trivy (both passes), storing the result
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
 		defer cancel()
@@ -282,6 +301,7 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 	if _, err := os.Stat(input); os.IsNotExist(err) { // removed when a restart interrupted an earlier run
 		return &archiveError{"업로드한 파일이 없습니다(서버 재시작 등). 다시 올려 주세요."}
 	}
+	var jars []string // Java archives of a source upload: trivy fs never opens them
 	if p.Kind == "fs" {
 		src := filepath.Join(work, "src")
 		if err := extractArchive(ctx, input, src, s.cfg.MaxExtractMB<<20); err != nil {
@@ -289,6 +309,13 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 		}
 		os.Remove(input) // frees the disk before trivy runs
 		input = src
+		var err error
+		if jars, err = sourceTree(ctx, src); err != nil {
+			return err
+		}
+	}
+	if !slices.Contains(opts.Scanners, "vuln") || (len(opts.PkgTypes) > 0 && !slices.Contains(opts.PkgTypes, "library")) {
+		jars = nil // the admin switched library vulnerabilities off: nothing to run, nothing to warn about
 	}
 	out, err := os.Create(filepath.Join(work, "report.json"))
 	if err != nil {
@@ -297,15 +324,62 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 	defer out.Close()
 	// shortcut: no s.trivy.mu here (a scan may take SCAN_TIMEOUT_MIN and would block DB uploads); a scan that opens
 	// the DB in the instant between InstallBundle's two renames fails with a Trivy error and is simply retried.
-	db, _ := trivy.Status(s.trivyCacheDir()) // without a java-db, JAR/WAR/EAR files are skipped (shown on the admin Trivy page)
-	opts.NoJavaDB = !db.JavaDB
-	err = trivy.Run(ctx, opts, p.Kind, input, out)
-	if err != nil {
-		if ctx.Err() != nil {
+	run := func(o trivy.Options, kind, input string, out *os.File) error {
+		err := trivy.Run(ctx, o, kind, input, out)
+		if err != nil && ctx.Err() != nil {
 			return fmt.Errorf("%w (%v)", context.Cause(ctx), err)
 		}
-		log.Printf("server scan %d: %v", *j.ScanID, err)
-		return fmt.Errorf("%w: %v", errTrivyRun, err)
+		if err != nil && !errors.Is(err, trivy.ErrNoJavaDB) {
+			log.Printf("server scan %d: %v", *j.ScanID, err)
+		}
+		return err
+	}
+	var warnings []string
+	err = run(opts, p.Kind, input, out)
+	if errors.Is(err, trivy.ErrNoJavaDB) && p.Kind == "image" { // scan everything else and say what was left out
+		if err = out.Truncate(0); err == nil {
+			_, err = out.Seek(0, io.SeekStart)
+		}
+		if err != nil {
+			return err
+		}
+		opts.NoJavaDB = true
+		warnings = append(warnings, warnJavaImage)
+		err = run(opts, p.Kind, input, out)
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		return fmt.Errorf("%w: %w", errTrivyRun, err)
+	}
+	var jout *os.File // the report of the Java pass
+	if db, _ := trivy.Status(s.trivyCacheDir()); len(jars) > 0 && !db.JavaDB {
+		warnings = append(warnings, fmt.Sprintf(warnJavaFiles, len(jars)))
+	} else if len(jars) > 0 {
+		// rootfs also reads node_modules, site-packages and binaries, which the lock files already covered: it gets
+		// the Java archives alone, at the paths they had, and looks for vulnerabilities only
+		jdir := filepath.Join(work, "jars")
+		for _, rel := range jars {
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(jdir, rel)), 0o755); err != nil {
+				return err
+			}
+			if err := os.Rename(filepath.Join(input, rel), filepath.Join(jdir, rel)); err != nil {
+				return err
+			}
+		}
+		if jout, err = os.Create(filepath.Join(work, "java.json")); err != nil {
+			return err
+		}
+		defer jout.Close()
+		jopts := opts
+		jopts.Scanners = []string{"vuln"}
+		if err := run(jopts, "rootfs", jdir, jout); err != nil {
+			if ctx.Err() != nil {
+				return err
+			}
+			return fmt.Errorf("%w: %w", errTrivyRun, err)
+		}
 	}
 	// keep the raw report like an upload when it fits the report limit
 	var raw []byte
@@ -323,6 +397,32 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 	if err != nil {
 		return fmt.Errorf("%w: parse report: %v", errTrivyRun, err)
 	}
+	var jraw []byte
+	if jout != nil {
+		if _, err := jout.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		jrep, err := parser.Parse(jout)
+		if err != nil {
+			return fmt.Errorf("%w: parse java report: %v", errTrivyRun, err)
+		}
+		rep.Merge(jrep)
+		if fi, err := jout.Stat(); raw == nil || err != nil || fi.Size()+int64(len(raw)) > s.cfg.MaxReportMB<<20 {
+			raw = nil
+		} else if jraw, err = os.ReadFile(jout.Name()); err != nil {
+			return err
+		}
+	}
+	if raw != nil { // one report for both passes, named after the target instead of the work directory
+		if raw, err = trivy.Report(raw, jraw, p.Target); err != nil {
+			return fmt.Errorf("%w: rewrite report: %v", errTrivyRun, err)
+		}
+	}
+	// no package, no finding, no result of any kind: nothing was examined, which is not the same as clean
+	notJudged := ""
+	if len(rep.Packages) == 0 && len(rep.Findings) == 0 && len(rep.Complete) == 0 {
+		warnings, notJudged = append(warnings, warnNothing), notJudgedNothing
+	}
 	for _, sc := range opts.Scanners { // trivy JSON does not say which scanners ran
 		rep.Complete[sc+":trivy"] = true
 	}
@@ -331,6 +431,6 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 		ref = rep.Ref
 	}
 	_, err = s.ingest(ctx, ingestInput{ProjectID: projectID, TargetKind: p.Kind, TargetName: p.Target, Ref: ref,
-		Source: "server", Report: rep, Raw: raw, UserID: j.CreatedBy, ScanID: j.ScanID})
+		Source: "server", Report: rep, Raw: raw, UserID: j.CreatedBy, ScanID: j.ScanID, Warnings: warnings, NotJudged: notJudged})
 	return err
 }

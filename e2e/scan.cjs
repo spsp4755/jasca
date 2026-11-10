@@ -1,4 +1,6 @@
-// Server-side scan of a small tar.gz with the real Trivy binary and DB (run.sh skips this suite without them).
+// Server-side scan of a small tar.gz with the real Trivy binary and DB (run.sh skips this suite without them). Then what
+// a scan must never do: look clean when it examined nothing, skipped Java archives, or was given an image as source.
+// This suite runs before trivydb.cjs, so no Java DB is installed here.
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
@@ -35,6 +37,8 @@ L.run(async () => {
   const failed = await run.getByText("스캔하지 못했습니다").count();
   L.ok(!failed, "scan finished without failing" + (failed ? ": " + (await run.innerText()) : ""));
   L.ok(/HIGH/.test(await run.innerText()), "the result summary shows counts by severity (CRITICAL, HIGH, …)");
+  L.ok(/패키지 1개를 검사했습니다/.test(await run.innerText()), "the result says how many packages were examined");
+  L.ok(await page.evaluate(() => document.activeElement?.id === "h-run"), "keyboard focus moved to the result heading");
   await run.getByRole("link", { name: "결과 자세히 보기" }).click();
   await page.waitForURL(/\/scans\/\d+$/);
   const id = Number(page.url().match(/\/scans\/(\d+)$/)[1]);
@@ -47,6 +51,59 @@ L.run(async () => {
   await page.getByText("같은 대상·형식의 이전 스캔이 없습니다").waitFor();
   L.ok(await page.getByRole("tab", { name: /새로 발견/ }).count() === 0, "a first scan lists its results without the comparison tabs");
   await L.shot(page, "scan-result");
+  const raw = await (await kim.ctx.request.get(`${L.BASE}/api/v1/scans/${id}/raw`)).json();
+  L.ok(raw.ArtifactName === "lodash-app" && raw.SchemaVersion === 2 && raw.Results.length > 0, `the downloaded report names the target, not the server's work directory (${raw.ArtifactName})`);
+
+  // files in tar order -> .out/<name>.tar.gz
+  const lock = fs.readFileSync(path.join(dir, "package-lock.json"));
+  const pack = (name, files) => {
+    const d = fs.mkdtempSync(path.join(L.OUT, name + "-"));
+    for (const [p, c] of files) { fs.mkdirSync(path.dirname(path.join(d, p)), { recursive: true }); fs.writeFileSync(path.join(d, p), c); }
+    const out = path.join(L.OUT, name + ".tar.gz");
+    execFileSync("tar", ["-czf", out, "-C", d, ...files.map(([p]) => p)]);
+    fs.rmSync(d, { recursive: true, force: true });
+    return out;
+  };
+  const scanFile = async (target, file) => {
+    const r = await kim.ctx.request.post(`${L.BASE}/api/v1/projects/e2e-scan/scan-jobs`, { headers: { Origin: L.BASE },
+      multipart: { target, kind: "fs", file: { name: path.basename(file), mimeType: "application/gzip", buffer: fs.readFileSync(file) } } });
+    L.ok(r.status() === 201, `${target}: upload accepted`);
+    const { scan_id } = await r.json();
+    return L.until(async () => { const s = await kim.api.get(`/scans/${scan_id}`); return ["done", "failed"].includes(s.status) && s; }, `${target}: scan finished`, 120000);
+  };
+  const notes = await scanFile("notes", pack("notes", [["notes.txt", "nothing to examine here"]]));
+  L.ok(notes.status === "done" && notes.summary.packages === 0 && /찾지 못했습니다/.test(notes.summary.warnings?.[0]), "an archive with nothing to examine: done, 0 packages, a warning that says so");
+  L.ok(notes.policy.passed === false && notes.policy.reasons.length === 1, "and its policy does not pass: " + notes.policy.reasons[0]);
+  await page.goto(`${L.BASE}/scans/${notes.id}`);
+  await page.getByText(/검사할 수 있는 패키지나 설정 파일을 찾지 못했습니다/).waitFor();
+  L.ok(await page.getByText("정책 통과").count() === 0 && (await page.getByText("정책 실패").count()) > 0, "the scan page shows the warning and no green 정책 통과");
+  await L.shot(page, "scan-nothing-examined");
+  const jar = await scanFile("with-jar", pack("with-jar", [["package-lock.json", lock], ["lib/app.jar", "PK"], ["build/app.war", "PK"]]));
+  L.ok(jar.status === "done" && jar.summary.packages === 1 && jar.summary.warnings?.length === 1 && /JAR\/WAR\/EAR 파일 2개는 검사하지 않았습니다/.test(jar.summary.warnings[0]),
+    "Java archives without a Java DB: the rest is scanned and the result says 2 files were not examined");
+  const img = await scanFile("image-as-source", pack("image-as-source", [["blobs/sha256/aa", "layer"], ["index.json", "{}"], ["oci-layout", "{}"]]));
+  L.ok(img.status === "failed" && /파일 종류를 '컨테이너 이미지'로 골라/.test(img.error), "an image layout uploaded as source fails with what to do: " + img.error);
+
+  // the form: a source archive that starts with index.json is still source; an empty file is refused when chosen
+  await page.goto(L.BASE + "/scan");
+  await page.locator('input[type="file"]').setInputFiles(pack("pwa-src", [["index.json", '{"name":"pwa"}'], ["manifest.json", '{"name":"pwa"}'], ["package-lock.json", lock]]));
+  await page.getByRole("radio", { name: "소스 코드·패키지" }).waitFor();
+  L.ok(await page.getByRole("radio", { name: "소스 코드·패키지" }).isChecked(), "a source tar.gz whose first entry is index.json is not guessed as an image");
+  const empty = path.join(L.OUT, "empty.zip");
+  fs.writeFileSync(empty, "");
+  await page.locator('input[type="file"]').setInputFiles(empty);
+  await page.getByText("빈 파일입니다").waitFor();
+  L.ok(await page.locator(".dropzone.has-file").count() === 0, "a 0-byte file is refused when chosen");
+  // no vulnerability DB (what /auth/config would say on a new server): the page says so before a file is picked
+  await page.route("**/api/v1/auth/config", async (route) => {
+    const r = await route.fetch();
+    await route.fulfill({ response: r, json: { ...(await r.json()), trivy_db_ready: false } });
+  });
+  await page.reload();
+  await page.getByText("취약점 DB가 아직 설치되지 않아 스캔할 수 없습니다.").waitFor();
+  L.ok(await page.getByText("관리자에게 요청하세요.").count() === 1 && await page.getByRole("button", { name: "스캔 시작" }).isDisabled(),
+    "without a vulnerability DB a member is told to ask the admin and 스캔 시작 is disabled");
+  await page.unroute("**/api/v1/auth/config");
   fs.rmSync(dir, { recursive: true, force: true });
   await browser.close();
 });

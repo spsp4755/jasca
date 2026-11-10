@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useDashboard } from "../api/hooks";
+import { isAdmin, useAuthConfig, useDashboard, useMe } from "../api/hooks";
 import { SEVERITIES, type Counts, type Dashboard, type FindingOrigin, type PolicyResult } from "../api/types";
 import Button from "../components/Button";
 import Empty from "../components/Empty";
@@ -40,12 +40,16 @@ export default function Home() {
 
 /** Before the first scan the dashboard would be six empty boxes; say what to do instead. */
 function FirstRun() {
+  const { data: me } = useMe();
+  const noDb = useAuthConfig().data?.trivy_db_ready === false && isAdmin(me); // an admin's first step: no scan runs without the DB
   return (
     <section className="panel first-run" aria-labelledby="h-first">
       <h2 id="h-first">아직 스캔한 것이 없습니다</h2>
-      <p>검사할 파일만 있으면 시작할 수 있습니다. 프로젝트 폴더를 압축한 파일이나 컨테이너 이미지 tar를 올리면 취약점, 비밀값, 설정 오류를 찾아 심각도별로 정리해 보여 줍니다.</p>
+      <p>검사할 파일만 있으면 시작할 수 있습니다. 프로젝트 폴더를 압축한 파일이나 컨테이너 이미지 tar를 올리면 취약점과 비밀값을 찾아 심각도별로 정리해 보여 줍니다. Dockerfile·Kubernetes YAML의 설정 오류는 관리자가 스캔 옵션에서 켰을 때 함께 검사합니다.</p>
+      {noDb && <p>먼저 취약점 DB를 올려야 합니다. 폐쇄망이라 인터넷 PC에서 받은 db.tar.gz를 직접 올립니다. DB가 없으면 스캔을 시작할 수 없습니다.</p>}
       <div className="first-run-actions">
-        <Link to="/scan" className="btn btn-primary"><Icon name="scan" />첫 스캔 하기</Link>
+        {noDb && <Link to="/admin/trivy" className="btn btn-primary">Trivy DB 올리기</Link>}
+        <Link to="/scan" className={`btn ${noDb ? "btn-secondary" : "btn-primary"}`}><Icon name="scan" />첫 스캔 하기</Link>
       </div>
     </section>
   );

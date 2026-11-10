@@ -137,7 +137,7 @@ func TestRunRealTrivyAllOptions(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(dir, "bom.json"), bom, 0o644)
 	os.WriteFile(filepath.Join(dir, "img.tar"), dockerArchive(t, map[string][]byte{"app/a.txt": []byte("x")}), 0o644)
-	for kind, input := range map[string]string{"fs": "testdata/fs", "image": filepath.Join(dir, "img.tar"), "sbom": filepath.Join(dir, "bom.json")} {
+	for kind, input := range map[string]string{"fs": "testdata/fs", "rootfs": "testdata/fs", "image": filepath.Join(dir, "img.tar"), "sbom": filepath.Join(dir, "bom.json")} {
 		var b bytes.Buffer
 		if err := Run(context.Background(), o, kind, input, &b); err != nil {
 			t.Errorf("%s with every option: %v\nargs: %v", kind, err, Args(kind, input, o))
@@ -401,5 +401,158 @@ func TestRunRealTrivy(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), "lodash") {
 		t.Fatalf("no lodash in output: %.300s", b.String())
+	}
+}
+
+// A failure the user can act on (not an image) and one the server can work around (no Java DB) are told apart from
+// every other failure by what Trivy 0.76.1 prints.
+func TestRunClassifiesFailures(t *testing.T) {
+	for text, want := range map[string]error{
+		"FATAL run error: image scan error: unable to initialize artifact: unable to initialize archive image: 2 errors occurred": ErrInput,
+		"FATAL post analysis error: Unable to initialize the Java DB: Java DB update failed":                                      ErrNoJavaDB,
+		"FATAL init error: DB error: --skip-db-update cannot be specified on the first run":                                       nil,
+	} {
+		sh := filepath.Join(t.TempDir(), "fake.sh")
+		os.WriteFile(sh, []byte("#!/bin/sh\necho '"+text+"' >&2\nexit 1\n"), 0o755)
+		err := Run(context.Background(), Options{Bin: sh, CacheDir: "/c", Timeout: 5 * time.Second}, "image", "/in", &bytes.Buffer{})
+		if err == nil || errors.Is(err, ErrInput) != (want == ErrInput) || errors.Is(err, ErrNoJavaDB) != (want == ErrNoJavaDB) {
+			t.Errorf("%q: %v", text, err)
+		}
+	}
+}
+
+func TestArgsRootfs(t *testing.T) {
+	o := allOptions()
+	a := Args("rootfs", "/jars", o)
+	if a[0] != "rootfs" || a[len(a)-1] != "/jars" || slices.Contains(a, "--include-dev-deps") || slices.Contains(a, "--input") {
+		t.Fatalf("rootfs: %v", a)
+	}
+	for _, f := range []string{"--ignore-unfixed", "--skip-check-update", "--skip-java-db-update"} {
+		if !slices.Contains(a, f) {
+			t.Fatalf("rootfs lacks %s: %v", f, a)
+		}
+	}
+	if !slices.ContainsFunc(a, func(e string) bool { return strings.HasPrefix(e, "--skip-dirs=") }) ||
+		!slices.ContainsFunc(a, func(e string) bool { return strings.HasPrefix(e, "--severity=") }) {
+		t.Fatalf("the admin's skip patterns and severity filter must reach the Java pass: %v", a)
+	}
+	if err := Run(context.Background(), Options{Bin: "/nonexistent"}, "repo", "/x", &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "unknown kind") {
+		t.Fatalf("unknown kind: %v", err)
+	}
+}
+
+func TestReport(t *testing.T) {
+	main := []byte(`{"SchemaVersion": 2, "Trivy": {"Version": "0.76.1"}, "ArtifactName": "data/work/7/src", "ArtifactType": "filesystem",
+		"Results": [{"Target": "package-lock.json", "Class": "lang-pkgs", "Type": "npm"}]}`)
+	extra := []byte(`{"SchemaVersion": 2, "ArtifactName": "data/work/7/jars", "Results": [{"Target": "Java", "Class": "lang-pkgs", "Type": "jar"}]}`)
+	out, err := Report(main, extra, `web "app"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		SchemaVersion              int
+		ArtifactName, ArtifactType string
+		Trivy                      struct{ Version string }
+		Results                    []struct{ Target, Type string }
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if got.SchemaVersion != 2 || got.ArtifactName != `web "app"` || got.ArtifactType != "filesystem" || got.Trivy.Version != "0.76.1" ||
+		len(got.Results) != 2 || got.Results[0].Type != "npm" || got.Results[1].Type != "jar" {
+		t.Fatalf("%+v\n%s", got, out)
+	}
+	if bytes.Contains(out, []byte("work/7")) {
+		t.Fatalf("the server's work path is still in the report: %s", out)
+	}
+	// format detection reads the first few KB: both keys are there however long the results are
+	if i := bytes.Index(out, []byte(`"ArtifactName"`)); i < 0 || i > 100 || !bytes.HasPrefix(out, []byte("{\n  \"SchemaVersion\"")) {
+		t.Fatalf("head: %.120s", out)
+	}
+	// a report without results (nothing recognised) keeps none, and a nil extra adds nothing
+	out, err = Report([]byte(`{"SchemaVersion":2,"ArtifactName":"x"}`), nil, "t")
+	if err != nil || bytes.Contains(out, []byte("Results")) || !bytes.Contains(out, []byte(`"ArtifactName": "t"`)) {
+		t.Fatalf("%v %s", err, out)
+	}
+	if _, err := Report([]byte(`not json`), nil, "t"); err == nil {
+		t.Fatal("garbage accepted")
+	}
+}
+
+// log4jJar is a JAR that Trivy names from its pom.properties (log4j-core 2.14.1, Log4Shell).
+func log4jJar(t *testing.T) []byte {
+	t.Helper()
+	var jar bytes.Buffer
+	zw := zip.NewWriter(&jar)
+	w, _ := zw.Create("META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties")
+	w.Write([]byte("groupId=org.apache.logging.log4j\nartifactId=log4j-core\nversion=2.14.1\n"))
+	zw.Close()
+	return jar.Bytes()
+}
+
+// Why a source scan needs two passes: fs reads lock files and never opens a JAR, rootfs reads JARs (and other built
+// artifacts) and no lock file. Without a Java DB both rootfs and image fail at the first JAR, as ErrNoJavaDB.
+func TestRunRealTrivyFsAndRootfs(t *testing.T) {
+	if os.Getenv("JASCA_TEST_TRIVY") != "1" {
+		t.Skip("set JASCA_TEST_TRIVY=1 (and JASCA_TRIVY_BIN, JASCA_TRIVY_CACHE)")
+	}
+	cache := os.Getenv("JASCA_TRIVY_CACHE")
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "app", "lib"), 0o755)
+	os.MkdirAll(filepath.Join(dir, "app", "node_modules", "lodash"), 0o755)
+	lock, _ := os.ReadFile("testdata/fs/package-lock.json")
+	os.WriteFile(filepath.Join(dir, "app", "package-lock.json"), lock, 0o644)
+	os.WriteFile(filepath.Join(dir, "app", "node_modules", "lodash", "package.json"), []byte(`{"name":"lodash","version":"4.17.15"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "app", "lib", "log4j-core-2.14.1.jar"), log4jJar(t), 0o644)
+	types := func(o Options, kind, input string) (string, error) {
+		var b bytes.Buffer
+		if err := Run(context.Background(), o, kind, input, &b); err != nil {
+			return "", err
+		}
+		var rep struct{ Results []struct{ Type string } }
+		json.Unmarshal(b.Bytes(), &rep)
+		var ts []string
+		for _, r := range rep.Results {
+			ts = append(ts, r.Type)
+		}
+		slices.Sort(ts)
+		return strings.Join(ts, ","), nil
+	}
+	o := Options{Bin: os.Getenv("JASCA_TRIVY_BIN"), CacheDir: cache, Scanners: []string{"vuln"}, Timeout: 2 * time.Minute}
+	// a cache with the vulnerability DB only
+	nojava := t.TempDir()
+	if err := os.Symlink(filepath.Join(cache, "db"), filepath.Join(nojava, "db")); err != nil {
+		t.Fatal(err)
+	}
+	bare := o
+	bare.CacheDir = nojava
+	if got, err := types(bare, "fs", dir); err != nil || got != "npm" {
+		t.Fatalf("fs without a Java DB: %q %v (fs must not open the JAR)", got, err)
+	}
+	if _, err := types(bare, "rootfs", dir); !errors.Is(err, ErrNoJavaDB) {
+		t.Fatalf("rootfs with a JAR and no Java DB: %v", err)
+	}
+	img := filepath.Join(t.TempDir(), "img.tar")
+	os.WriteFile(img, dockerArchive(t, map[string][]byte{"app/lib/log4j-core-2.14.1.jar": log4jJar(t)}), 0o644)
+	if _, err := types(bare, "image", img); !errors.Is(err, ErrNoJavaDB) {
+		t.Fatalf("image with a JAR and no Java DB: %v", err)
+	}
+	bare.NoJavaDB = true
+	if _, err := types(bare, "image", img); err != nil {
+		t.Fatalf("image with a JAR, Java archives skipped: %v", err)
+	}
+	notImage := filepath.Join(t.TempDir(), "src.tar")
+	os.WriteFile(notImage, lock, 0o644)
+	if _, err := types(o, "image", notImage); !errors.Is(err, ErrInput) {
+		t.Fatalf("a file that is no image: %v", err)
+	}
+	if st, _ := Status(cache); !st.JavaDB {
+		t.Skip("no java-db in JASCA_TRIVY_CACHE: the rootfs pass is not checked")
+	}
+	if got, err := types(o, "fs", dir); err != nil || got != "npm" {
+		t.Fatalf("fs: %q %v", got, err)
+	}
+	if got, err := types(o, "rootfs", dir); err != nil || got != "jar,node-pkg" {
+		t.Fatalf("rootfs: %q %v (it also reads node_modules, which is why the Java pass gets the archives only)", got, err)
 	}
 }

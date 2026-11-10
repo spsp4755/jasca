@@ -1,9 +1,11 @@
 // faketrivy stands in for the trivy binary in tests. Environment:
 //
-//	FAKETRIVY_OUT        file printed as the report for fs, image and sbom
-//	FAKETRIVY_LOG        each call appends "<kind> <input> [files=...]" (fs lists the extracted files)
+//	FAKETRIVY_OUT        file printed as the report for fs, rootfs, image and sbom
+//	FAKETRIVY_OUT_ROOTFS file printed as the report for rootfs instead
+//	FAKETRIVY_LOG        each call appends "<kind> <input> [files=...]" (fs and rootfs list the files they were given)
 //	FAKETRIVY_WAIT_CALL  on this call number (1-based, counted in the log) wait for FAKETRIVY_WAIT_FILE to exist
-//	FAKETRIVY_FAIL       exit 2 with an error on stderr
+//	FAKETRIVY_FAIL       exit 2 with this text on stderr
+//	FAKETRIVY_NEED_JAVA  fail like Trivy 0.76.1 at a JAR without a Java DB, unless Java archives are skipped
 //	FAKETRIVY_ARGS       file that gets the last call's arguments, one per line
 package main
 
@@ -28,7 +30,7 @@ func main() {
 	}
 	kind, input := args[0], args[len(args)-1]
 	line := kind + " " + input
-	if kind == "fs" {
+	if kind == "fs" || kind == "rootfs" {
 		var files []string
 		filepath.WalkDir(input, func(p string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() {
@@ -57,11 +59,19 @@ func main() {
 	if p := os.Getenv("FAKETRIVY_ARGS"); p != "" {
 		os.WriteFile(p, []byte(strings.Join(args, "\n")), 0o644)
 	}
-	if os.Getenv("FAKETRIVY_FAIL") != "" {
-		fmt.Fprintln(os.Stderr, "fake failure")
+	if msg := os.Getenv("FAKETRIVY_FAIL"); msg != "" {
+		fmt.Fprintln(os.Stderr, "fake failure: "+msg)
 		os.Exit(2)
 	}
-	b, err := os.ReadFile(os.Getenv("FAKETRIVY_OUT"))
+	if os.Getenv("FAKETRIVY_NEED_JAVA") != "" && !strings.Contains(strings.Join(args, " "), "--skip-files=**/*.jar") {
+		fmt.Fprintln(os.Stderr, "FATAL post analysis error: Unable to initialize the Java DB: Java DB update failed")
+		os.Exit(1)
+	}
+	out := os.Getenv("FAKETRIVY_OUT")
+	if p := os.Getenv("FAKETRIVY_OUT_ROOTFS"); p != "" && kind == "rootfs" {
+		out = p
+	}
+	b, err := os.ReadFile(out)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(3)

@@ -2,12 +2,16 @@
 package trivy
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 )
@@ -18,7 +22,7 @@ type Options struct {
 	Bin, CacheDir string
 	Scanners      []string
 	Timeout       time.Duration
-	NoJavaDB      bool // no java-db installed: skip Java archives, or Trivy 0.76.1 fails the scan at the first JAR
+	NoJavaDB      bool // skip Java archives: without a java-db Trivy 0.76.1 fails an image scan at the first JAR (ErrNoJavaDB)
 	// Chosen by the admin; a zero value adds no flag. The caller validates the values.
 	IgnoreUnfixed, IncludeDevDeps bool
 	Severities, PkgTypes          []string
@@ -38,7 +42,8 @@ func listArg(flag, v string) string {
 
 // Args builds the argv (without the binary). Every flag and value is its own element or one --flag=value element; no
 // shell is involved. Only flags the subcommand has in Trivy 0.76.1 are passed (sbom has no files to skip and no
-// misconfig checks; only fs has --include-dev-deps).
+// misconfig checks; only fs has --include-dev-deps). fs reads lock files and never opens a JAR; rootfs and image read
+// built artifacts (JAR/WAR/EAR, node_modules, site-packages, Go binaries) and no lock files.
 func Args(kind, input string, o Options) []string {
 	scanners := strings.Join(o.Scanners, ",")
 	if kind == "sbom" || scanners == "" {
@@ -89,6 +94,12 @@ func Args(kind, input string, o Options) []string {
 
 var errTooBig = errors.New("trivy output exceeds 512MB")
 
+// What Trivy 0.76.1 says on stderr, as errors a caller can tell apart from every other failure.
+var (
+	ErrInput    = errors.New("trivy cannot read the file as a container image") // "unable to initialize archive image"
+	ErrNoJavaDB = errors.New("a Java archive was met and no Java DB is installed")
+)
+
 type capWriter struct {
 	w        io.Writer
 	n        int64
@@ -117,7 +128,7 @@ func (t *tailBuf) Write(p []byte) (int, error) {
 
 func Run(ctx context.Context, o Options, kind, input string, stdout io.Writer) error {
 	switch kind {
-	case "fs", "image", "sbom":
+	case "fs", "rootfs", "image", "sbom":
 	default:
 		return fmt.Errorf("trivy: unknown kind %q", kind)
 	}
@@ -142,5 +153,55 @@ func Run(ctx context.Context, o Options, kind, input string, stdout io.Writer) e
 	if ctx.Err() != nil {
 		err = fmt.Errorf("%w: %v", ctx.Err(), err)
 	}
-	return fmt.Errorf("trivy %s: %w: %s", kind, err, strings.TrimSpace(string(se.b)))
+	msg := strings.TrimSpace(string(se.b))
+	if strings.Contains(msg, "unable to initialize archive image") {
+		err = fmt.Errorf("%w: %w", ErrInput, err)
+	} else if strings.Contains(msg, "Unable to initialize the Java DB") {
+		err = fmt.Errorf("%w: %w", ErrNoJavaDB, err)
+	}
+	return fmt.Errorf("trivy %s: %w: %s", kind, err, msg)
+}
+
+// Report is the report as it is stored and downloaded: ArtifactName, where Trivy wrote the server's work path, becomes
+// name, and the results of the Java archive pass (extra, nil when there was none) follow the others. SchemaVersion
+// and ArtifactName go first because format detection reads only the head of a report.
+func Report(main, extra []byte, name string) ([]byte, error) {
+	var m map[string]json.RawMessage
+	var a, b struct{ Results []json.RawMessage }
+	if err := json.Unmarshal(main, &m); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(main, &a); err != nil {
+		return nil, err
+	}
+	if extra != nil {
+		if err := json.Unmarshal(extra, &b); err != nil {
+			return nil, err
+		}
+	}
+	m["ArtifactName"], _ = json.Marshal(name)
+	if rs := append(a.Results, b.Results...); len(rs) > 0 {
+		m["Results"], _ = json.Marshal(rs)
+	}
+	var compact, out bytes.Buffer
+	compact.WriteByte('{')
+	for _, k := range append([]string{"SchemaVersion", "ArtifactName"}, slices.Sorted(maps.Keys(m))...) {
+		v, ok := m[k]
+		if !ok {
+			continue
+		}
+		delete(m, k)
+		if compact.Len() > 1 {
+			compact.WriteByte(',')
+		}
+		kb, _ := json.Marshal(k)
+		compact.Write(kb)
+		compact.WriteByte(':')
+		compact.Write(v)
+	}
+	compact.WriteByte('}')
+	if err := json.Indent(&out, compact.Bytes(), "", "  "); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }

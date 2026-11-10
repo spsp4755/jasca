@@ -30,6 +30,10 @@ L.run(async () => {
   await dbBlock.getByText("설치됨", { exact: true }).waitFor();
   await javaBlock.getByText("설치 안 됨", { exact: true }).waitFor();
   L.ok(true, "the two blocks show 설치됨 / 설치 안 됨");
+  L.ok((await admin.api.get("/auth/config")).trivy_db_ready === true, "/auth/config tells signed-in users the vulnerability DB is ready");
+  await javaBlock.getByText(/없으면 그 파일만 건너뛰고 나머지를 검사하며, 스캔 결과에 검사하지 못한 Java 파일이 있다고 표시합니다/).waitFor();
+  await page.getByText(/스캐너를 끈 경우는 다릅니다/).waitFor();
+  L.ok(true, "the page says what happens without a Java DB and what a switched-off scanner does to open results");
   const runsBefore = (await admin.api.get("/admin/recheck")).length;
 
   await dbBlock.locator('input[type="file"]').setInputFiles(bad);
