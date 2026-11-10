@@ -5,18 +5,18 @@ import Button from "../../components/Button";
 import { useApi } from "../../api/hooks";
 import { api } from "../../api/client";
 import { useToast } from "../../components/Toast";
-import type { AIPrompts, AISettings, AISettingsPut } from "../../api/types";
+import type { AIPrompts, AIPromptsView, AISettings, AISettingsPut } from "../../api/types";
 import { Check, Loading, Panel, SecretField, useSave } from "./parts";
 
 export default function AI() {
   const q = useApi<AISettings>("/admin/ai");
-  const pq = useApi<AIPrompts>("/admin/ai/prompts");
+  const pq = useApi<AIPromptsView>("/admin/ai/prompts");
   const toast = useToast();
   const [f, setF] = useState<AISettingsPut>({ base_url: "", model: "", timeout_sec: 120, max_input_tokens: 12000, enabled: false });
   const [key, setKey] = useState("");
   const [pr, setPr] = useState<AIPrompts>({ vuln_guide: "", project_report: "" });
   useEffect(() => { if (q.data) { const { api_key_set: _k, ...rest } = q.data; setF(rest); setKey(""); } }, [q.data]);
-  useEffect(() => { if (pq.data) setPr(pq.data); }, [pq.data]);
+  useEffect(() => { if (pq.data) setPr({ vuln_guide: pq.data.vuln_guide, project_report: pq.data.project_report }); }, [pq.data]);
   const body = () => ({ ...f, ...(key ? { api_key: key } : {}) });
   const save = useSave(() => api.put("/admin/ai", body()), { ok: "AI 설정을 저장했습니다.", invalidate: ["/admin/ai", "/auth/config"] }); // /auth/config tells the screens whether to offer AI
   const test = useSave(() => api.post<{ ok?: boolean; error?: string; message?: string }>("/admin/ai/test", body()), {
@@ -51,8 +51,19 @@ export default function AI() {
         <Loading q={pq} />
         {pq.data && (
           <form className="admin-form" style={{ maxWidth: 760 }} onSubmit={(e) => { e.preventDefault(); savePr.mutate(undefined); }}>
-            <Field label="취약점 조치 가이드"><textarea className="input" rows={6} value={pr.vuln_guide} onChange={(e) => setPr({ ...pr, vuln_guide: e.target.value })} /></Field>
-            <Field label="프로젝트 보고서"><textarea className="input" rows={6} value={pr.project_report} onChange={(e) => setPr({ ...pr, project_report: e.target.value })} /></Field>
+            <p className="muted" style={{ margin: 0 }}>비워 두면 기본 프롬프트를 씁니다. 그대로 써도 됩니다. 말투나 항목을 바꾸고 싶을 때만 기본 프롬프트를 불러와 고치세요.</p>
+            {([["vuln_guide", "취약점 조치 가이드", "요청이 \"[파트 1: 일반 설명]\"과 \"[파트 2: 내 영향]\" 두 가지로 옵니다. 고칠 때 두 파트 설명은 남겨 두세요."],
+              ["project_report", "프로젝트 보고서", "프로젝트의 열린 결과, 추세, 예외 현황이 입력으로 갑니다."]] as const).map(([k, label, hint]) => (
+              <div key={k}>
+                <Field label={label} hint={`${pr[k] ? "직접 쓴 프롬프트를 씁니다." : "비어 있음: 기본 프롬프트를 씁니다."} ${hint}`}>
+                  <textarea className="input" rows={8} placeholder={pq.data.defaults[k]} value={pr[k]} onChange={(e) => setPr({ ...pr, [k]: e.target.value })} />
+                </Field>
+                <div className="admin-actions" style={{ marginTop: 6 }}>
+                  <Button type="button" size="sm" disabled={pr[k] === pq.data.defaults[k]} onClick={() => setPr({ ...pr, [k]: pq.data.defaults[k] })}>기본 프롬프트 불러오기</Button>
+                  <Button type="button" size="sm" disabled={!pr[k]} onClick={() => setPr({ ...pr, [k]: "" })}>비우기</Button>
+                </div>
+              </div>
+            ))}
             <div className="admin-actions"><Button type="submit" variant="primary" loading={savePr.isPending}>프롬프트 저장</Button></div>
           </form>
         )}

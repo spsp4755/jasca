@@ -194,7 +194,9 @@ func (s *server) handleGetAIPrompts(w http.ResponseWriter, r *http.Request, c *r
 		writeInternal(w, "get ai prompts", err)
 		return
 	}
-	writeJSON(w, 200, p)
+	// defaults: what an empty prompt means, shown on the admin page as the text to start a custom prompt from
+	writeJSON(w, 200, map[string]any{"vuln_guide": p.VulnGuide, "project_report": p.ProjectReport,
+		"defaults": aiPrompts{defaultVulnGuidePrompt, defaultProjectReportPrompt}})
 }
 
 func (s *server) handlePutAIPrompts(w http.ResponseWriter, r *http.Request, c *reqCtx) {

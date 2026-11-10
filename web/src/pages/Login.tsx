@@ -108,6 +108,7 @@ export default function Login() {
               <p className="login-note">계정이 없거나 로그인이 되지 않으면 보안 담당자에게 문의하세요.</p>
             </div>
           )}
+          {cfg.data?.version && <p className="login-version">JASCA {/^\d/.test(cfg.data.version) ? `v${cfg.data.version}` : cfg.data.version}</p>}
         </div>
       </main>
     </div>

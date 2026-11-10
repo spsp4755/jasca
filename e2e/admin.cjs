@@ -38,6 +38,14 @@ L.run(async () => {
   const sso = (await api("GET", "/admin/sso")).body;
   L.ok(sso.client_secret_set === true && !("client_secret" in sso && sso.client_secret), "SSO answer says client_secret_set, never the value");
   const page = admin.page;
+  // an empty AI prompt is not a missing setting: the page says the built-in one is used and can load it to edit
+  await page.goto(`${L.BASE}/admin/ai`);
+  const guide = page.getByLabel("취약점 조치 가이드");
+  await guide.waitFor();
+  L.ok(await guide.inputValue() === "" && /파트 1/.test(await guide.getAttribute("placeholder")) && await page.getByText("비어 있음: 기본 프롬프트를 씁니다.").count() === 2,
+    "empty AI prompts say the built-in prompt is used and show it");
+  await page.getByRole("button", { name: "기본 프롬프트 불러오기" }).first().click();
+  L.ok(/\[파트 2: 내 영향\]/.test(await guide.inputValue()), "the built-in prompt can be loaded into the field to edit");
   for (const p of ["users", "sso", "sync", "default-policy", "trivy", "recheck", "harbor", "ai", "channels", "retention", "audit"]) {
     await page.goto(`${L.BASE}/admin/${p}`);
     await page.locator(".admin-main h1, main h1").first().waitFor();

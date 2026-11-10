@@ -9,6 +9,7 @@ L.run(async () => {
   await page.goto(L.BASE + "/");
   await page.waitForURL(/\/login\?next=%2F$/);
   L.ok(await page.getByText("로그인 시간이 지나").count() === 0, "a first visit lands on the login page with no session-ended message");
+  L.ok(/^JASCA \S+$/.test(await page.locator(".login-version").innerText()), "the login page shows which version is running");
 
   // wrong password, then the right one, on the local form
   await page.goto(L.BASE + "/login?local=1");

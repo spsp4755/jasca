@@ -26,7 +26,7 @@ export interface Counts { critical: number; high: number; medium: number; low: n
 // --- auth / me ---
 /** tz: IANA zone from JASCA_TZ; the UI shows times in it. */
 /** ai_enabled, max_scan_upload_mb and trivy_db_ready (false: no vulnerability DB yet, scans are refused) come only when signed in. */
-export interface AuthConfig { sso_enabled: boolean; tz?: string; signed_in?: boolean; ai_enabled?: boolean; max_scan_upload_mb?: number; trivy_db_ready?: boolean }
+export interface AuthConfig { sso_enabled: boolean; tz?: string; version?: string; signed_in?: boolean; ai_enabled?: boolean; max_scan_upload_mb?: number; trivy_db_ready?: boolean }
 export interface LocalLoginRequest { username: string; password: string }
 export interface LocalLoginResponse { user: Me }
 export interface Me {
@@ -212,6 +212,8 @@ export interface SyncStatus extends SyncSettings { groups: number; users: number
 export interface SyncRunResult { groups: number; users: number; error: string }
 /** Assumed shape of GET/PUT /admin/ai/prompts (contract does not spell it out). */
 export interface AIPrompts { vuln_guide: string; project_report: string }
+/** GET adds the built-in prompts an empty field falls back to. */
+export interface AIPromptsView extends AIPrompts { defaults: AIPrompts }
 export type DefaultPolicy = Policy;
 export interface SMTPSettings { host: string; port: number; username: string; password_set: boolean; from: string; tls: "starttls" | "tls" | "none" }
 /** PUT body: an empty or omitted password keeps the stored one. */

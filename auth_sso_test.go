@@ -235,9 +235,10 @@ func TestAuthConfig(t *testing.T) {
 	var out struct {
 		SSOEnabled bool   `json:"sso_enabled"`
 		TZ         string `json:"tz"`
+		Version    string `json:"version"`
 	}
 	rec := do(t, s, "GET", "/api/v1/auth/config", nil)
-	if json.Unmarshal(rec.Body.Bytes(), &out); rec.Code != 200 || out.SSOEnabled || out.TZ != "Asia/Seoul" {
+	if json.Unmarshal(rec.Body.Bytes(), &out); rec.Code != 200 || out.SSOEnabled || out.TZ != "Asia/Seoul" || out.Version != version {
 		t.Fatalf("unconfigured: %d %s", rec.Code, rec.Body.String())
 	}
 	configureSSO(t, s, newFakeKC(t, "/realms/jasca"))
@@ -258,7 +259,8 @@ func TestAuthConfig(t *testing.T) {
 	}
 }
 
-// Signed-in users learn whether AI is on and the scan upload limit, nothing else about the AI settings; signed-out callers neither.
+// Signed-in users learn whether AI is on and the scan upload limit, nothing else about the AI settings; signed-out callers
+// neither (they are told the version only).
 func TestAuthConfigInstanceFields(t *testing.T) {
 	s := testServer(t)
 	get := func(opts ...any) map[string]any {
@@ -277,7 +279,7 @@ func TestAuthConfigInstanceFields(t *testing.T) {
 	}
 	kim := loginAs(t, s, mkUser(t, s, "kim", ""))
 	out := get(kim)
-	if out["ai_enabled"] != true || out["max_scan_upload_mb"] != float64(s.cfg.MaxScanUploadMB) || len(out) != 6 {
+	if out["ai_enabled"] != true || out["max_scan_upload_mb"] != float64(s.cfg.MaxScanUploadMB) || len(out) != 7 {
 		t.Fatalf("signed in, AI on: %v", out)
 	}
 	if err := s.putSetting(context.Background(), "ai", aiSettings{BaseURL: "http://ai.example.test/v1", Enabled: false}); err != nil {

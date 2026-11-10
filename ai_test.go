@@ -378,9 +378,13 @@ func TestAISettingsNoKeyLeak(t *testing.T) {
 	// prompts: empty = default; saved text is used
 	do(t, s, "PUT", "/api/v1/admin/ai/prompts", map[string]string{"vuln_guide": "", "project_report": "나의 보고서 프롬프트"}, admin)
 	rec = do(t, s, "GET", "/api/v1/admin/ai/prompts", nil, admin)
-	var pr map[string]string
+	var pr struct {
+		VulnGuide     string    `json:"vuln_guide"`
+		ProjectReport string    `json:"project_report"`
+		Defaults      aiPrompts `json:"defaults"`
+	}
 	json.Unmarshal(rec.Body.Bytes(), &pr)
-	if pr["project_report"] != "나의 보고서 프롬프트" || pr["vuln_guide"] != "" {
+	if pr.ProjectReport != "나의 보고서 프롬프트" || pr.VulnGuide != "" || pr.Defaults.VulnGuide != defaultVulnGuidePrompt || pr.Defaults.ProjectReport != defaultProjectReportPrompt {
 		t.Fatalf("%s", rec.Body.String())
 	}
 	var n int

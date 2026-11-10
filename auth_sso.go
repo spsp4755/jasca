@@ -63,8 +63,9 @@ func (s *server) ssoRoutes() {
 			return
 		}
 		out := map[string]any{"sso_enabled": sso.Enabled && sso.Issuer != "" && sso.ClientID != "", "tz": s.cfg.Loc.String(),
-			"signed_in": c.User != nil} // lets the web skip a /me that would only 401 (a console error) when signed out
-		if c.User != nil { // what the screens need to know up front; a signed-out caller learns nothing about the instance
+			"signed_in": c.User != nil, // lets the web skip a /me that would only 401 (a console error) when signed out
+			"version":   version}       // shown on the login page, so an operator can tell which release is running
+		if c.User != nil { // what the screens need to know up front; a signed-out caller learns only the version
 			ai, err := s.aiConf(r.Context())
 			if err != nil {
 				writeInternal(w, "auth config", err)
