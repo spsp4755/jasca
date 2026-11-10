@@ -171,7 +171,9 @@ function ScanRun({ run, onCancelUpload, onAgain, onEdit }: { run: Run; onCancelU
                 );
               })}
             </ul>
-            {s.policy && (s.policy.passed
+            {s.policy && (s.policy.disabled
+              ? <p className="scan-policy muted">이 프로젝트는 정책을 쓰지 않습니다(정책 사용 안 함).</p>
+              : s.policy.passed
               ? <p className="scan-policy scan-policy-pass"><Icon name="shieldCheck" />정책 통과: 프로젝트 정책의 기준을 넘는 결과가 없습니다.</p>
               : <p className="scan-policy scan-policy-fail" role="alert"><Icon name="alert" />정책 실패: {(s.policy.reasons?.length ? s.policy.reasons : [s.policy.error || "사유가 기록되지 않았습니다."]).join(", ")}</p>)}
             <div className="row-gap">
@@ -325,7 +327,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
         {isNew && (
           <div className="scan-new-project">
             <Field label="새 프로젝트 이름" required error={tried ? nameErr || undefined : undefined}>
-              <input className="input" value={newName} maxLength={120} placeholder="예: 결제 API"
+              <input className="input" value={newName} maxLength={100} placeholder="예: 결제 API"
                 onChange={(e) => { setNewName(e.target.value); if (!keyEdited) setNewKey(suggestKey(e.target.value)); }} />
             </Field>
             <Field label="프로젝트 키" required error={(tried || conflict || (keyEdited && newKey)) ? keyErr || undefined : undefined}

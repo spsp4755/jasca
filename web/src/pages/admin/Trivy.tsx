@@ -165,7 +165,7 @@ function ScanOptions({ current, defaultTimeout }: { current: TrivyOptions; defau
             </div>
           </fieldset>
           <Choice label="개발용 의존성도 검사" checked={f.include_dev_deps} onChange={(v) => set({ include_dev_deps: v })}
-            hint="npm·yarn·gradle의 개발용 의존성(devDependencies)까지 검사합니다. 빌드·테스트 도구의 취약점도 관리할 때 켭니다. 압축 파일(파일시스템) 스캔에만 적용됩니다." />
+            hint="npm·yarn·gradle의 개발용 의존성(devDependencies)까지 검사합니다. 빌드·테스트 도구의 취약점도 관리할 때 켭니다. 소스·패키지 압축 파일 스캔에만 적용됩니다." />
         </div>
 
         <div className="opt-group">
