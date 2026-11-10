@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -25,6 +26,9 @@ type reportFinding struct {
 	PkgVersion   string    `json:"pkg_version"`
 	FixedVersion string    `json:"fixed_version"`
 	FirstSeenAt  time.Time `json:"first_seen_at"`
+	// where a secret or misconfiguration sits: the file, and of the details only the lines
+	Location string          `json:"location"`
+	Details  json.RawMessage `json:"details"`
 }
 
 // handleProjectReport returns everything the printable report page shows; the page does the layout.
@@ -54,29 +58,15 @@ func (s *server) handleProjectReport(w http.ResponseWriter, r *http.Request, c *
 	}
 	rep.Summary = map[string]any{"by_severity": sev,
 		"by_kind": map[string]int{"vuln": byKind.Vuln, "misconfig": byKind.Misconfig, "secret": byKind.Secret, "sast": byKind.SAST}}
-	trows, err := s.db.Query(ctx, `select t.id, t.kind, t.name, t.last_scan_at, t.recheck_excluded, fc.*
-		from targets t cross join lateral `+openCountsSQL("f.target_id = t.id")+` fc where t.project_id = $1 order by t.name, t.kind`, pid)
-	if err != nil {
-		fail(err)
-		return
-	}
-	rep.Targets = []targetView{}
-	for trows.Next() {
-		var v targetView
-		k := &v.Counts
-		if err := trows.Scan(&v.ID, &v.Kind, &v.Name, &v.LastScanAt, &v.RecheckExcluded, &k.Critical, &k.High, &k.Medium, &k.Low, &k.Unknown, &k.Open); err != nil {
-			trows.Close()
-			fail(err)
-			return
-		}
-		rep.Targets = append(rep.Targets, v)
-	}
-	if err := trows.Err(); err != nil {
+	var err error
+	if rep.Targets, err = s.projectTargets(ctx, pid); err != nil {
 		fail(err)
 		return
 	}
 	if rep.Findings, err = collect[reportFinding](ctx, s, `select f.id, t.name, f.kind, f.rule_id, f.title, f.severity, f.pkg_name,
-			f.pkg_version, f.fixed_version, f.first_seen_at from findings f join targets t on t.id = f.target_id
+			f.pkg_version, f.fixed_version, f.first_seen_at, f.location,
+			jsonb_strip_nulls(jsonb_build_object('start_line', f.details->'start_line', 'end_line', f.details->'end_line'))
+		from findings f join targets t on t.id = f.target_id
 		where f.project_id = $1 and f.status = 'open'
 		order by array_position(array['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'], f.severity), f.first_seen_at, f.id limit 100`, pid); err != nil {
 		fail(err)

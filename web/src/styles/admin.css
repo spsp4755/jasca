@@ -40,3 +40,6 @@
 .opt-sevs { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .input.opt-num { width: 120px; }
 @media (max-width: 900px) { .db-grid, .opt-cols { grid-template-columns: 1fr; } }
+
+/* audit log 대상: one line, so an id is never broken at its hyphens ("JASCA / -2026- / 001"); long names are cut, the title has the rest */
+.audit-target { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }

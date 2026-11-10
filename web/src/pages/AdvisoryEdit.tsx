@@ -75,7 +75,8 @@ export default function AdvisoryEdit() {
   const affected = f.affected.map((a) => ({ ...a, name: a.name.trim(), range: a.range.trim(), fixed: a.fixed.trim(), ecosystem: a.ecosystem.trim() }));
   const body = { id: f.id.trim(), title: f.title.trim(), description: f.description.trim(), severity: f.severity, affected, active: f.active,
     refs: f.refs.split(/\s+/).map((s) => s.trim()).filter(Boolean) };
-  const valid = /^[A-Z][A-Z0-9-]{2,40}$/.test(body.id) && body.title && affected.length > 0 && affected.every((a) => a.ecosystem && a.name && a.range);
+  const idOK = /^[A-Z][A-Z0-9-]{2,40}$/.test(body.id);
+  const valid = idOK && body.title && affected.length > 0 && affected.every((a) => a.ecosystem && a.name && a.range);
 
   const prev = useMutation<AdvisoryPreviewRow[], ApiError>({
     mutationFn: () => api.post<AdvisoryPreviewRow[]>("/advisories/preview", body),
@@ -93,6 +94,16 @@ export default function AdvisoryEdit() {
     onError: (e) => toast(e.message, "error"),
   });
   const dis = !sec;
+  if (!isNew && q.isError) { // nothing to edit or delete: only say so
+    return (
+      <>
+        <PageHeader title={id!} crumbs={[{ label: "사내 Advisory", to: "/advisories" }, { label: id! }]} />
+        <div className="panel"><Empty icon="alert" title={q.error.status === 404 ? "Advisory를 찾을 수 없습니다" : "Advisory를 불러오지 못했습니다"}
+          description={q.error.status === 404 ? "없는 ID이거나 삭제된 Advisory입니다." : q.error.message}
+          action={<Link className="btn btn-secondary btn-sm" to="/advisories">Advisory 목록으로</Link>} /></div>
+      </>
+    );
+  }
   if (isNew && me && !sec) {
     return (
       <>
@@ -105,7 +116,7 @@ export default function AdvisoryEdit() {
   return (
     <>
       <PageHeader title={isNew ? "새 Advisory" : f.id || "Advisory"} crumbs={[{ label: "사내 Advisory", to: "/advisories" }, { label: isNew ? "새로 만들기" : id! }]}
-        actions={sec && !isNew ? <Button variant="danger" loading={del.isPending} onClick={() => confirm("이 Advisory를 삭제할까요? 이로 인해 생긴 결과가 정리됩니다.") && del.mutate()}>삭제</Button> : undefined} />
+        actions={sec && q.data ? <Button variant="danger" loading={del.isPending} onClick={() => confirm("이 Advisory를 삭제할까요? 이로 인해 생긴 결과가 정리됩니다.") && del.mutate()}>삭제</Button> : undefined} />
       {!isNew && <Loading q={q} />}
       {!sec && <div className="alert alert-info">읽기 전용입니다. 수정은 보안 담당자만 할 수 있습니다.</div>}
       {(q.data?.warnings ?? []).map((w, i) => <div key={i} className="alert alert-warn" role="alert">{w}</div>)}
@@ -115,7 +126,8 @@ export default function AdvisoryEdit() {
             <div className="stack">
               <div className="admin-form" style={{ maxWidth: "none" }}>
                 <div className="two">
-                  <Field label="ID" required hint="대문자·숫자·하이픈, 3~41자. 예: JASCA-2026-001"><input className="input mono" value={f.id} disabled={dis || !isNew} onChange={(e) => set({ id: e.target.value.toUpperCase() })} /></Field>
+                  <Field label="ID" required error={isNew && body.id && !idOK ? "대문자로 시작하고 대문자·숫자·하이픈만 써서 3~41자로 입력하세요. 예: JASCA-2026-001" : undefined}
+                    hint={isNew && body.id && !idOK ? undefined : "대문자·숫자·하이픈, 3~41자. 예: JASCA-2026-001"}><input className="input mono" value={f.id} disabled={dis || !isNew} onChange={(e) => set({ id: e.target.value.toUpperCase() })} /></Field>
                   <Field label="심각도" required><select className="input" value={f.severity} disabled={dis} onChange={(e) => set({ severity: e.target.value as Severity })}>
                     {SEVERITIES.map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}</select></Field>
                 </div>

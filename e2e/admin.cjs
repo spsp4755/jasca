@@ -55,6 +55,15 @@ L.run(async () => {
   L.ok(/역할: 관리자 → 일반 사용자/.test(rows) && /역할: 관리자(?! →)/.test(rows), "role changes read in words, the plain-user role included");
   rows = await only("project.members", /추가: /);
   L.ok(/추가: .*개발본부\/플랫폼팀\(멤버\)/.test(rows) && /e2e-proj/.test(rows) && !/멤버: \d+개/.test(rows), "a member change says who was added with which role, and names the project");
+  await api("PUT", "/admin/trivy", {}); // writes a 스캔 옵션 변경 entry with the stored options
+  rows = await only("trivy.settings", "스캔 옵션 변경");
+  L.ok(/탐지 방식: (정확하게|빠짐없이)/.test(rows) && /스캐너: /.test(rows) && /스캔 1건 제한 시간\(분\): /.test(rows) && !/detection_priority|ignore_unfixed|timeout_min|pkg_types|skip_dirs|precise/.test(rows),
+    "a scan-option change reads in the words of the options panel, with no raw keys");
+  rows = await only("auth.login_failed", /사유: /);
+  L.ok(/사유: 아이디 또는 비밀번호가 틀림/.test(rows) && !/bad_credentials|locked/.test(rows), "login failures give the reason in words");
+  rows = await only("scan.upload", /이미지 debian-app/);
+  L.ok(!/(image|fs|repo|sbom):/.test(rows), "upload entries name the target kind in words, not as kind:name");
+  await L.shot(page, "admin-audit");
   rows = await only("exception.request", /처리: 위험 수용/);
   L.ok(/범위: 결과/.test(rows) && /e2e-exc/.test(rows) && !/accepted|finding:/.test(rows), "exception entries use the screen's words for scope and resolution");
   await page.goto(`${L.BASE}/projects`);

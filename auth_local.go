@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -70,9 +71,11 @@ func (s *server) handleLocalLogin(w http.ResponseWriter, r *http.Request, c *req
 	var id int64
 	var source string
 	var hash *string
-	var active, locked bool
-	err := s.db.QueryRow(ctx, `select id, source, password_hash, active, coalesce(locked_until > now(), false) from users where username=$1`, name).
-		Scan(&id, &source, &hash, &active, &locked)
+	var active bool
+	var lockedMin int // minutes until the lock ends, rounded up; 0 = not locked
+	err := s.db.QueryRow(ctx, `select id, source, password_hash, active,
+			coalesce(greatest(ceil(extract(epoch from locked_until - now()) / 60), 0), 0)::int from users where username=$1`, name).
+		Scan(&id, &source, &hash, &active, &lockedMin)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		writeInternal(w, "login", err)
 		return
@@ -80,9 +83,9 @@ func (s *server) handleLocalLogin(w http.ResponseWriter, r *http.Request, c *req
 	fail := func(reason string) {
 		s.audit(ctx, c, "auth.login_failed", nil, name, map[string]any{"method": "local", "reason": reason})
 	}
-	if err == nil && locked {
+	if err == nil && lockedMin > 0 {
 		fail("locked")
-		writeErr(w, 423, "locked", "로그인 실패가 반복되어 계정이 잠겼습니다. 15분 뒤에 다시 시도하세요.")
+		writeErr(w, 423, "locked", fmt.Sprintf("로그인 실패가 반복되어 계정이 잠겼습니다. %d분 뒤에 다시 시도하세요.", lockedMin))
 		return
 	}
 	usable := err == nil && source == "local" && active && hash != nil

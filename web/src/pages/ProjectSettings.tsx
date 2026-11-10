@@ -86,7 +86,7 @@ function General({ project, owner }: { project: Project; owner: boolean }) {
   return (
     <Section id="general" title="일반" meta={<>키 <span className="mono">{project.key}</span> · {fmtDate(project.created_at)} 생성</>}>
       <form className="form" onSubmit={(e) => { e.preventDefault(); if (!nameErr && dirty) save.mutate(undefined); }}>
-        <Field label="이름" required error={nameErr}><input className="input" value={name} disabled={!owner} maxLength={120} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="이름" required error={nameErr}><input className="input" value={name} disabled={!owner} maxLength={100} onChange={(e) => setName(e.target.value)} /></Field>
         <Field label="설명" error={desc.length > 2000 ? "2000자 이하로 입력하세요." : undefined}>
           <textarea className="input" rows={3} value={desc} disabled={!owner} onChange={(e) => setDesc(e.target.value)} />
         </Field>
@@ -262,7 +262,7 @@ function PolicyForm({ project, owner }: { project: Project; owner: boolean }) {
   return (
     <Section id="policy" title="정책" meta="스캔할 때마다 정책 통과·정책 실패를 정합니다">
       <form className="form" onSubmit={(e) => { e.preventDefault(); save.mutate(undefined); }}>
-        <PolicyFields p={p} set={set} disabled={!owner} label="정책 사용 (끄면 항상 정책 통과)" />
+        <PolicyFields p={p} set={set} disabled={!owner} label="정책 사용 (끄면 스캔을 판정하지 않음 · CI에는 통과로 응답)" />
         {owner && <div className="form-actions"><Button type="submit" variant="primary" disabled={!dirty || !!policyCountError(p)} loading={save.isPending}>저장</Button></div>}
       </form>
     </Section>

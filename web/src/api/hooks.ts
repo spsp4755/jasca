@@ -1,7 +1,12 @@
-import { QueryClient, useMutation, useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
+import { QueryClient, notifyManager, useMutation, useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
 import { setTimeZone } from "../lib/format";
 import { ApiError, api } from "./client";
 import type { AuthConfig, Dashboard, LocalLoginRequest, LocalLoginResponse, Me } from "./types";
+
+// React Query tells components about a change from a timer by default. A second click (or Enter) can arrive before
+// that timer, while the button does not yet show that its request is running, and send the request twice. A
+// microtask runs before the next event, so every button with `loading` is disabled by the time it could be hit again.
+notifyManager.setScheduler(queueMicrotask);
 
 export const queryClient = new QueryClient({
   defaultOptions: {

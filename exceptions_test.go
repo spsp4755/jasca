@@ -502,3 +502,31 @@ func TestExceptionCarriesNamesForAuditAndNotify(t *testing.T) {
 		}
 	}
 }
+
+// The finding's detail names the request waiting for a decision that would cover it, so the drawer can say so
+// instead of offering a second request that would only be refused.
+func TestFindingNamesItsPendingException(t *testing.T) {
+	e := newExEnv(t)
+	_, ck, _ := e.project(t, "web", "CVE-2024-1000", "CVE-2024-2000")
+	fid := func(cve string) int64 { return qint64(t, e.s, `select id from findings where rule_id=$1`, cve) }
+	pending := func(cve string) *int64 {
+		t.Helper()
+		return decode[struct {
+			PendingExceptionID *int64 `json:"pending_exception_id"`
+		}](t, do(t, e.s, "GET", "/api/v1/findings/"+itoa(fid(cve)), nil, ck)).PendingExceptionID
+	}
+	if got := pending("CVE-2024-1000"); got != nil {
+		t.Fatalf("no request yet: %d", *got)
+	}
+	ex := e.request(t, ck, map[string]any{"scope": "finding", "project_key": "web", "finding_ids": []int64{fid("CVE-2024-1000")}}, 201)
+	if got := pending("CVE-2024-1000"); got == nil || *got != ex[0].ID {
+		t.Errorf("pending request %d: got %v", ex[0].ID, got)
+	}
+	if got := pending("CVE-2024-2000"); got != nil {
+		t.Errorf("another finding: %d", *got)
+	}
+	e.decide(t, e.secA, ex[0].ID, "approve", 200)
+	if got := pending("CVE-2024-1000"); got != nil {
+		t.Errorf("after the decision: %d", *got)
+	}
+}

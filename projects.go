@@ -587,13 +587,15 @@ type targetView struct {
 	RecheckExcluded bool       `json:"recheck_excluded"`
 }
 
-func (s *server) handleTargetList(w http.ResponseWriter, r *http.Request, c *reqCtx) {
-	rows, err := s.db.Query(r.Context(), `select t.id, t.kind, t.name, t.last_scan_at, t.recheck_excluded, fc.*
+// projectTargets lists a project's targets with their open counts, for the 대상 tab, the target filters and the
+// report. A target shows up once a scan of it has succeeded: one whose only uploads failed or were canceled has
+// nothing to show and is reached from its scan in the scan history.
+func (s *server) projectTargets(ctx context.Context, projectID int64) ([]targetView, error) {
+	rows, err := s.db.Query(ctx, `select t.id, t.kind, t.name, t.last_scan_at, t.recheck_excluded, fc.*
 		from targets t cross join lateral `+openCountsSQL("f.target_id = t.id")+` fc
-		where t.project_id = $1 order by t.name, t.kind`, c.Project.ID)
+		where t.project_id = $1 and t.last_scan_at is not null order by t.name, t.kind`, projectID)
 	if err != nil {
-		writeInternal(w, "target list", err)
-		return
+		return nil, err
 	}
 	defer rows.Close()
 	list := []targetView{}
@@ -602,12 +604,16 @@ func (s *server) handleTargetList(w http.ResponseWriter, r *http.Request, c *req
 		k := &v.Counts
 		if err := rows.Scan(&v.ID, &v.Kind, &v.Name, &v.LastScanAt, &v.RecheckExcluded,
 			&k.Critical, &k.High, &k.Medium, &k.Low, &k.Unknown, &k.Open); err != nil {
-			writeInternal(w, "target list", err)
-			return
+			return nil, err
 		}
 		list = append(list, v)
 	}
-	if err := rows.Err(); err != nil {
+	return list, rows.Err()
+}
+
+func (s *server) handleTargetList(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+	list, err := s.projectTargets(r.Context(), c.Project.ID)
+	if err != nil {
 		writeInternal(w, "target list", err)
 		return
 	}

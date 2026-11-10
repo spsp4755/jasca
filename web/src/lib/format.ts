@@ -73,13 +73,25 @@ export const RESOLUTION_LABEL: Record<ExceptionResolution, string> = { accepted:
 
 // --- Task 16: finding/target labels and date-input helpers ---
 export const KIND_LABEL: Record<FindingKind, string> = { vuln: "취약점", misconfig: "설정 오류", secret: "비밀값", sast: "코드 분석" };
-export const TARGET_KIND_LABEL: Record<TargetKind, string> = { image: "이미지", repo: "저장소", fs: "파일시스템", sbom: "SBOM" };
+// short forms of the scan form's "소스 코드·패키지" and "컨테이너 이미지", to fit table tags
+export const TARGET_KIND_LABEL: Record<TargetKind, string> = { image: "이미지", repo: "저장소", fs: "소스·패키지", sbom: "SBOM" };
 export const ROLE_LABEL: Record<ProjectRole, string> = { owner: "소유자", member: "멤버", viewer: "보기 전용" };
 export const SYSTEM_ROLE_LABEL: Record<SystemRole, string> = { "": "일반 사용자", security: "보안 담당", admin: "관리자" };
-/** Local YYYY-MM-DD `days` from today, for <input type="date"> values and min/max. */
-export const dateInput = (days = 0) => {
-  const d = new Date(Date.now() + days * 86_400_000);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Date pickers work in calendar days of the display zone (TZ), like every date shown; the browser's own zone never counts.
+/** The display zone's wall clock at instant t, read as if it were UTC. */
+const wallClock = (t: number) => {
+  const p: Record<string, number> = {};
+  for (const x of new Intl.DateTimeFormat("en-US", { timeZone: TZ, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(t)) p[x.type] = Number(x.value);
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
 };
-/** End of that local day as RFC3339; the API caps expiry at 365 days, so date pickers stop at dateInput(364). */
-export const endOfDayISO = (date: string) => new Date(`${date}T23:59:59`).toISOString();
+/** YYYY-MM-DD `days` from today in the display zone, for <input type="date"> values and min/max. */
+export const dateInput = (days = 0) => {
+  const d = new Date(wallClock(Date.now()));
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+/** 23:59:59 of that day in the display zone as RFC3339; the API caps expiry at 365 days, so date pickers stop at dateInput(364). */
+export const endOfDayISO = (date: string) => {
+  const t = Date.parse(`${date}T23:59:59Z`);
+  return new Date(2 * t - wallClock(t)).toISOString(); // t minus the zone's offset at about that time
+};

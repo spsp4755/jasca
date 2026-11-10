@@ -91,3 +91,26 @@ func TestPolicyRules(t *testing.T) {
 	}
 	check(s2.ScanID, true, "default_policy setting")
 }
+
+// A scan under a switched-off policy still answers passed=true (CI reads that), but says the policy is off, so
+// the screens do not show a green pass over CRITICAL findings.
+func TestPolicyDisabledIsMarked(t *testing.T) {
+	s := testServer(t)
+	pid, ck := memberSession(t, s)
+	crit := tv{ID: "CVE-2024-1000", Sev: "CRITICAL"}
+	on := mustUpload(t, s, "web", "", trivyDoc("A", []tv{crit}, nil), ck)
+	if on.Policy.Passed || on.Policy.Disabled {
+		t.Errorf("policy on: %+v", on.Policy)
+	}
+	sqlExec(t, s, `insert into policies(project_id, enabled) values($1, false)`, pid)
+	off := mustUpload(t, s, "web", "", trivyDoc("A", []tv{crit}, nil), ck)
+	if !off.Policy.Passed || !off.Policy.Disabled {
+		t.Errorf("policy off: %+v", off.Policy)
+	}
+	if n := qInt(t, s, `select count(*) from scans where id=$1 and policy->>'passed' = 'true' and policy->>'disabled' = 'true'`, off.ScanID); n != 1 {
+		t.Error("stored policy does not say it is off")
+	}
+	if n := qInt(t, s, `select count(*) from scans where id=$1 and policy ? 'disabled'`, on.ScanID); n != 0 {
+		t.Error("a judged scan carries the marker")
+	}
+}

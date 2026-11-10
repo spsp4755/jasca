@@ -5,17 +5,38 @@ L.run(async () => {
   const ctx = await L.context(browser, "admin");
   const page = await ctx.newPage();
 
+  // a first visit goes to the login page without a reason
+  await page.goto(L.BASE + "/");
+  await page.waitForURL(/\/login\?next=%2F$/);
+  L.ok(await page.getByText("로그인 시간이 지나").count() === 0, "a first visit lands on the login page with no session-ended message");
+
   // wrong password, then the right one, on the local form
   await page.goto(L.BASE + "/login?local=1");
   await page.getByLabel("아이디").fill("admin");
   await page.getByLabel("비밀번호").fill("not-the-password");
   await page.getByRole("button", { name: "로그인" }).click();
   await page.getByRole("alert").filter({ hasText: "올바르지 않습니다" }).waitFor();
-  L.ok(true, "wrong password shows the Korean error");
+  L.ok(await page.getByLabel("비밀번호").inputValue() === "", "wrong password shows the Korean error and empties the password field");
   await page.getByLabel("비밀번호").fill(L.ADMIN);
   await page.getByRole("button", { name: "로그인" }).click();
   await page.locator(".sidebar").waitFor();
   L.ok(await page.getByRole("link", { name: "관리" }).isVisible(), "local admin signed in, 관리 in the sidebar");
+
+  // the session ends under the user: the login page says why, and signing in returns to the same page and #section
+  await page.goto(L.BASE + "/projects#recent");
+  await page.getByRole("button", { name: "새 프로젝트" }).first().click();
+  await ctx.clearCookies();
+  await page.getByRole("dialog").getByLabel("이름").fill("never made");
+  await page.getByRole("dialog").getByLabel("키").fill("never-made");
+  await page.getByRole("dialog").getByRole("button", { name: "만들기" }).click();
+  await page.waitForURL(/\/login\?next=%2Fprojects%23recent&error=expired$/);
+  await page.getByRole("status").filter({ hasText: "로그인 시간이 지나 다시 로그인해야 합니다." }).waitFor();
+  await L.shot(page, "login-session-ended");
+  await page.getByLabel("아이디").fill("admin");
+  await page.getByLabel("비밀번호").fill(L.ADMIN);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await page.waitForURL(/\/projects#recent$/);
+  L.ok(true, "after the session ended the login page says so, and signing in returns to /projects#recent");
 
   // SSO settings through the UI
   await page.goto(L.BASE + "/admin/sso");
@@ -103,6 +124,18 @@ L.run(async () => {
   L.ok((await kim.page.locator(".menu-role .tag-quiet").allInnerTexts()).join("|") === "보안실/취약점팀", "the user menu shows the department as one chip with its full path");
   await kim.page.getByRole("group", { name: "사용자 메뉴" }).getByText("로그아웃").click();
   await kim.page.waitForURL(/\/login/);
-  L.ok(true, "kim signed out");
+  L.ok(!/error=/.test(kim.page.url()) && await kim.page.getByText("로그인 시간이 지나").count() === 0, "kim signed out, with no session-ended message");
+
+  // five wrong passwords lock the local account: the page says for how long (then the lock is lifted for the other suites)
+  for (let i = 0; i < 5; i++) await ctx.request.post(L.BASE + "/api/v1/auth/local", { headers: { Origin: L.BASE }, data: { username: "admin", password: "wrong-" + i }, failOnStatusCode: false });
+  const lp = await (await L.context(browser, "anon")).newPage();
+  await lp.goto(L.BASE + "/login?local=1");
+  await lp.getByLabel("아이디").fill("admin");
+  await lp.getByLabel("비밀번호").fill(L.ADMIN);
+  await lp.getByRole("button", { name: "로그인" }).click();
+  await lp.getByRole("alert").filter({ hasText: /계정이 잠겼습니다\. 15분 뒤에 다시 시도하세요\./ }).waitFor();
+  await L.shot(lp, "login-locked");
+  L.psql("update users set locked_until = null, failed_logins = 0 where username = 'admin'");
+  L.ok(true, "a locked account is told how many minutes are left");
   await browser.close();
 });

@@ -20,7 +20,10 @@ const CONSOLE_ALLOW = [
   // Every sign-in starts on the SPA, which asks GET /me first; the by-design 401 sends it to the login page and Chrome logs it.
   { suites: /./, text: /status of 401/, url: /\/api\/v1\/me$/ },
   // login.cjs, a11y.cjs and trivydb.cjs do things the server answers with a 4xx on purpose; Chrome logs every failed resource load.
-  { suites: /^(login|a11y)$/, text: /status of 401/, url: /\/api\/v1\/auth\/local$/ },
+  { suites: /^(login|a11y)$/, text: /status of (401|423)/, url: /\/api\/v1\/auth\/local$/ }, // 423: the locked account
+  // login.cjs ends the session under a signed-in page; advisory.cjs opens an advisory that does not exist.
+  { suites: /^login$/, text: /status of 401/, url: /\/api\/v1\/projects$/ },
+  { suites: /^advisory$/, text: /status of 404/, url: /\/api\/v1\/advisories\/JASCA-E2E-NONE$/ },
   { suites: /^trivydb$/, text: /status of 400/, url: /\/api\/v1\/admin\/trivy(\/db)?$/ }, // bad bundle, bad option
   // exceptions.cjs opens a report and a finding as someone without access; the 404s are the point.
   { suites: /^exceptions$/, text: /status of 404/, url: /\/api\/v1\/(projects\/e2e-exc\/report|findings\/\d+)$/ },

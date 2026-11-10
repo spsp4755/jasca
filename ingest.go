@@ -112,7 +112,7 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 			return err
 		}
 		// back in this scan after being fixed: open again (accepted / false_positive keep their status)
-		rows, _ := tx.Query(ctx, `update findings set status = 'open', fixed_at = null, reopened_count = reopened_count + 1
+		rows, _ := tx.Query(ctx, `update findings set status = 'open', fixed_at = null, reopened_at = now(), reopened_count = reopened_count + 1
 			where status = 'fixed' and id in (select finding_id from scan_findings where scan_id = $1) returning id`, res.ScanID)
 		if res.Reopened, err = pgx.CollectRows(rows, pgx.RowTo[int64]); err != nil {
 			return err
@@ -136,6 +136,13 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 			}
 		}
 		if err := reapplyExceptions(ctx, tx, "f.target_id = $1", res.TargetID); err != nil {
+			return err
+		}
+		// what this scan re-opened and resolved, advisory findings included: now() is the transaction start, so
+		// only this ingest's changes carry it (the scan page and its lists read these, see scanDiff)
+		if _, err := tx.Exec(ctx, `insert into scan_changes(scan_id, finding_id, change)
+			select $2, id, case when status = 'fixed' then 'fixed' else 'reopened' end from findings
+			where target_id = $1 and now() in (fixed_at, reopened_at) on conflict do nothing`, res.TargetID, res.ScanID); err != nil {
 			return err
 		}
 		var c sevCounts
@@ -213,7 +220,7 @@ func runHook(ctx context.Context, s *server, res *ingestResult, h func(context.C
 
 // trimRaw applies the retention setting to one target's scans (every target when targetID is 0). A scan that is
 // neither among its target's newest raw_per_target nor younger than raw_days loses its raw report and, unless it
-// is the target's current inventory (latestInventorySQL), its packages and finding links. The scan rows stay.
+// is the target's current inventory (latestInventorySQL), its packages, finding links and changes. The scan rows stay.
 func (s *server) trimRaw(ctx context.Context, targetID int64) error {
 	ret := retention{20, 90}
 	if _, err := s.getSetting(ctx, "retention", &ret); err != nil {
@@ -229,7 +236,8 @@ func (s *server) trimRaw(ctx context.Context, targetID int64) error {
 			and sc.id not in (select id from (select id, row_number() over (partition by target_id order by created_at desc, id desc) rn
 				from scans where `+one+`) x where rn <= $1)),
 		raw as (update scans set raw = null where id in (select id from old) and raw is not null),
-		pk as (delete from packages where scan_id in (select id from old where inventory is not true))
+		pk as (delete from packages where scan_id in (select id from old where inventory is not true)),
+		ch as (delete from scan_changes where scan_id in (select id from old where inventory is not true))
 		delete from scan_findings where scan_id in (select id from old where inventory is not true)`,
 		ret.RawPerTarget, ret.RawDays, targetID)
 	return err

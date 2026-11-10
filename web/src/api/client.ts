@@ -26,8 +26,12 @@ export function safeNext(next: string | null | undefined): string {
   return next && next.startsWith("/") && !next.startsWith("//") && !/[\\\u0000-\u001f\u007f]/.test(next) ? next : "/";
 }
 
+// Set once a signed-in request has worked in this page: a 401 after that means the session ended under the user.
+let signedIn = false;
+
+/** The login page, to come back here afterwards (#section included). It says why when the session ended mid-use. */
 export function loginUrl(): string {
-  return `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+  return `/login?next=${encodeURIComponent(location.pathname + location.search + location.hash)}${signedIn ? "&error=expired" : ""}`;
 }
 
 type Body = BodyInit | object | undefined;
@@ -54,6 +58,7 @@ export async function request<T>(method: string, path: string, body?: Body, init
     throw new ApiError(0, "network", FALLBACK[0]);
   }
   if (res.ok) {
+    if (!path.startsWith("/auth/")) signedIn = true;
     if (res.status === 204) return undefined as T;
     const type = res.headers.get("Content-Type") || "";
     return (type.includes("json") ? res.json() : res.text()) as Promise<T>;

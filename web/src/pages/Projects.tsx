@@ -106,7 +106,7 @@ function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
       footer={<><Button onClick={close}>취소</Button><Button variant="primary" loading={create.isPending} onClick={submit}>만들기</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); submit(); }} style={{ display: "contents" }}>
         <Field label="이름" required error={tried ? nameErr : undefined}>
-          <input className="input" value={name} autoFocus maxLength={120} placeholder="예: 결제 API"
+          <input className="input" value={name} autoFocus maxLength={100} placeholder="예: 결제 API"
             onChange={(e) => { setName(e.target.value); if (!keyEdited) setKey(suggestKey(e.target.value)); }} />
         </Field>
         <Field label="키" required error={conflict ? "이미 쓰는 키입니다. 다른 키를 입력하세요." : (tried || keyEdited) && key ? keyErr || undefined : tried ? keyErr : undefined}

@@ -48,6 +48,12 @@ L.run(async () => {
   await dlg.getByRole("button", { name: "요청 보내기" }).click();
   await lee.page.getByText("예외를 요청했습니다").waitFor();
   L.ok(true, "lee's request sent from the finding drawer");
+  // the same finding now says a request is waiting, instead of offering a second one that would be refused
+  await lee.page.getByRole("table", { name: "결과 목록" }).getByRole("row", { name: /CVE-2022-37434/ }).locator(".pkg-name").click();
+  await lee.page.getByRole("dialog").getByRole("link", { name: "예외 승인 대기 중" }).first().waitFor();
+  L.ok(await lee.page.getByRole("button", { name: "예외 요청" }).count() === 0, "a finding with a pending request shows 예외 승인 대기 중 and no 예외 요청 button");
+  await L.shot(lee.page, "exceptions-pending-drawer");
+  await lee.page.keyboard.press("Escape");
 
   const pend = (await lee.api.get("/exceptions")).filter((e) => e.status === "pending");
   L.ok(pend.length === 1 && pend[0].project_key === key, "request is pending and visible to lee");

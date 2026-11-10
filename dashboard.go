@@ -34,6 +34,7 @@ type dashFinding struct {
 	PkgName      string    `json:"pkg_name"`
 	PkgVersion   string    `json:"pkg_version"`
 	FixedVersion string    `json:"fixed_version"`
+	Location     string    `json:"location"` // where a secret or misconfiguration sits; those have no package
 	Origin       string    `json:"origin"`
 	FirstSeenAt  time.Time `json:"first_seen_at"`
 }
@@ -50,7 +51,7 @@ type dashScan struct {
 }
 
 const dashFindingSQL = `select f.id, p.key, t.name, f.rule_id, f.title, f.severity, f.pkg_name, f.pkg_version, f.fixed_version,
-	f.origin, f.first_seen_at from findings f join projects p on p.id = f.project_id join targets t on t.id = f.target_id where `
+	f.location, f.origin, f.first_seen_at from findings f join projects p on p.id = f.project_id join targets t on t.id = f.target_id where `
 
 func collect[T any](ctx context.Context, s *server, q string, args ...any) ([]T, error) {
 	rows, err := s.db.Query(ctx, q, args...)
