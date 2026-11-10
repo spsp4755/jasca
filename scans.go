@@ -146,6 +146,7 @@ type scanView struct {
 	Error          string          `json:"error"`
 	CreatedByUser  *int64          `json:"created_by_user"`
 	CreatedByToken *int64          `json:"created_by_token"`
+	CreatedBy      string          `json:"created_by"` // who to show: the user's name or the token's name
 	Summary        json.RawMessage `json:"summary"`
 	Policy         json.RawMessage `json:"policy"` // null until evaluated
 	HasRaw         bool            `json:"has_raw"`
@@ -154,7 +155,10 @@ type scanView struct {
 }
 
 const scanCols = `select s.id, s.project_id, s.target_id, t.kind, t.name, s.source, s.format, s.ref, s.status, s.error,
-		s.created_by_user, s.created_by_token, s.summary, s.policy, s.raw is not null, s.created_at, s.finished_at
+		s.created_by_user, s.created_by_token,
+		coalesce((select coalesce(nullif(u.name, ''), u.username) from users u where u.id = s.created_by_user),
+			(select 'API 토큰 ' || k.name from api_tokens k where k.id = s.created_by_token), ''),
+		s.summary, s.policy, s.raw is not null, s.created_at, s.finished_at
 	from scans s join targets t on t.id = s.target_id `
 
 func (s *server) handleScanList(w http.ResponseWriter, r *http.Request, c *reqCtx) {

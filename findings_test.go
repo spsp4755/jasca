@@ -13,8 +13,8 @@ type findingList struct {
 		RuleID     string `json:"rule_id"`
 		PkgName    string `json:"pkg_name"`
 	} `json:"items"`
-	NextCursor *int64 `json:"next_cursor"`
-	Total      int    `json:"total"`
+	NextCursor *string `json:"next_cursor"`
+	Total      int     `json:"total"`
 }
 
 func TestFindingsList(t *testing.T) {
@@ -46,17 +46,20 @@ func TestFindingsList(t *testing.T) {
 	if len(p1.Items) != 1 || p1.NextCursor == nil || p1.Total != 2 {
 		t.Fatalf("page 1 %+v", p1)
 	}
-	p2 := list(fmt.Sprintf("limit=1&cursor=%d", *p1.NextCursor))
-	if len(p2.Items) != 1 || p2.Items[0].ID >= p1.Items[0].ID {
-		t.Errorf("page 2 %+v after %+v", p2, p1)
+	if p1.Items[0].RuleID != "CVE-2024-1000" { // the HIGH one, although the LOW one is newer
+		t.Errorf("the most severe finding comes first, got %+v", p1.Items[0])
 	}
-	if p3 := list(fmt.Sprintf("limit=1&cursor=%d", p2.Items[0].ID)); len(p3.Items) != 0 || p3.NextCursor != nil {
+	p2 := list("limit=1&cursor=" + *p1.NextCursor)
+	if len(p2.Items) != 1 || p2.Items[0].RuleID != "CVE-2024-2000" || p2.NextCursor == nil {
+		t.Fatalf("page 2 %+v after %+v", p2, p1)
+	}
+	if p3 := list("limit=1&cursor=" + *p2.NextCursor); len(p3.Items) != 0 || p3.NextCursor != nil {
 		t.Errorf("page 3 %+v", p3)
 	}
 	if l := list("limit=500"); len(l.Items) != 2 {
 		t.Errorf("limit over max %+v", l)
 	}
-	for _, q := range []string{"target_id=x", "cursor=x", "limit=x", "fixable=maybe", "q=" + strings.Repeat("a", 201)} {
+	for _, q := range []string{"target_id=x", "cursor=x", "cursor=7", "cursor=2.x", "limit=x", "fixable=maybe", "q=" + strings.Repeat("a", 201)} {
 		wantCode(t, do(t, s, "GET", "/api/v1/findings?"+q, nil, ck), 400, q)
 	}
 	admin := loginAs(t, s, mkUser(t, s, "root", "admin"))

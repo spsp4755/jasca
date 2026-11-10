@@ -61,8 +61,8 @@ export const daysSince = (iso: string, now = Date.now()) => Math.max(0, Math.flo
 /** Whole days from now until iso, rounded up: 0 = within the next day, negative = that many days past. */
 export const daysUntil = (iso: string, now = Date.now()) => Math.ceil((new Date(iso).getTime() - now) / 86_400_000);
 
-// Korean labels; the API enum stays visible as a tooltip where it matters (SeverityBadge title).
-export const SEVERITY_LABEL: Record<Severity, string> = { CRITICAL: "치명", HIGH: "높음", MEDIUM: "중간", LOW: "낮음", UNKNOWN: "알 수 없음" };
+// Severities keep the names scanners, CVE feeds and CI logs use; the other labels are Korean.
+export const SEVERITY_LABEL: Record<Severity, string> = { CRITICAL: "CRITICAL", HIGH: "HIGH", MEDIUM: "MEDIUM", LOW: "LOW", UNKNOWN: "UNKNOWN" };
 export const SOURCE_LABEL: Record<ScanSource, string> = { upload: "CI 업로드", server: "서버 스캔", harbor: "Harbor", recheck: "재평가" };
 export const ORIGIN_LABEL: Record<FindingOrigin, string> = { scan: "스캔", recheck: "재평가", advisory: "사내 Advisory" };
 export const SCOPE_LABEL: Record<ExceptionScope, string> = { finding: "결과", project_vuln: "프로젝트 전체", global_vuln: "전사" };

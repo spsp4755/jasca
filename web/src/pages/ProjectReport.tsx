@@ -63,7 +63,7 @@ export default function ProjectReport() {
               {(d.targets ?? []).length > 0 && <section><h2>대상별 현황</h2>
                 <Table dense rows={d.targets} rowKey={(r) => r.name} caption="대상별 현황" columns={[
                   { key: "n", header: "대상", render: (r) => r.name }, { key: "k", header: "종류", render: (r) => TARGET_KIND_LABEL[r.kind] ?? r.kind },
-                  { key: "c", header: "치명/높음/중간/낮음", nowrap: true, render: (r) => `${r.counts.critical ?? 0} / ${r.counts.high ?? 0} / ${r.counts.medium ?? 0} / ${r.counts.low ?? 0}` },
+                  { key: "c", header: "CRITICAL / HIGH / MEDIUM / LOW", nowrap: true, render: (r) => `${r.counts.critical ?? 0} / ${r.counts.high ?? 0} / ${r.counts.medium ?? 0} / ${r.counts.low ?? 0}` },
                   { key: "s", header: "마지막 스캔", nowrap: true, render: (r) => fmtDate(r.last_scan_at) }]} /></section>}
               {(d.findings ?? []).length > 0 && <section className="page-break"><h2>주요 취약점</h2>
                 <Table dense rows={d.findings} rowKey={(r) => r.id} caption="주요 취약점" columns={[

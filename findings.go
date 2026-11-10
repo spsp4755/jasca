@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -195,8 +197,16 @@ func (s *server) handleFindingList(w http.ResponseWriter, r *http.Request, c *re
 	s.writeFindings(w, r, s.visibleWhere(c.User))
 }
 
+// Lists put what to fix first on top: CRITICAL down to UNKNOWN, the newest first inside a severity.
+var severityRank = map[string]int{"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4, "UNKNOWN": 5}
+
+const (
+	sevRankSQL   = `coalesce(array_position(array['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'], f.severity), 5)`
+	findingOrder = ` order by ` + sevRankSQL + `, f.id desc`
+)
+
 // writeFindings answers {items, next_cursor, total} for the findings matching base plus the query parameters,
-// newest first, with keyset pagination (cursor = the last id seen).
+// most severe first, with keyset pagination (cursor = "<severity rank>.<id>" of the last row seen).
 func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, f *where) {
 	ctx := r.Context()
 	q := r.URL.Query()
@@ -215,22 +225,27 @@ func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, f *where)
 		return
 	}
 	if v := q.Get("cursor"); v != "" {
-		n, err := strconv.ParseInt(v, 10, 64)
-		if err != nil {
+		rs, is, _ := strings.Cut(v, ".")
+		rank, err1 := strconv.Atoi(rs)
+		id, err2 := strconv.ParseInt(is, 10, 64)
+		if err1 != nil || err2 != nil {
 			badRequest(w, "cursor가 잘못되었습니다.")
 			return
 		}
-		f.add("f.id < ?", n)
+		f.args = append(f.args, rank, id)
+		n := len(f.args)
+		f.conds = append(f.conds, fmt.Sprintf("(%s > $%d or (%s = $%d and f.id < $%d))", sevRankSQL, n-1, sevRankSQL, n-1, n))
 	}
-	rows, _ := s.db.Query(ctx, findingCols+`where `+f.sql()+` order by f.id desc limit `+strconv.Itoa(limit), f.args...)
+	rows, _ := s.db.Query(ctx, findingCols+`where `+f.sql()+findingOrder+` limit `+strconv.Itoa(limit), f.args...)
 	items, err := pgx.CollectRows(rows, pgx.RowToStructByPos[findingView])
 	if err != nil {
 		writeInternal(w, "finding list", err)
 		return
 	}
-	var next *int64
+	var next *string
 	if len(items) == limit {
-		next = &items[len(items)-1].ID
+		last := items[len(items)-1]
+		next = new(fmt.Sprintf("%d.%d", cmp.Or(severityRank[last.Severity], 5), last.ID))
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "next_cursor": next, "total": total})
 }
@@ -271,7 +286,7 @@ func (s *server) handleFindingCSV(w http.ResponseWriter, r *http.Request, c *req
 		badRequest(w, msg)
 		return
 	}
-	rows, err := s.db.Query(r.Context(), findingCols+`where `+f.sql()+` order by f.id desc`, f.args...)
+	rows, err := s.db.Query(r.Context(), findingCols+`where `+f.sql()+findingOrder, f.args...)
 	if err != nil {
 		writeInternal(w, "finding csv", err)
 		return

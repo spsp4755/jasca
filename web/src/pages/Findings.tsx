@@ -33,7 +33,7 @@ export function FindingsView({ project, projects, targets }: { project?: string;
   const [sp, setSp] = useSearchParams();
   const filters = { ...readFilters(sp), ...(project ? { project } : {}) };
   const query = qs(filters);
-  const q = useInfiniteQuery<FindingPage, ApiError, { pages: FindingPage[] }, unknown[], number | undefined>({
+  const q = useInfiniteQuery<FindingPage, ApiError, { pages: FindingPage[] }, unknown[], string | undefined>({
     queryKey: [`/findings${query}`], initialPageParam: undefined,
     queryFn: ({ pageParam, signal }) => api.get<FindingPage>(`/findings${qs({ ...filters, limit: LIMIT, cursor: pageParam })}`, { signal }),
     getNextPageParam: (last) => last.next_cursor ?? undefined,
@@ -55,7 +55,7 @@ export function FindingsView({ project, projects, targets }: { project?: string;
   const picked = rows.filter((r) => selected.has(r.id) && r.status === "open"); // only open findings can get an exception
 
   const columns: Column<Finding>[] = [
-    { key: "sev", header: "심각도", width: 92, render: (r) => <SeverityBadge severity={r.severity} /> },
+    { key: "sev", header: "심각도", width: 108, render: (r) => <SeverityBadge severity={r.severity} /> },
     {
       key: "rule", header: "취약점", render: (r) => (
         <span className="rule">

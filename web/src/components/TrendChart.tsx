@@ -4,10 +4,10 @@ import { fmtMonthDay, fmtNumber } from "../lib/format";
 import Icon from "./Icon";
 
 const SERIES = [
-  { key: "critical", label: "치명" },
-  { key: "high", label: "높음" },
-  { key: "medium", label: "중간" },
-  { key: "low", label: "낮음" },
+  { key: "critical", label: "CRITICAL" },
+  { key: "high", label: "HIGH" },
+  { key: "medium", label: "MEDIUM" },
+  { key: "low", label: "LOW" },
 ] as const;
 
 const PAD = { l: 40, r: 14, t: 12, b: 28 };

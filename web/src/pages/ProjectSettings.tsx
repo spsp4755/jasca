@@ -21,7 +21,7 @@ const OWNER_ONLY = new Set(["tokens", "danger"]);
 const ROLES: ProjectRole[] = ["owner", "member", "viewer"];
 const ROLE_HINT: Record<ProjectRole, string> = { owner: "설정 관리", member: "업로드·예외 요청", viewer: "조회만" };
 export const NOTIFY_EVENTS: [string, string][] = [
-  ["new_critical", "새 치명·높음 결과"], ["policy_failed", "정책 실패"], ["scan_failed", "스캔 실패"], ["new_known", "새로 알려진 취약점"],
+  ["new_critical", "새 CRITICAL·HIGH 결과"], ["policy_failed", "정책 실패"], ["scan_failed", "스캔 실패"], ["new_known", "새로 알려진 취약점"],
   ["exception_requested", "예외 요청"], ["exception_approved", "예외 승인"], ["exception_rejected", "예외 반려"],
   ["exception_expiring", "예외 만료 임박"], ["exception_expired", "예외 만료"],
 ];

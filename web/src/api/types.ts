@@ -59,7 +59,7 @@ export interface Target {
 export interface PolicyResult { passed: boolean; reasons: string[]; error?: string }
 export interface Scan {
   id: number; project_id: number; target_id: number; target_kind: TargetKind; target_name: string; source: ScanSource;
-  format: string; ref: string; status: JobState; error: string; created_by_user: number | null; created_by_token: number | null;
+  format: string; ref: string; status: JobState; error: string; created_by_user: number | null; created_by_token: number | null; created_by: string;
   summary: Partial<Counts> & { os?: { family: string; name: string } }; policy: PolicyResult | null; has_raw: boolean;
   created_at: string; finished_at: string | null;
 }
@@ -78,9 +78,9 @@ export interface Finding {
 /** Query of GET /findings and /findings.csv. severity, status, kind and origin take comma lists. */
 export interface FindingFilters {
   project?: string; target_id?: string; severity?: string; status?: string; kind?: string; origin?: string;
-  fixable?: "true" | "false" | ""; q?: string; limit?: number; cursor?: number;
+  fixable?: "true" | "false" | ""; q?: string; limit?: number; cursor?: string;
 }
-export interface FindingPage { items: Finding[]; next_cursor: number | null; total: number }
+export interface FindingPage { items: Finding[]; next_cursor: string | null; total: number }
 export interface VulnAffected {
   project_key: string; target: string; finding_id: number; severity: Severity; status: FindingStatus;
   pkg_name: string; pkg_version: string; fixed_version: string;

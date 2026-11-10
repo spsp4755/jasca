@@ -22,7 +22,7 @@ const MAX_ROWS = 5000;
 /** Every finding linked to a scan, page by page (the API caps a page at 200). */
 async function scanFindings(id: number, signal: AbortSignal) {
   const out: Finding[] = [];
-  let cursor: number | undefined;
+  let cursor: string | undefined;
   do {
     const p = await api.get<FindingPage>(`/scans/${id}/findings${qs({ limit: 200, cursor })}`, { signal });
     out.push(...(p.items ?? []));
@@ -75,9 +75,9 @@ export default function Scan() {
 
   return (
     <>
-      <PageHeader title={`스캔 #${id}`}
+      <PageHeader title={s ? s.target_name : `스캔 #${id}`}
         crumbs={[{ label: "프로젝트", to: "/projects" }, ...(project ? [{ label: project.name, to: `/projects/${project.key}/scans` }] : []), { label: `스캔 #${id}` }]}
-        description={s && <span className="scan-target"><span className="tag tag-quiet">{TARGET_KIND_LABEL[s.target_kind] ?? s.target_kind}</span><span className="mono">{s.target_name}</span>{s.ref && <span className="mono muted">@ {s.ref}</span>}</span>}
+        description={s && <span className="scan-target"><span className="tag tag-quiet">{TARGET_KIND_LABEL[s.target_kind] ?? s.target_kind}</span><span>스캔 #{s.id} · {SOURCE_LABEL[s.source] ?? s.source} · {fmtDateTime(s.created_at)}</span>{s.ref && <span className="mono muted">@ {s.ref}</span>}</span>}
         actions={s && (
           <>
             {live(s.status) && project && project.my_role !== "viewer" && <Button variant="danger" loading={cancel.isPending} onClick={() => confirm("이 스캔을 취소할까요?") && cancel.mutate()}>스캔 취소</Button>}
@@ -117,7 +117,7 @@ export default function Scan() {
                 <Table<Finding> caption="결과" rows={rows} rowKey={(f) => f.id} loading={listLoading} dense onRowClick={setOpen} maxHeight={560}
                   empty={<Empty compact icon={tab === "new" ? "shieldCheck" : "inbox"} title={tab === "new" ? "새로 발견된 결과가 없습니다" : tab === "fixed" ? "사라진 결과가 없습니다" : "이 스캔에는 결과가 없습니다"} />}
                   columns={[
-                    { key: "sev", header: "심각도", width: 92, render: (f) => <SeverityBadge severity={f.severity} /> },
+                    { key: "sev", header: "심각도", width: 108, render: (f) => <SeverityBadge severity={f.severity} /> },
                     { key: "rule", header: "취약점", render: (f) => (
                       <span className="rule">
                         {f.kind === "vuln" ? <Link to={`/vulns/${encodeURIComponent(f.rule_id)}`} className="mono">{f.rule_id}</Link> : <span className="mono">{f.rule_id}</span>}
@@ -142,7 +142,7 @@ export default function Scan() {
                   <div className="kv-row"><dt>방식</dt><dd>{SOURCE_LABEL[s.source] ?? s.source}</dd></div>
                   <div className="kv-row"><dt>형식</dt><dd className="mono">{s.format}</dd></div>
                   {s.summary.os?.name && <div className="kv-row"><dt>OS</dt><dd>{s.summary.os.family} {s.summary.os.name}</dd></div>}
-                  <div className="kv-row"><dt>올린 주체</dt><dd>{s.created_by_token ? `API 토큰 #${s.created_by_token}` : s.created_by_user ? `사용자 #${s.created_by_user}` : "시스템"}</dd></div>
+                  <div className="kv-row"><dt>올린 주체</dt><dd>{s.created_by || "시스템"}</dd></div>
                   <div className="kv-row"><dt>시작</dt><dd>{fmtDateTime(s.created_at)}</dd></div>
                   <div className="kv-row"><dt>완료</dt><dd>{fmtDateTime(s.finished_at)}</dd></div>
                   {!s.has_raw && done && <div className="kv-row"><dt>원본</dt><dd className="muted">보존 기간이 지나 삭제됨</dd></div>}
@@ -161,9 +161,9 @@ function PolicyBanner({ s }: { s: ScanDetail }) {
   if (s.status === "failed") return <div className="alert alert-danger" role="alert"><Icon name="alert" /><span><b>스캔 실패</b> · {s.error || "원인을 알 수 없습니다."}</span></div>;
   if (s.status === "canceled") return <div className="alert alert-warn"><Icon name="info" />취소된 스캔입니다.</div>;
   if (live(s.status)) return <div className="alert alert-info" role="status"><span className="spinner" aria-hidden="true" />{s.status === "queued" ? "스캔 대기 중입니다." : "스캔 중입니다."} 끝나면 자동으로 갱신됩니다.</div>;
-  if (!s.policy) return <div className="alert alert-info"><Icon name="info" />정책 판정 결과가 없습니다.</div>;
+  if (!s.policy) return null; // nothing was judged (re-evaluations, Harbor reports): no banner beats an empty one
   return s.policy.passed ? (
-    <div className="policy-banner policy-banner-pass"><Icon name="shieldCheck" size={20} /><div><b>정책 통과</b><p>CI에서 이 스캔은 성공으로 끝났습니다.</p></div></div>
+    <div className="policy-banner policy-banner-pass"><Icon name="shieldCheck" size={20} /><div><b>정책 통과</b><p>프로젝트 정책의 기준을 넘는 결과가 없습니다.</p></div></div>
   ) : (
     <div className="policy-banner policy-banner-fail" role="alert">
       <Icon name="alert" size={20} />

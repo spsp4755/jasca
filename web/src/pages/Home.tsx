@@ -81,11 +81,11 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
 
       <section className="panel span-7" aria-labelledby="h-old">
         <div className="panel-head">
-          <h2 id="h-old">오래 열린 치명 취약점</h2>
+          <h2 id="h-old">오래 열린 CRITICAL 취약점</h2>
           <Link to="/findings?severity=CRITICAL&status=open" className="panel-link">전체 <Icon name="chevronRight" size={14} /></Link>
         </div>
-        <Table caption="오래 열린 치명 취약점" loading={loading} rows={d?.oldest_critical ?? []} rowKey={(r) => r.id} dense
-          empty={<Empty compact icon="shieldCheck" title="열린 치명 취약점이 없습니다" />}
+        <Table caption="오래 열린 CRITICAL 취약점" loading={loading} rows={d?.oldest_critical ?? []} rowKey={(r) => r.id} dense
+          empty={<Empty compact icon="shieldCheck" title="열린 CRITICAL 취약점이 없습니다" />}
           columns={[
             { key: "rule", header: "취약점", width: 150, nowrap: true, render: (r) => <Link to={`/findings?finding=${r.id}`} className="mono">{r.rule_id}</Link> }, // may be a secret or misconfig, not a CVE
             { key: "pkg", header: "패키지", render: (r) => <PkgCell name={r.pkg_name} version={r.pkg_version} fixed={r.fixed_version} /> },
@@ -148,7 +148,7 @@ function RiskSummary({ totals }: { totals?: Counts }) {
         <h2 id="h-risk">열린 결과</h2>
         <p className="risk-big num">{totals ? fmtNumber(totals.open) : <span className="skeleton" style={{ width: 72, height: 30 }} />}</p>
         <p className="risk-caption">
-          {totals ? (totals.critical + totals.high > 0 ? <>치명·높음 <b className="num">{fmtNumber(totals.critical + totals.high)}</b>건 먼저 확인하세요</> : "치명·높음 없음") : " "}
+          {totals ? (totals.critical + totals.high > 0 ? <>CRITICAL·HIGH <b className="num">{fmtNumber(totals.critical + totals.high)}</b>건 먼저 확인하세요</> : "CRITICAL·HIGH 없음") : " "}
         </p>
       </div>
       <div className="risk-right">

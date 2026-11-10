@@ -68,7 +68,7 @@ export default function Vuln() {
                     <span className="pt-target mono" title={a.target}>{a.target}</span>
                   </span>) },
                 { key: "pkg", header: "패키지 · 조치 버전", render: (a) => <PkgCell name={a.pkg_name} version={a.pkg_version} fixed={a.fixed_version} /> },
-                { key: "sev", header: "심각도", width: 92, render: (a) => <SeverityBadge severity={a.severity} /> },
+                { key: "sev", header: "심각도", width: 108, render: (a) => <SeverityBadge severity={a.severity} /> },
                 { key: "status", header: "상태", width: 96, render: (a) => <StatusBadge status={a.status} /> },
               ]} />
           </section>

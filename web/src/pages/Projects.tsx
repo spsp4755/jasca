@@ -15,7 +15,7 @@ import { useToast } from "../components/Toast";
 import { ROLE_LABEL, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
 import { SummaryCell } from "./Home";
 
-const KEY_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
+export const KEY_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
 /** "Payment API v2" → "payment-api-v2"; Hangul and other letters are dropped, so a Korean name suggests nothing. */
 export const suggestKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
 
