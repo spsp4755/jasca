@@ -15,7 +15,7 @@ func init() {
 func seedFinding(t *testing.T, s *server, pid int64, tgt, rule, sev, status, origin string, firstDaysAgo int) {
 	t.Helper()
 	var tid int64
-	if err := s.db.QueryRow(context.Background(), `insert into targets(project_id, kind, name) values($1,'image',$2)
+	if err := s.db.QueryRow(context.Background(), `insert into targets(project_id, kind, name, last_scan_at) values($1,'image',$2, now())
 		on conflict (project_id, kind, name) do update set name=excluded.name returning id`, pid, tgt).Scan(&tid); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,11 @@ func TestDashboardScoped(t *testing.T) {
 		}
 		return d
 	}
+	sqlExec(t, s, `update findings set location = 'deploy/key.pem' where rule_id = 'CVE-1'`)
 	d := get(u)
+	if d.OldestCritical[0]["location"] != "deploy/key.pem" || d.OldestCritical[0]["target"] != "a/app" {
+		t.Errorf("a finding without a package is shown by where it is: %+v", d.OldestCritical)
+	}
 	if d.Totals["open"] != 2 || d.Totals["critical"] != 1 || len(d.OldestCritical) != 1 || len(d.Expiring) != 1 || len(d.NewlyKnown) != 1 {
 		t.Errorf("scoped user: %+v", d)
 	}
@@ -218,6 +222,11 @@ func TestRetentionAndDefaultPolicy(t *testing.T) {
 	if rec := do(t, s, "PUT", "/api/v1/admin/retention", map[string]int{"raw_per_target": 0, "raw_days": 5}, ck); rec.Code != 400 {
 		t.Errorf("invalid: %d", rec.Code)
 	}
+	// too large is told as a range, not as "1 or more"
+	if rec := do(t, s, "PUT", "/api/v1/admin/retention", map[string]int{"raw_per_target": 99999999, "raw_days": 5}, ck); rec.Code != 400 ||
+		!strings.Contains(rec.Body.String(), "1~100000") || !strings.Contains(rec.Body.String(), "1~36500") {
+		t.Errorf("too large: %d %s", rec.Code, rec.Body.String())
+	}
 	if rec := do(t, s, "PUT", "/api/v1/admin/retention", map[string]int{"raw_per_target": 1, "raw_days": 8}, ck); rec.Code != 200 {
 		t.Fatal(rec.Code)
 	}
@@ -274,6 +283,7 @@ func TestProjectReport(t *testing.T) {
 	seedFinding(t, s, a, "a/app", "CVE-2", "LOW", "open", "scan", 5)
 	seedFinding(t, s, a, "a/app", "CVE-3", "HIGH", "fixed", "scan", 5)
 	sqlExec(t, s, `insert into ai_runs(kind, project_id, state, output) values('project_report', $1, 'done', 'hello')`, a)
+	sqlExec(t, s, `update findings set location = 'deploy/key.pem', details = '{"start_line": 3, "end_line": 4, "snippet": "x"}' where rule_id = 'CVE-1'`)
 	rec := do(t, s, "GET", "/api/v1/projects/proj-a/report", nil, loginAs(t, s, v))
 	if rec.Code != 200 {
 		t.Fatal(rec.Code, rec.Body.String())
@@ -291,7 +301,8 @@ func TestProjectReport(t *testing.T) {
 	}
 	json.Unmarshal(rec.Body.Bytes(), &r)
 	if r.Summary.BySeverity["open"] != 2 || r.Summary.ByKind["vuln"] != 2 || len(r.Targets) != 1 || len(r.Findings) != 2 ||
-		r.Findings[0]["rule_id"] != "CVE-1" || r.Exceptions == nil || r.Policy == nil || r.AIReport["output"] != "hello" {
+		r.Findings[0]["rule_id"] != "CVE-1" || r.Findings[0]["location"] != "deploy/key.pem" ||
+		fmt.Sprint(r.Findings[0]["details"]) != "map[end_line:4 start_line:3]" || r.Exceptions == nil || r.Policy == nil || r.AIReport["output"] != "hello" {
 		t.Errorf("report: %s", rec.Body.String())
 	}
 }

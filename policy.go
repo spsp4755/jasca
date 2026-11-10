@@ -9,9 +9,10 @@ import (
 )
 
 type policyResult struct {
-	Passed  bool     `json:"passed"`
-	Reasons []string `json:"reasons"`
-	Error   string   `json:"error,omitempty"`
+	Passed   bool     `json:"passed"`
+	Reasons  []string `json:"reasons"`
+	Error    string   `json:"error,omitempty"`
+	Disabled bool     `json:"disabled,omitempty"` // the policy is switched off: nothing was judged, passed stays true for CI
 }
 
 // evaluatePolicy applies the project's policy (spec 3.10) to the scan's target. Any error fails the gate.
@@ -23,7 +24,7 @@ func (s *server) evaluatePolicy(ctx context.Context, projectID, scanID int64) po
 		return policyResult{Reasons: []string{msg}, Error: msg}
 	}
 	if !p.Enabled || n <= p.MaxCount {
-		return policyResult{Passed: true, Reasons: []string{}}
+		return policyResult{Passed: true, Reasons: []string{}, Disabled: !p.Enabled}
 	}
 	var only []string
 	if p.NewOnly {

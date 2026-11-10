@@ -182,6 +182,7 @@ ol.steps { margin: 6px 0 0 20px; list-style: decimal; display: flex; flex-direct
   box-shadow: var(--shadow-2); width: calc(100vw - 48px); max-height: calc(100vh - 64px);
 }
 .dialog[open] { animation: dialog-in 140ms ease-out; }
+.dialog:focus-visible { box-shadow: var(--shadow-2); border-radius: 12px; } /* focused itself when it has nothing to type into: no ring around the whole box */
 .dialog::backdrop { background: var(--overlay); }
 .dialog-sm { max-width: 420px; }
 .dialog-md { max-width: 560px; }

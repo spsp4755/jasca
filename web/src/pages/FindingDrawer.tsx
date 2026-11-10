@@ -22,15 +22,30 @@ const HASHES = new Set(["redacted_match_sha256"]); // identifiers nobody acts on
 
 const line = (v: unknown) => (typeof v === "number" && v > 0 ? v : 0);
 /** "path:12" or "path:12-15": where a secret, misconfiguration or code finding sits. */
-const whereOf = (f: Finding) => {
+export const whereOf = (f: { location: string; details?: Record<string, unknown> }) => {
   const a = line(f.details?.start_line), b = line(f.details?.end_line);
   return f.location + (f.location && a ? `:${a}${b > a ? `-${b}` : ""}` : "");
 };
+/** Dotted numbers only ("1.2.6", "v4.17.19"). Epochs, suffixes and the like are for the server's internal/versions, not for here. */
+const nums = (v: string) => (/^v?\d+(\.\d+)*$/.test(v) ? v.replace(/^v/, "").split(".").map(Number) : null);
+const cmpNums = (a: number[], b: number[]) => { for (let i = 0; i < Math.max(a.length, b.length); i++) { const d = (a[i] ?? 0) - (b[i] ?? 0); if (d) return d; } return 0; };
+/**
+ * Which version to move to. Scanners list one fixed version per release line ("1.2.6, 0.2.4") and sometimes write a
+ * range (">=4.17.19"). With several, the one for the installed line is named only when plain numbers settle it: same
+ * major version, the lowest one above the installed version. Otherwise all are listed for the reader to choose.
+ */
+function upgradeText(pkg: string, installed: string, fixed: string) {
+  const fixes = fixed.split(",").map((v) => v.trim().replace(/^[<>=~^\s]+/, "")).filter(Boolean);
+  const cur = nums(installed), all = fixes.map(nums);
+  const mine = cur && all.every((n) => n) ? (all as number[][]).filter((n) => n[0] === cur[0] && cmpNums(n, cur) > 0).sort(cmpNums)[0] : undefined;
+  const one = fixes.length === 1 ? fixes[0] : mine?.join(".");
+  return one ? `${pkg} 패키지를 ${one} 버전 이상으로 올리세요.` : `${pkg} 패키지를 다음 중 설치된 버전 계열에 맞는 버전으로 올리세요: ${fixes.join(", ")}`;
+}
 /** One sentence saying what to do, from what the finding already carries. Fixed wording around the names avoids Korean particle errors. */
 function todo(f: Finding) {
   const where = whereOf(f);
   if (f.kind === "vuln") {
-    return f.fixed_version ? `${f.pkg_name} 패키지를 ${f.fixed_version} 버전 이상으로 올리세요.`
+    return f.fixed_version ? upgradeText(f.pkg_name, f.pkg_version, f.fixed_version)
       : "아직 조치 버전이 없습니다. 위험을 감수할지 정해 예외를 요청하거나 패키지 교체를 검토하세요.";
   }
   if (f.kind === "secret") return `${where || "해당 파일"}의 비밀값을 폐기(재발급)하고 코드에서 지우세요.`;
@@ -50,6 +65,9 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
   const me = useMe();
   const role = useApi<Project[]>("/projects").data?.find((p) => p.key === f?.project_key)?.my_role;
   const canAsk = !!f && canAskFor(f, role, isSecurity(me.data)); // viewers would only get a 403
+  // a request already waiting for a decision; asked again on every open, since the row may be older than a request just sent
+  const pending = useApi<Finding>(f ? `/findings/${f.id}` : null, { staleTime: 0 }).data?.pending_exception_id;
+  const waiting = f?.status === "open" && pending ? <Link to={`/exceptions?id=${pending}`}>예외 승인 대기 중</Link> : null;
   // start/end lines are part of 위치 when there is a file to attach them to
   const all = f ? Object.entries(f.details ?? {}).filter(([k, v]) => !HIDDEN.has(k) && v !== "" && v !== null && v !== 0
     && !(f.location && (k === "start_line" || k === "end_line"))) : [];
@@ -61,7 +79,9 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
         description={f?.title || undefined}
         footer={f && (
           <>
-            {f.status === "open" && canAsk && <Button icon="shield" onClick={() => setAsk(true)}>예외 요청</Button>}
+            {f.status === "open" && canAsk && (waiting
+              ? <Link className="btn btn-secondary" to={`/exceptions?id=${pending}`}><Icon name="shield" />예외 승인 대기 중</Link>
+              : <Button icon="shield" onClick={() => setAsk(true)}>예외 요청</Button>)}
             {f.kind === "vuln" && <Link className="btn btn-primary" to={`/vulns/${encodeURIComponent(f.rule_id)}`}>취약점 상세<Icon name="arrowRight" size={14} /></Link>}
           </>
         )}>
@@ -69,7 +89,7 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
           <>
             {f.status === "open" && <p className="drawer-todo"><Icon name="arrowRight" size={15} /><span><b>할 일</b> {todo(f)}</span></p>}
             <dl className="kv">
-              <Row label="상태"><StatusBadge status={f.status} />{f.reopened_count > 0 && <span className="muted"> · 다시 열림 {f.reopened_count}회</span>}</Row>
+              <Row label="상태"><StatusBadge status={f.status} />{waiting && <> · {waiting}</>}{f.reopened_count > 0 && <span className="muted"> · 다시 열림 {f.reopened_count}회</span>}</Row>
               {f.exception_id && <Row label="예외"><Link to={`/exceptions?id=${f.exception_id}`}>예외 #{f.exception_id}</Link></Row>}
               {f.pkg_name && <Row label="패키지"><b>{f.pkg_name}</b> <span className="mono">{f.pkg_version}</span></Row>}
               {f.pkg_name && <Row label="조치 버전">{f.fixed_version ? <span className="mono pkg-fix">{f.fixed_version}</span> : <span className="muted">아직 없음</span>}</Row>}

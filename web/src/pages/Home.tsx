@@ -13,7 +13,7 @@ import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, SOURCE_LABEL, daysSince,
 import { exceptionWhat } from "./Exceptions";
 
 // why a finding turned up without a new scan, for 새로 알려진 취약점
-const FOUND_BY: Record<FindingOrigin, string> = { scan: "스캔에서 발견", recheck: "DB 갱신으로 발견", advisory: "사내 Advisory로 발견" };
+const FOUND_BY: Record<FindingOrigin, string> = { scan: "스캔에서 발견", recheck: "재평가로 발견", advisory: "사내 Advisory로 발견" };
 
 export default function Home() {
   const q = useDashboard();
@@ -102,14 +102,14 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
 
       <section className="panel span-7" aria-labelledby="h-old">
         <div className="panel-head">
-          <h2 id="h-old">오래 열린 CRITICAL 취약점</h2>
+          <h2 id="h-old">오래 열린 CRITICAL 결과</h2>
           <Link to="/findings?severity=CRITICAL&status=open" className="panel-link">전체 <Icon name="chevronRight" size={14} /></Link>
         </div>
-        <Table caption="오래 열린 CRITICAL 취약점" loading={loading} rows={d?.oldest_critical ?? []} rowKey={(r) => r.id} dense
-          empty={<Empty compact icon="shieldCheck" title="열린 CRITICAL 취약점이 없습니다" />}
+        <Table caption="오래 열린 CRITICAL 결과" loading={loading} rows={d?.oldest_critical ?? []} rowKey={(r) => r.id} dense
+          empty={<Empty compact icon="shieldCheck" title="열린 CRITICAL 결과가 없습니다" />}
           columns={[
             { key: "rule", header: "취약점", width: 150, nowrap: true, render: (r) => <Link to={`/findings?finding=${r.id}`} className="mono">{r.rule_id}</Link> }, // may be a secret or misconfig, not a CVE
-            { key: "pkg", header: "패키지", render: (r) => <PkgCell name={r.pkg_name} version={r.pkg_version} fixed={r.fixed_version} /> },
+            { key: "pkg", header: "패키지 · 위치", render: (r) => (r.pkg_name ? <PkgCell name={r.pkg_name} version={r.pkg_version} fixed={r.fixed_version} /> : <span className="mono muted break">{r.location || "—"}</span>) },
             { key: "where", header: "프로젝트 · 대상", render: (r) => <ProjectTarget project={r.project_key} target={r.target} /> },
             { key: "age", header: "열린 기간", align: "right", width: 84, render: (r) => <span className="num age" title={fmtDate(r.first_seen_at)}>{daysSince(r.first_seen_at)}일</span> },
           ]} />
@@ -129,7 +129,7 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
                 <SeverityBadge severity={f.severity} />
                 <div className="list-main">
                   <Link to={`/vulns/${encodeURIComponent(f.rule_id)}`} className="mono">{f.rule_id}</Link>
-                  <span className="list-sub">{f.project_key} · {f.pkg_name} {f.pkg_version}</span>
+                  <span className="list-sub" title={`${f.target} · ${f.pkg_name} ${f.pkg_version}`}>{f.project_key} · {f.target} · {f.pkg_name} {f.pkg_version}</span>
                 </div>
                 <span className="tag tag-quiet">{FOUND_BY[f.origin] ?? f.origin}</span>
               </li>
@@ -218,6 +218,7 @@ export function SummaryCell({ s }: { s: Partial<Counts> }) {
 
 export function PolicyCell({ s }: { s: { policy: PolicyResult | null } }) {
   if (!s.policy) return <span className="muted">—</span>;
+  if (s.policy.disabled) return <span className="muted nw" title="정책 사용 안 함: 이 스캔은 정책으로 판정하지 않았습니다.">사용 안 함</span>;
   return s.policy.passed
     ? <span className="policy policy-pass"><Icon name="check" size={14} />통과</span>
     : <span className="policy policy-fail" title={s.policy.reasons.join("\n")}><Icon name="x" size={14} />실패</span>;

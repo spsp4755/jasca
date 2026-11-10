@@ -3,6 +3,7 @@
 .report-doc .sev-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .report-split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
 .report-solo { grid-template-columns: minmax(0, 1fr); } /* AI off: no history panel beside the report */
+.report-doc td { overflow-wrap: anywhere; } /* a long unbroken target name or path wraps instead of pushing the table wide */
 
 @page { size: A4; margin: 16mm 14mm; }
 @media print {
@@ -52,6 +53,7 @@
   }
   .sidebar, .topbar, .no-print, .tabs, .toasts { display: none !important; }
   html, body { background: #fff !important; color: #000 !important; }
+  body { min-width: 0 !important; } /* the screen's 1024px minimum is wider than A4: columns were cut or the page shrank */
   body, .app, .app-main, main, .content { display: block !important; height: auto !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; }
   .report-split { display: block; }
   .report-doc { border: 0; padding: 0; gap: 14px; background: #fff; color: #000; }
@@ -60,6 +62,8 @@
   .report-doc .page-break { break-before: page; }
   .report-doc table { font-size: 10.5px; }
   .report-doc thead { display: table-header-group; }
+  .report-doc .table-wrap { overflow: visible !important; } /* never a scroll box on paper */
+  .report-doc .table th { position: static; }
   /* count badges are colour-only on screen; paper may be black and white, so print their names too */
   .report-doc .sev-compact .sr-only { position: static !important; width: auto; height: auto; margin: 0; clip: auto; overflow: visible; }
   .report-doc .rule-title { display: block; }

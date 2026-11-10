@@ -58,7 +58,7 @@ export default function TokenDialog({ open, onClose, projectKey }: { open: boole
       footer={<><Button onClick={close}>취소</Button><Button variant="primary" loading={create.isPending} onClick={submit}>만들기</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); submit(); }} style={{ display: "contents" }}>
         <Field label="이름" required error={nameErr} hint={nameErr ? undefined : "어디에 쓰는 토큰인지 알 수 있게 짓습니다."}>
-          <input className="input" value={name} maxLength={120} autoFocus onChange={(e) => setName(e.target.value)} onBlur={() => setTouched(true)} />
+          <input className="input" value={name} maxLength={100} autoFocus onChange={(e) => setName(e.target.value)} onBlur={() => setTouched(true)} />
         </Field>
         <fieldset className="field">
           <legend className="field-label">권한</legend>

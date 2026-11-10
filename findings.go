@@ -52,8 +52,9 @@ const findingUpsertSQL = `insert into findings(project_id, target_id, fingerprin
 	returning id, xmax = 0`
 
 // upsertFindings inserts each finding, or touches the target's existing one with the same fingerprint (last_seen,
-// severity, versions; status and origin are kept). It also fills the vulns catalog and links every finding to
-// scanID in scan_findings. It never resolves anything. fs must have unique fingerprints (the parsers ensure it).
+// severity, versions; status and origin are kept). It also fills the vulns catalog, links every finding to
+// scanID in scan_findings and records the inserted ones as that scan's 'new' changes. It never resolves anything.
+// fs must have unique fingerprints (the parsers ensure it).
 func (s *server) upsertFindings(ctx context.Context, tx pgx.Tx, projectID, targetID, scanID int64, fs []formats.Finding, origin string) (newIDs []int64, err error) {
 	if err := upsertVulns(ctx, tx, fs); err != nil {
 		return nil, err
@@ -82,7 +83,10 @@ func (s *server) upsertFindings(ctx context.Context, tx pgx.Tx, projectID, targe
 	if err != nil {
 		return nil, err
 	}
-	_, err = tx.Exec(ctx, `insert into scan_findings(scan_id, finding_id) select $1, unnest($2::bigint[]) on conflict do nothing`, scanID, all)
+	if _, err := tx.Exec(ctx, `insert into scan_findings(scan_id, finding_id) select $1, unnest($2::bigint[]) on conflict do nothing`, scanID, all); err != nil {
+		return nil, err
+	}
+	_, err = tx.Exec(ctx, `insert into scan_changes(scan_id, finding_id, change) select $1, unnest($2::bigint[]), 'new'`, scanID, newIDs)
 	return newIDs, err
 }
 
@@ -127,6 +131,8 @@ type findingView struct {
 	ReopenedCount int             `json:"reopened_count"`
 	ExceptionID   *int64          `json:"exception_id"`
 	Details       json.RawMessage `json:"details"`
+	// only GET /findings/{id} fills it: not a column of findingCols
+	PendingExceptionID *int64 `json:"pending_exception_id,omitempty" db:"-"`
 }
 
 const findingCols = `select f.id, f.project_id, p.key, f.target_id, t.kind, t.name, f.kind, f.tool, f.rule_id, f.title, f.severity,
@@ -262,9 +268,15 @@ func pageLimit(v string) (int, string) {
 	return min(n, 200), ""
 }
 
+// handleFindingGet also names the exception request that waits for a decision and would cover the finding
+// (pending_exception_id), so the screen can show that instead of offering a second request.
 func (s *server) handleFindingGet(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	rows, _ := s.db.Query(r.Context(), findingCols+`where f.id = $1`, pathID(r))
 	f, err := pgx.CollectOneRow(rows, pgx.RowToStructByPos[findingView])
+	if err == nil {
+		err = s.db.QueryRow(r.Context(), `select min(e.id) from exceptions e join findings f on f.id = $1
+			where e.status = 'pending' and e.expires_at > now() and `+exceptionMatchSQL, f.ID).Scan(&f.PendingExceptionID)
+	}
 	if err != nil {
 		writeInternal(w, "finding get", err)
 		return

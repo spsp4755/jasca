@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,9 +66,15 @@ func TestLocalLoginLockout(t *testing.T) {
 	}
 	var e struct{ Error string }
 	json.Unmarshal([]byte(body), &e)
-	if e.Error != "locked" {
+	if e.Error != "locked" || !strings.Contains(body, "15분 뒤") {
 		t.Errorf("code: %s", body)
 	}
+	// the message counts down: it says how long is left, not how long a lock lasts
+	s.db.Exec(context.Background(), `update users set locked_until = now() + interval '170 seconds' where username='admin'`)
+	if _, _, body := login(t, s, "admin", testBootstrapPassword); !strings.Contains(body, "3분 뒤") {
+		t.Errorf("locked with 3 minutes left: %s", body)
+	}
+	s.db.Exec(context.Background(), `update users set locked_until = now() + interval '15 minutes' where username='admin'`)
 	var until time.Duration
 	s.db.QueryRow(context.Background(), `select extract(epoch from locked_until - now())::bigint * 1000000000 from users where username='admin'`).Scan(&until)
 	if until < 14*time.Minute || until > 15*time.Minute {
@@ -75,7 +82,7 @@ func TestLocalLoginLockout(t *testing.T) {
 	}
 	var fails int
 	s.db.QueryRow(context.Background(), `select count(*) from audit_log where action='auth.login_failed'`).Scan(&fails)
-	if fails != 7 {
+	if fails != 8 {
 		t.Errorf("auth.login_failed audit rows: %d", fails)
 	}
 	// once the lock ends, the right password works and the counter starts over

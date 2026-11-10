@@ -8,9 +8,9 @@ import Icon from "../components/Icon";
 import { SEVERITY_LABEL } from "../lib/format";
 import { SEVERITIES } from "../api/types";
 
-// Error codes from POST /auth/local and from the SSO callback redirect (/login?error=<code>).
+// Error codes from POST /auth/local and from the SSO callback redirect (/login?error=<code>). A code missing here
+// shows the server's own message: "locked" says how many minutes are left.
 const ERRORS: Record<string, string> = {
-  locked: "로그인 시도가 많아 잠시 잠겼습니다",
   unauthorized: "아이디 또는 비밀번호가 올바르지 않습니다.",
   invalid_credentials: "아이디 또는 비밀번호가 올바르지 않습니다.",
   bad_credentials: "아이디 또는 비밀번호가 올바르지 않습니다.",
@@ -20,7 +20,7 @@ const ERRORS: Record<string, string> = {
   csrf: "보안 확인에 실패했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
   sso: "Keycloak에 연결하지 못했습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.",
   sso_disabled: "Keycloak 로그인이 설정되지 않았습니다.",
-  expired: "로그인 시간이 지났습니다. 다시 로그인하세요.",
+  expired: "로그인 시간이 지나 다시 로그인해야 합니다.", // set by loginUrl() when a signed-in page got a 401
   state: "로그인 요청을 확인하지 못했습니다. 다시 로그인하세요.",
   forbidden: "이 서비스를 사용할 권한이 없습니다. 관리자에게 문의하세요.",
   conflict: "같은 아이디의 로컬 계정이 있어 Keycloak으로 로그인할 수 없습니다. 관리자에게 문의하세요.",
@@ -53,7 +53,7 @@ export default function Login() {
     const m = { u: username.trim() ? undefined : "아이디를 입력하세요.", p: password ? undefined : "비밀번호를 입력하세요." };
     setMissing(m);
     if (m.u || m.p) return;
-    login.mutate({ username: username.trim(), password }, { onSuccess: () => navigate(next, { replace: true }) });
+    login.mutate({ username: username.trim(), password }, { onSuccess: () => navigate(next, { replace: true }), onError: () => setPassword("") });
   };
 
   return (
@@ -83,7 +83,9 @@ export default function Login() {
           <h1>로그인</h1>
           <p className="login-sub">{showLocal ? "로컬 계정으로 로그인합니다. 비상용입니다." : "회사 계정(Keycloak)으로 로그인합니다."}</p>
 
-          {error && <div className="alert alert-danger" role="alert"><Icon name="alert" />{error}</div>}
+          {error && (!login.isError && urlError === "expired" // not a failure: the session simply ran out
+            ? <div className="alert alert-info" role="status"><Icon name="info" />{error}</div>
+            : <div className="alert alert-danger" role="alert"><Icon name="alert" />{error}</div>)}
 
           {cfg.isPending ? (
             <div className="login-loading"><span className="spinner" aria-hidden="true" /> 확인 중</div>

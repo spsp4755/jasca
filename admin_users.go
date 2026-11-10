@@ -153,7 +153,7 @@ func (s *server) handleRetentionPut(w http.ResponseWriter, r *http.Request, c *r
 		return
 	}
 	if ret.RawPerTarget < 1 || ret.RawPerTarget > 100000 || ret.RawDays < 1 || ret.RawDays > 36500 {
-		badRequest(w, "개수와 일수는 1 이상이어야 합니다.")
+		badRequest(w, "대상당 최근 개수는 1~100000, 보존 일수는 1~36500 사이로 정하세요.")
 		return
 	}
 	if err := s.putSetting(r.Context(), "retention", ret); err != nil {

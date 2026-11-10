@@ -276,7 +276,7 @@ func (s *server) syncAdvisories(ctx context.Context, tx pgx.Tx, advs []*advisory
 			return 0, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `update findings f set status = 'open', fixed_at = null, reopened_count = reopened_count + 1
+	if _, err := tx.Exec(ctx, `update findings f set status = 'open', fixed_at = null, reopened_at = now(), reopened_count = reopened_count + 1
 		from unnest($1::bigint[], $2::bytea[]) m(t, fp) where f.target_id = m.t and f.fingerprint = m.fp and f.status = 'fixed'`, keepT, keepFP); err != nil {
 		return 0, err
 	}

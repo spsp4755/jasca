@@ -13,6 +13,7 @@ import { ApiError, api } from "../api/client";
 import { useApi, useAuthConfig } from "../api/hooks";
 import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, TARGET_KIND_LABEL, fmtDate, fmtDateTime, fmtNumber } from "../lib/format";
 import { exceptionWhat } from "./Exceptions";
+import { whereOf } from "./FindingDrawer";
 import { renderMarkdown } from "../lib/markdown";
 import type { AiRun, ProjectReportData, RunRef } from "../api/types";
 import { Loading } from "./admin/parts";
@@ -79,10 +80,10 @@ export default function ProjectReport() {
                 <span className="muted num">열린 결과 {fmtNumber(t.open ?? 0)}</span></div></section>}
               {pol && <section><h2>정책</h2><p>{pol.enabled
                 ? `열린 결과 중 심각도 ${SEVERITY_LABEL[pol.min_severity] ?? pol.min_severity} 이상이 ${pol.max_count}개를 넘으면 정책 실패입니다.${pol.new_only ? " 이번 스캔에서 새로 나온 결과만 셉니다." : ""}${pol.fixable_only ? " 조치 버전이 있는 결과만 셉니다." : ""}`
-                : "정책을 쓰지 않습니다. 스캔은 항상 정책 통과로 표시됩니다."}</p></section>}
+                : "정책을 쓰지 않습니다. 스캔은 판정하지 않고 '정책 사용 안 함'으로 표시됩니다."}</p></section>}
               {(d.targets ?? []).length > 0 && <section><h2>대상별 현황</h2>
                 <Table dense rows={d.targets} rowKey={(r) => r.name} caption="대상별 현황" columns={[
-                  { key: "n", header: "대상", render: (r) => r.name }, { key: "k", header: "종류", render: (r) => TARGET_KIND_LABEL[r.kind] ?? r.kind },
+                  { key: "n", header: "대상", render: (r) => r.name }, { key: "k", header: "종류", nowrap: true, render: (r) => TARGET_KIND_LABEL[r.kind] ?? r.kind },
                   { key: "c", header: "열린 결과 심각도별", render: (r) => <SummaryCell s={r.counts} /> },
                   { key: "s", header: "마지막 스캔", nowrap: true, render: (r) => fmtDate(r.last_scan_at) }]} /></section>}
               {(d.findings ?? []).length > 0 && <section className="page-break"><h2>주요 취약점</h2>
@@ -91,8 +92,8 @@ export default function ProjectReport() {
                 {top.length > 0 && <Table dense rows={top} rowKey={(r) => r.id} caption="주요 취약점" columns={[
                   { key: "s", header: "심각도", width: 100, render: (r) => <SeverityBadge severity={r.severity} /> },
                   { key: "i", header: "취약점", render: (r) => <span className="rule"><span className={r.kind === "vuln" ? "mono nw" : "mono"}>{r.rule_id}</span>{r.title && <span className="rule-title" title={r.title}>{r.title}</span>}</span> },
-                  { key: "p", header: "패키지 · 조치 버전", width: "30%", render: (r) => (r.pkg_name ? <PkgCell name={r.pkg_name} version={r.pkg_version} fixed={r.fixed_version} /> : <span className="muted">—</span>) },
-                  { key: "t", header: "대상", nowrap: true, render: (r) => r.target }]} />}</section>}
+                  { key: "p", header: "패키지 · 조치 버전 / 위치", width: "30%", render: (r) => (r.pkg_name ? <PkgCell name={r.pkg_name} version={r.pkg_version} fixed={r.fixed_version} /> : <span className="mono muted break">{whereOf(r) || "—"}</span>) },
+                  { key: "t", header: "대상", render: (r) => r.target }]} />}</section>}
               {(d.exceptions ?? []).length > 0 && <section><h2>예외</h2>
                 <Table dense rows={d.exceptions} rowKey={(r) => r.id} caption="예외" columns={[
                   { key: "v", header: "취약점", mono: true, render: exceptionWhat }, { key: "sc", header: "범위", render: (r) => SCOPE_LABEL[r.scope] },

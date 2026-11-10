@@ -185,6 +185,18 @@ func ssoStart(t *testing.T, s *server, kc *fakeKC, next string) (*http.Cookie, *
 	return st, loc
 }
 
+// The login returns to the page it started from, with its #section.
+func TestSSOCallbackKeepsHash(t *testing.T) {
+	s := testServer(t)
+	kc := newFakeKC(t, "/realms/jasca")
+	configureSSO(t, s, kc)
+	st, loc := ssoStart(t, s, kc, "/projects/a/settings#tokens")
+	rec := do(t, s, "GET", "/api/v1/auth/sso/callback?code=c&state="+url.QueryEscape(loc.Query().Get("state")), nil, st)
+	if rec.Code != 302 || rec.Header().Get("Location") != "/projects/a/settings#tokens" {
+		t.Fatalf("callback: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
 // ssoLogin runs the whole login as kc.user and returns the session cookie.
 func ssoLogin(t *testing.T, s *server, kc *fakeKC) *http.Cookie {
 	t.Helper()
@@ -281,7 +293,8 @@ func TestSSOStartRejectsExternalNext(t *testing.T) {
 	kc := newFakeKC(t, "/realms/jasca")
 	configureSSO(t, s, kc)
 	for next, want := range map[string]string{"//evil.example": "/", "https://evil.example": "/", `/\evil`: "/",
-		"/x/../\\evil": "/", "": "/", "/projects/a?tab=1": "/projects/a?tab=1"} {
+		"/x/../\\evil": "/", "": "/", "/projects/a?tab=1": "/projects/a?tab=1", "/\t/evil.example": "/",
+		"/projects/a/settings#tokens": "/projects/a/settings#tokens"} { // the page the session ended on, section included
 		st, loc := ssoStart(t, s, kc, next)
 		var o ssoState
 		if !s.unsigned(st.Value, &o) || o.Next != want {

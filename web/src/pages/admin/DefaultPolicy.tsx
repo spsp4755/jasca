@@ -19,7 +19,7 @@ export default function DefaultPolicy() {
       {q.data && (
         <Panel title="정책" meta="프로젝트 설정의 정책과 같은 방식입니다">
           <form className="form" onSubmit={(e) => { e.preventDefault(); save.mutate(undefined); }}>
-            <PolicyFields p={f} set={(patch) => setF({ ...f, ...patch })} label="기본 정책 사용 (끄면 자체 정책이 없는 프로젝트는 항상 정책 통과)" />
+            <PolicyFields p={f} set={(patch) => setF({ ...f, ...patch })} label="기본 정책 사용 (끄면 자체 정책이 없는 프로젝트는 스캔을 판정하지 않음 · CI에는 통과로 응답)" />
             <div className="form-actions"><Button type="submit" variant="primary" disabled={!!policyCountError(f)} loading={save.isPending}>저장</Button></div>
           </form>
         </Panel>

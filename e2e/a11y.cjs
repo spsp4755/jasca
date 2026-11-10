@@ -34,6 +34,7 @@ L.run(async () => {
   await lp.getByRole("button", { name: "로그인" }).click();
   await lp.getByRole("alert").first().waitFor();
   await both(lp, "login local form with error");
+  await visit(lp, "/login?next=%2F&error=expired", "login after the session ended");
 
   const kim = await L.sso(browser, "kim");
   const p = kim.page;

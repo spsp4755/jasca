@@ -57,7 +57,8 @@ export interface Target {
 
 // --- scans ---
 /** error is set when the gate failed closed (evaluation error). */
-export interface PolicyResult { passed: boolean; reasons: string[]; error?: string }
+/** disabled: the project's policy was off, so nothing was judged (passed is still true, for CI). */
+export interface PolicyResult { passed: boolean; reasons: string[]; error?: string; disabled?: boolean }
 export interface Scan {
   id: number; project_id: number; target_id: number; target_kind: TargetKind; target_name: string; source: ScanSource;
   format: string; ref: string; status: JobState; error: string; created_by_user: number | null; created_by_token: number | null; created_by: string;
@@ -67,7 +68,7 @@ export interface Scan {
 }
 export interface ScanPage { items: Scan[]; next_before: number | null }
 /** diff compares with the previous done scan of the same target and format (set difference of linked findings). */
-export interface ScanDetail extends Scan { diff: { new: number; fixed: number; unchanged: number; previous_scan_id: number | null } }
+export interface ScanDetail extends Scan { diff: { new: number; fixed: number; unchanged: number; not_covered: number; previous_scan_id: number | null } }
 export interface ScanJobCreated { scan_id: number }
 
 // --- findings / vulns ---
@@ -76,6 +77,7 @@ export interface Finding {
   severity: Severity; pkg_name: string; pkg_version: string; fixed_version: string; pkg_path: string; location: string;
   status: FindingStatus; origin: FindingOrigin; first_seen_at: string; last_seen_at: string; fixed_at: string | null;
   reopened_count: number; exception_id: number | null; details: Record<string, unknown>;
+  pending_exception_id?: number | null; // GET /findings/{id} only: a request waiting for a decision that covers it
 }
 /** Query of GET /findings and /findings.csv. severity, status, kind and origin take comma lists. */
 export interface FindingFilters {
@@ -129,7 +131,7 @@ export interface AdvisoryPreviewRow { project_key: string; target: string; pkg: 
 export interface TrendPoint { date: string; critical: number; high: number; medium: number; low: number }
 export interface DashboardFinding {
   id: number; project_key: string; target: string; rule_id: string; title: string; severity: Severity;
-  pkg_name: string; pkg_version: string; fixed_version: string; origin: FindingOrigin; first_seen_at: string;
+  pkg_name: string; pkg_version: string; fixed_version: string; location: string; origin: FindingOrigin; first_seen_at: string;
 }
 export interface DashboardScan {
   id: number; project_key: string; target: string; source: ScanSource; status: JobState; summary: Partial<Counts>;
@@ -221,6 +223,7 @@ export type SMTPSettingsPut = Omit<SMTPSettings, "password_set"> & { password?: 
 export interface ReportFinding {
   id: number; target: string; kind: FindingKind; rule_id: string; title: string; severity: Severity;
   pkg_name: string; pkg_version: string; fixed_version: string; first_seen_at: string;
+  location: string; details: { start_line?: number; end_line?: number };
 }
 export interface ProjectReportData {
   project: { key: string; name: string; description: string };

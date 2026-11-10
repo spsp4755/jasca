@@ -19,12 +19,12 @@ import { PkgCell } from "./Home";
 
 const MAX_ROWS = 5000;
 
-/** Every finding linked to a scan, page by page (the API caps a page at 200). */
-async function scanFindings(id: number, signal: AbortSignal) {
+/** A scan's findings, page by page (the API caps a page at 200): all it saw, or only what it found new or resolved. */
+async function scanFindings(id: number, change: string, signal: AbortSignal) {
   const out: Finding[] = [];
   let cursor: string | undefined;
   do {
-    const p = await api.get<FindingPage>(`/scans/${id}/findings${qs({ limit: 200, cursor })}`, { signal });
+    const p = await api.get<FindingPage>(`/scans/${id}/findings${qs({ limit: 200, cursor, change })}`, { signal });
     out.push(...(p.items ?? []));
     cursor = p.next_cursor ?? undefined;
   } while (cursor && out.length < MAX_ROWS);
@@ -46,9 +46,10 @@ export default function Scan() {
   const canCancel = !!s && !!me && (s.created_by_user === me.id || project?.my_role === "owner");
   const done = s?.status === "done"; // below, source "recheck" is special: a re-evaluation keeps no report and its ref is an internal run marker
   const prevId = s?.diff.previous_scan_id ?? null;
-  const cur = useQuery({ queryKey: ["scan-findings", s?.id], enabled: done, queryFn: ({ signal }) => scanFindings(s!.id, signal) });
-  const prev = useQuery({ queryKey: ["scan-findings", prevId], enabled: done && !!prevId, queryFn: ({ signal }) => scanFindings(prevId!, signal) });
   const [tab, setTab] = useState("new");
+  // the server decides what is new and what is gone (the same records its counts come from); nothing to compare with: all
+  const change = prevId && tab !== "all" ? tab : "";
+  const list = useQuery({ queryKey: ["scan-findings", s?.id, change], enabled: done, queryFn: ({ signal }) => scanFindings(s!.id, change, signal) });
   const [open, setOpen] = useState<Finding | null>(null);
   const cancel = useMutation<unknown, ApiError>({
     mutationFn: () => api.post(`/scans/${id}/cancel`),
@@ -65,16 +66,6 @@ export default function Scan() {
       </>
     );
   }
-
-  const curIds = new Set(cur.data?.items.map((f) => f.id));
-  const prevIds = new Set(prev.data?.items.map((f) => f.id));
-  const lists = {
-    new: (cur.data?.items ?? []).filter((f) => !prevIds.has(f.id)),
-    fixed: (prev.data?.items ?? []).filter((f) => !curIds.has(f.id)),
-    all: cur.data?.items ?? [],
-  };
-  const rows = prevId ? lists[tab as keyof typeof lists] : lists.all; // nothing to compare with: just this scan's results
-  const listLoading = cur.isPending || (!!prevId && prev.isPending);
 
   return (
     <>
@@ -111,6 +102,7 @@ export default function Scan() {
                     <Stat n={s.diff.fixed} label="이번에 사라짐" tone={s.diff.fixed ? "ok" : undefined} />
                     <Stat n={s.diff.unchanged} label="그대로" />
                   </div>
+                  {s.diff.not_covered > 0 && <p className="side-note" style={{ padding: "0 18px 10px" }}>이전 스캔에 있던 {fmtNumber(s.diff.not_covered)}건은 이번 스캔이 검사하지 않은 종류라 그대로 열려 있습니다.</p>}
                   <div className="panel-tabs">
                     <Tabs label="비교 목록" value={tab} onChange={setTab} tabs={[
                       { id: "new", label: "새로 발견", count: s.diff.new },
@@ -121,8 +113,8 @@ export default function Scan() {
                 </>
               )}
               <div {...(prevId ? { role: "tabpanel", id: `tabpanel-${tab}`, "aria-labelledby": `tab-${tab}` } : {})}>
-                {(cur.data?.truncated || prev.data?.truncated) && <p className="side-note" style={{ padding: "0 18px 10px" }}>결과가 많아 앞의 {fmtNumber(MAX_ROWS)}건만 비교했습니다.</p>}
-                <Table<Finding> caption="결과" rows={rows} rowKey={(f) => f.id} loading={listLoading} dense onRowClick={setOpen} maxHeight={560}
+                {list.data?.truncated && <p className="side-note" style={{ padding: "0 18px 10px" }}>결과가 많아 앞의 {fmtNumber(MAX_ROWS)}건만 보여 줍니다.</p>}
+                <Table<Finding> caption="결과" rows={list.data?.items ?? []} rowKey={(f) => f.id} loading={list.isPending} dense onRowClick={setOpen} maxHeight={560}
                   empty={<Empty compact icon={!prevId || tab === "new" ? "shieldCheck" : "inbox"} title={!prevId || tab === "all" ? "이 스캔에는 결과가 없습니다" : tab === "new" ? "새로 발견된 결과가 없습니다" : "사라진 결과가 없습니다"} />}
                   columns={[
                     { key: "sev", header: "심각도", width: 108, render: (f) => <SeverityBadge severity={f.severity} /> },
@@ -171,6 +163,7 @@ function PolicyBanner({ s }: { s: ScanDetail }) {
   if (s.status === "canceled") return <div className="alert alert-warn"><Icon name="info" />취소된 스캔입니다.</div>;
   if (live(s.status)) return <div className="alert alert-info" role="status"><span className="spinner" aria-hidden="true" />{s.status === "queued" ? "스캔 대기 중입니다." : "스캔 중입니다."} 끝나면 자동으로 갱신됩니다.</div>;
   if (!s.policy) return null; // nothing was judged (re-evaluations, Harbor reports): no banner beats an empty one
+  if (s.policy.disabled) return <div className="alert alert-info"><Icon name="info" /><span><b>정책 사용 안 함</b> · 이 프로젝트는 정책을 쓰지 않아 이 스캔을 판정하지 않았습니다.</span></div>;
   return s.policy.passed ? (
     <div className="policy-banner policy-banner-pass"><Icon name="shieldCheck" size={20} /><div><b>정책 통과</b><p>프로젝트 정책의 기준을 넘는 결과가 없습니다.</p></div></div>
   ) : (

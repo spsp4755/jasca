@@ -20,8 +20,8 @@ export default function Retention() {
         <Panel title="스캔 보존">
           <form className="admin-form" onSubmit={(e) => { e.preventDefault(); save.mutate(undefined); }}>
             <div className="two">
-              <Field label="대상당 최근 개수" hint="대상(이미지/저장소)마다 최근 N개는 날짜와 상관없이 남깁니다. 기본 20."><input className="input" type="number" min={1} value={f.raw_per_target} onChange={(e) => setF({ ...f, raw_per_target: Number(e.target.value) })} /></Field>
-              <Field label="보존 일수" hint="이 기간 안의 스캔은 개수와 상관없이 남깁니다. 기본 90."><input className="input" type="number" min={1} value={f.raw_days} onChange={(e) => setF({ ...f, raw_days: Number(e.target.value) })} /></Field>
+              <Field label="대상당 최근 개수" hint="대상(이미지/저장소)마다 최근 N개는 날짜와 상관없이 남깁니다. 기본 20."><input className="input" type="number" min={1} max={100000} value={f.raw_per_target} onChange={(e) => setF({ ...f, raw_per_target: Number(e.target.value) })} /></Field>
+              <Field label="보존 일수" hint="이 기간 안의 스캔은 개수와 상관없이 남깁니다. 기본 90."><input className="input" type="number" min={1} max={36500} value={f.raw_days} onChange={(e) => setF({ ...f, raw_days: Number(e.target.value) })} /></Field>
             </div>
             <div className="admin-actions"><Button type="submit" variant="primary" loading={save.isPending}>저장</Button></div>
           </form>

@@ -436,6 +436,7 @@ type scanResp struct {
 	HasRaw     bool           `json:"has_raw"`
 	Diff       struct {
 		New, Fixed, Unchanged int
+		NotCovered            int    `json:"not_covered"`
 		PreviousScanID        *int64 `json:"previous_scan_id"`
 	} `json:"diff"`
 }
@@ -502,6 +503,52 @@ func TestScanRoutes(t *testing.T) {
 	sqlExec(t, s, `update scans set raw = null where id=$1`, s1.ScanID)
 	wantCode(t, do(t, s, "GET", fmt.Sprintf("/api/v1/scans/%d/raw", s1.ScanID), nil, ck), 404, "raw past retention")
 	wantCode(t, do(t, s, "GET", "/api/v1/scans/abc", nil, ck), 404, "malformed id")
+}
+
+// A scan that covers fewer kinds must not report the uncovered findings as gone, and the next full scan must not
+// report them as new: the numbers are what each scan itself created, re-opened and resolved.
+func TestScanDiffWithChangedCoverage(t *testing.T) {
+	s := testServer(t)
+	_, ck := memberSession(t, s)
+	X, L := tv{ID: "CVE-2024-1000"}, tv{ID: "CVE-2024-3000", Pkg: "openssl", Sev: "LOW"}
+	s1 := mustUpload(t, s, "web", "scanners=vuln,misconfig", trivyDoc("A", []tv{X, L}, []string{"DS002"}), ck)
+	s2 := mustUpload(t, s, "web", "scanners=vuln", trivyDoc("A", []tv{X}, nil), ck) // misconfig off, LOW left out
+	if st, _, _ := findingState(t, s, s1.TargetID, "DS002"); st != "open" || s2.Summary["open"] != 2 {
+		t.Fatalf("misconfig after a scan without that scanner: %s, open %d", st, s2.Summary["open"])
+	}
+	rules := func(scan int64, change string) []string {
+		t.Helper()
+		fl := decode[struct {
+			Items []struct {
+				RuleID string `json:"rule_id"`
+			} `json:"items"`
+		}](t, do(t, s, "GET", fmt.Sprintf("/api/v1/scans/%d/findings?change=%s", scan, change), nil, ck))
+		ids := []string{}
+		for _, f := range fl.Items {
+			ids = append(ids, f.RuleID)
+		}
+		slices.Sort(ids)
+		return ids
+	}
+	check := func(what string, scan int64, nw, fixed, unchanged, notCovered int, newRules, fixedRules []string) {
+		t.Helper()
+		d := decode[scanResp](t, do(t, s, "GET", fmt.Sprintf("/api/v1/scans/%d", scan), nil, ck)).Diff
+		if d.New != nw || d.Fixed != fixed || d.Unchanged != unchanged || d.NotCovered != notCovered {
+			t.Errorf("%s: diff %+v, want new %d fixed %d unchanged %d not_covered %d", what, d, nw, fixed, unchanged, notCovered)
+		}
+		if got := rules(scan, "new"); !slices.Equal(got, newRules) {
+			t.Errorf("%s: new list %v, want %v", what, got, newRules)
+		}
+		if got := rules(scan, "fixed"); !slices.Equal(got, fixedRules) {
+			t.Errorf("%s: fixed list %v, want %v", what, got, fixedRules)
+		}
+	}
+	check("narrower scan", s2.ScanID, 0, 1, 1, 1, []string{}, []string{L.ID})
+	s3 := mustUpload(t, s, "web", "scanners=vuln,misconfig", trivyDoc("A", []tv{X, L}, []string{"DS002"}), ck)
+	check("full scan again", s3.ScanID, 1, 0, 2, 0, []string{L.ID}, []string{}) // L re-opened; DS002 was never closed
+	check("narrower scan, read later", s2.ScanID, 0, 1, 1, 1, []string{}, []string{L.ID})
+	check("first scan", s1.ScanID, 3, 0, 0, 0, []string{X.ID, L.ID, "DS002"}, []string{})
+	wantCode(t, do(t, s, "GET", fmt.Sprintf("/api/v1/scans/%d/findings?change=bogus", s3.ScanID), nil, ck), 400, "unknown change")
 }
 
 func TestRawRetention(t *testing.T) {

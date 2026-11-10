@@ -310,9 +310,24 @@ func TestTargetsList(t *testing.T) {
 	wantCode(t, do(t, s, "POST", "/api/v1/projects", map[string]string{"key": "web", "name": "web"}, ca), 201, "create")
 	p, _ := s.projectByKey(ctx, "web")
 	var tid int64
-	s.db.QueryRow(ctx, `insert into targets(project_id, kind, name) values($1, 'repo', 'git.example.internal/app') returning id`, p.ID).Scan(&tid)
+	s.db.QueryRow(ctx, `insert into targets(project_id, kind, name, last_scan_at) values($1, 'repo', 'git.example.internal/app', now()) returning id`, p.ID).Scan(&tid)
 	sqlExec(t, s, `insert into findings(project_id, target_id, fingerprint, kind, tool, rule_id, severity) values
 		($1, $2, 'a', 'vuln', 'trivy', 'CVE-1', 'HIGH'), ($1, $2, 'b', 'secret', 'trivy', 'aws', 'HIGH')`, p.ID, tid)
+	// a target whose only scan failed has nothing to show: it is in neither list, only its scan in the scan history
+	sqlExec(t, s, `with t as (insert into targets(project_id, kind, name) values($1, 'fs', 'notes.txt') returning id)
+		insert into scans(project_id, target_id, source, format, status, error) select $1, id, 'server', 'trivy', 'failed', 'x' from t`, p.ID)
+	rep := decode[struct{ Targets []struct{ Name string } }](t, do(t, s, "GET", "/api/v1/projects/web/report", nil, ca))
+	if len(rep.Targets) != 1 || rep.Targets[0].Name != "git.example.internal/app" {
+		t.Errorf("report targets: %+v", rep.Targets)
+	}
+	scans := decode[struct {
+		Items []struct {
+			TargetName string `json:"target_name"`
+		}
+	}](t, do(t, s, "GET", "/api/v1/projects/web/scans", nil, ca))
+	if len(scans.Items) != 1 || scans.Items[0].TargetName != "notes.txt" {
+		t.Errorf("scan history: %+v", scans.Items)
+	}
 	got := decode[[]struct {
 		ID              int64          `json:"id"`
 		Counts          map[string]int `json:"counts"`

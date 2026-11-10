@@ -194,12 +194,15 @@ func (s *server) handleScanList(w http.ResponseWriter, r *http.Request, c *reqCt
 	writeJSON(w, 200, map[string]any{"items": items, "next_before": next})
 }
 
-// scanDiff compares a scan with the previous finished scan of the same target and format:
-// new = only in this scan, fixed = only in the previous one, unchanged = in both.
+// scanDiff is what a scan changed (scan_changes), shown next to the previous finished scan of the same target and
+// format: new = findings it saw first or re-opened, fixed = findings it resolved, unchanged = the rest of what it
+// saw. not_covered = findings of the previous scan that this one lacks and that are still open: it did not resolve
+// them because the report was not complete for their kind and tool (see ingest). ?change= lists new and fixed.
 type scanDiff struct {
 	New            int    `json:"new"`
 	Fixed          int    `json:"fixed"`
 	Unchanged      int    `json:"unchanged"`
+	NotCovered     int    `json:"not_covered"`
 	PreviousScanID *int64 `json:"previous_scan_id"`
 }
 
@@ -213,15 +216,20 @@ func (s *server) handleScanGet(w http.ResponseWriter, r *http.Request, c *reqCtx
 		return
 	}
 	var d scanDiff
+	// shortcut: not_covered reads today's status, so a finding whose exception ended after this scan counts too;
+	// store each scan's covered kinds if that ever matters.
 	err = s.db.QueryRow(ctx, `with prev as (select p.id from scans p join scans c on c.id = $1 and p.target_id = c.target_id
 				and p.format = c.format and p.status = 'done' and p.finished_at < c.finished_at
 			order by p.finished_at desc limit 1),
 		cur as (select finding_id from scan_findings where scan_id = $1),
-		old as (select finding_id from scan_findings where scan_id = (select id from prev))
-		select (select count(*) from cur where finding_id not in (select finding_id from old)),
-			(select count(*) from old where finding_id not in (select finding_id from cur)),
-			(select count(*) from cur where finding_id in (select finding_id from old)),
-			(select id from prev)`, id).Scan(&d.New, &d.Fixed, &d.Unchanged, &d.PreviousScanID)
+		ch as (select finding_id, change from scan_changes where scan_id = $1)
+		select (select count(*) from ch where change <> 'fixed'),
+			(select count(*) from ch where change = 'fixed'),
+			(select count(*) from cur where finding_id not in (select finding_id from ch)),
+			(select count(*) from scan_findings o join findings f on f.id = o.finding_id and f.status = 'open'
+				where o.scan_id = (select id from prev) and o.finding_id not in (select finding_id from cur)
+				and o.finding_id not in (select finding_id from ch)),
+			(select id from prev)`, id).Scan(&d.New, &d.Fixed, &d.Unchanged, &d.NotCovered, &d.PreviousScanID)
 	if err != nil {
 		writeInternal(w, "scan diff", err)
 		return
@@ -234,7 +242,17 @@ func (s *server) handleScanGet(w http.ResponseWriter, r *http.Request, c *reqCtx
 
 func (s *server) handleScanFindings(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	f := &where{}
-	f.add("f.id in (select finding_id from scan_findings where scan_id = ?)", pathID(r))
+	switch r.URL.Query().Get("change") {
+	case "":
+		f.add("f.id in (select finding_id from scan_findings where scan_id = ?)", pathID(r))
+	case "new":
+		f.add("f.id in (select finding_id from scan_changes where scan_id = ? and change <> 'fixed')", pathID(r))
+	case "fixed":
+		f.add("f.id in (select finding_id from scan_changes where scan_id = ? and change = 'fixed')", pathID(r))
+	default:
+		badRequest(w, "change는 new 또는 fixed입니다.")
+		return
+	}
 	s.writeFindings(w, r, f)
 }
 

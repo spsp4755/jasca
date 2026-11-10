@@ -706,6 +706,7 @@ type mcpScan struct {
 	Summary       *sevCounts `json:"summary,omitempty"`       // open findings of the target right after the scan
 	PolicyPassed  *bool      `json:"policy_passed,omitempty"` // absent until the scan is done
 	PolicyReasons []string   `json:"policy_reasons,omitempty"`
+	PolicyOff     bool       `json:"policy_disabled,omitempty"` // the project's policy was off: policy_passed says nothing
 }
 
 func mcpScanRow(v scanView) mcpScan {
@@ -717,7 +718,7 @@ func mcpScanRow(v scanView) mcpScan {
 	}
 	var pol *policyResult
 	if json.Unmarshal(v.Policy, &pol); pol != nil {
-		out.PolicyPassed, out.PolicyReasons = &pol.Passed, pol.Reasons
+		out.PolicyPassed, out.PolicyReasons, out.PolicyOff = &pol.Passed, pol.Reasons, pol.Disabled
 	}
 	return out
 }
@@ -913,8 +914,9 @@ var mcpTools = func() []mcpTool {
 				"cursor": {"type": "string", "description": "next_cursor from the previous call."}}}`,
 			mcpListScans),
 		tool("get_scan",
-			"One scan with its comparison to the previous scan of the same target: how many findings are new, fixed and "+
-				"unchanged. Use it to see what a build or release changed.",
+			"One scan with its comparison to the previous scan of the same target: how many findings this scan found new "+
+				"(or re-opened), fixed and left unchanged; not_covered counts findings of the previous scan that are "+
+				"still open because this scan did not check their kind. Use it to see what a build or release changed.",
 			fmt.Sprintf(idSchema, "Scan id from list_scans."), mcpGetScan),
 		tool("list_exceptions",
 			"List the exceptions (accepted risks and false positives) that apply to the project, newest first: what is "+
