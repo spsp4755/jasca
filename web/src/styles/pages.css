@@ -176,6 +176,10 @@ legend { padding: 0; }
 .policy-banner-pass { background: var(--ok-bg); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 25%, transparent); }
 .policy-banner-fail { background: var(--danger-bg); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
 .policy-banner p, .policy-banner li { color: var(--text-2); }
+.first-run { padding: 28px 28px 26px; max-width: 720px; }
+.first-run h2 { font-size: 19px; margin: 0 0 8px; }
+.first-run p { margin: 0 0 18px; color: var(--text-2); line-height: 1.6; }
+.first-run-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .sev-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--line); }
 .sev-tiles li { display: flex; flex-direction: column; gap: 2px; padding: 12px 18px 14px; border-right: 1px solid var(--line); }
 .sev-tiles li:last-child { border-right: 0; }

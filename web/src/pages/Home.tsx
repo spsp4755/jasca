@@ -35,8 +35,23 @@ export default function Home() {
   );
 }
 
+/** Before the first scan the dashboard would be six empty boxes; say what to do instead. */
+function FirstRun() {
+  return (
+    <section className="panel first-run" aria-labelledby="h-first">
+      <h2 id="h-first">아직 스캔한 것이 없습니다</h2>
+      <p>검사할 파일만 있으면 시작할 수 있습니다. 프로젝트 폴더를 압축한 파일이나 컨테이너 이미지 tar를 올리면 취약점, 비밀값, 설정 오류를 찾아 심각도별로 정리해 보여 줍니다.</p>
+      <div className="first-run-actions">
+        <Link to="/scan" className="btn btn-primary"><Icon name="scan" />첫 스캔 하기</Link>
+        <Link to="/scan?tab=ci" className="btn btn-secondary">CI에서 자동으로 올리기</Link>
+      </div>
+    </section>
+  );
+}
+
 function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
   const navigate = useNavigate();
+  if (d && !d.recent_scans.length && !d.totals.open) return <FirstRun />;
   return (
     <div className="home-grid">
       <RiskSummary totals={d?.totals} />
