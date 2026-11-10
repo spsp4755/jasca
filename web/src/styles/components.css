@@ -68,6 +68,8 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; margin:
 .panel-body { padding: 4px 18px 16px; }
 .panel > .table-wrap { border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; }
 
+ol.steps { margin: 6px 0 0 20px; list-style: decimal; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; color: var(--text-2); }
+
 /* ---- tables (dense, sticky header) ---- */
 .table-wrap { overflow-x: clip; }
 .table-scroll { overscroll-behavior: contain; }
@@ -278,6 +280,7 @@ polyline.trend-line { fill: none; }
 .span-7 { grid-column: span 7; }
 .span-8 { grid-column: span 8; }
 .span-12 { grid-column: span 12; }
+.home-grid > .panel:has(> .empty) { align-self: start; } /* an empty card keeps its own height beside a taller neighbour */
 @media (max-width: 1240px) {
   .home-grid { grid-auto-flow: row dense; }
   .span-7, .span-8 { grid-column: span 12; }
@@ -288,12 +291,12 @@ polyline.trend-line { fill: none; }
 .risk-total h2 { font-size: 13px; font-weight: 600; color: var(--muted); }
 .risk-big { margin-top: 4px; font-size: 34px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
 .risk-caption { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
-.risk-caption b { color: var(--text); }
+.risk-caption b, .risk-caption a { color: var(--text); }
 .risk-right { display: flex; flex-direction: column; justify-content: space-between; padding: 12px 16px 16px; gap: 12px; }
 .risk-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .risk-tile { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; color: var(--text); }
 .risk-tile:hover { background: var(--surface-2); text-decoration: none; }
-.risk-label { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.risk-label { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
 .risk-label .sev-dot { width: 8px; height: 8px; }
 .risk-n { font-size: 24px; font-weight: 650; letter-spacing: -0.02em; }
 .risk-tile.is-zero .risk-n { color: var(--muted); font-weight: 500; }

@@ -2,6 +2,7 @@
 .report-doc h2 { font-size: 16px; margin: 0 0 8px; }
 .report-doc .sev-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .report-split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.report-solo { grid-template-columns: minmax(0, 1fr); } /* AI off: no history panel beside the report */
 
 @page { size: A4; margin: 16mm 14mm; }
 @media print {
@@ -59,5 +60,8 @@
   .report-doc .page-break { break-before: page; }
   .report-doc table { font-size: 10.5px; }
   .report-doc thead { display: table-header-group; }
+  /* count badges are colour-only on screen; paper may be black and white, so print their names too */
+  .report-doc .sev-compact .sr-only { position: static !important; width: auto; height: auto; margin: 0; clip: auto; overflow: visible; }
+  .report-doc .rule-title { display: block; }
   a { color: inherit; text-decoration: none; }
 }

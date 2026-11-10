@@ -11,13 +11,31 @@ import Icon from "../components/Icon";
 import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
 import { useToast } from "../components/Toast";
-import { KIND_LABEL, ORIGIN_LABEL, RESOLUTION_LABEL, TARGET_KIND_LABEL, dateInput, daysSince, endOfDayISO, fmtDateTime } from "../lib/format";
+import { KIND_LABEL, ORIGIN_LABEL, RESOLUTION_LABEL, TARGET_KIND_LABEL, dateInput, endOfDayISO, fmtDateTime, fmtDaysAgo } from "../lib/format";
 
 const DETAIL_LABEL: Record<string, string> = {
   message: "메시지", description: "설명", resolution: "조치 방법", resource: "리소스", namespace: "네임스페이스",
   category: "분류", start_line: "시작 줄", end_line: "끝 줄", snippet: "코드", redacted_match_sha256: "일치 값 해시",
 };
 const HIDDEN = new Set(["partial_fingerprints"]);
+const HASHES = new Set(["redacted_match_sha256"]); // identifiers nobody acts on: shown last, under 출처
+
+const line = (v: unknown) => (typeof v === "number" && v > 0 ? v : 0);
+/** "path:12" or "path:12-15": where a secret, misconfiguration or code finding sits. */
+const whereOf = (f: Finding) => {
+  const a = line(f.details?.start_line), b = line(f.details?.end_line);
+  return f.location + (f.location && a ? `:${a}${b > a ? `-${b}` : ""}` : "");
+};
+/** One sentence saying what to do, from what the finding already carries. Fixed wording around the names avoids Korean particle errors. */
+function todo(f: Finding) {
+  const where = whereOf(f);
+  if (f.kind === "vuln") {
+    return f.fixed_version ? `${f.pkg_name} 패키지를 ${f.fixed_version} 버전 이상으로 올리세요.`
+      : "아직 조치 버전이 없습니다. 위험을 감수할지 정해 예외를 요청하거나 패키지 교체를 검토하세요.";
+  }
+  if (f.kind === "secret") return `${where || "해당 파일"}의 비밀값을 폐기(재발급)하고 코드에서 지우세요.`;
+  return `${where ? `${where}에서 ` : ""}"${f.title || f.rule_id}" 규칙에 걸린 곳을 고치세요.`;
+}
 
 /** Side panel with everything known about one finding. */
 export default function FindingDrawer({ finding: f, onClose, showProject = true }: { finding: Finding | null; onClose: () => void; showProject?: boolean }) {
@@ -25,7 +43,10 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
   const me = useMe();
   const role = useApi<Project[]>("/projects").data?.find((p) => p.key === f?.project_key)?.my_role;
   const canAsk = role === "member" || role === "owner" || isSecurity(me.data); // viewers would only get a 403
-  const details = f ? Object.entries(f.details ?? {}).filter(([k, v]) => !HIDDEN.has(k) && v !== "" && v !== null && v !== 0) : [];
+  // start/end lines are part of 위치 when there is a file to attach them to
+  const all = f ? Object.entries(f.details ?? {}).filter(([k, v]) => !HIDDEN.has(k) && v !== "" && v !== null && v !== 0
+    && !(f.location && (k === "start_line" || k === "end_line"))) : [];
+  const details = all.filter(([k]) => !HASHES.has(k)), hashes = all.filter(([k]) => HASHES.has(k));
   return (
     <>
       <Dialog open={!!f && !ask} onClose={onClose} size="drawer"
@@ -39,17 +60,17 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
         )}>
         {f && (
           <>
+            {f.status === "open" && <p className="drawer-todo"><Icon name="arrowRight" size={15} /><span><b>할 일</b> {todo(f)}</span></p>}
             <dl className="kv">
               <Row label="상태"><StatusBadge status={f.status} />{f.reopened_count > 0 && <span className="muted"> · 다시 열림 {f.reopened_count}회</span>}</Row>
               {f.exception_id && <Row label="예외"><Link to={`/exceptions?id=${f.exception_id}`}>예외 #{f.exception_id}</Link></Row>}
-              <Row label="종류">{KIND_LABEL[f.kind] ?? f.kind} · <span className="muted">{f.tool} · {ORIGIN_LABEL[f.origin] ?? f.origin}</span></Row>
               {f.pkg_name && <Row label="패키지"><b>{f.pkg_name}</b> <span className="mono">{f.pkg_version}</span></Row>}
               {f.pkg_name && <Row label="조치 버전">{f.fixed_version ? <span className="mono pkg-fix">{f.fixed_version}</span> : <span className="muted">아직 없음</span>}</Row>}
               {f.pkg_path && <Row label="경로"><span className="mono break">{f.pkg_path}</span></Row>}
-              {f.location && <Row label="위치"><span className="mono break">{f.location}</span></Row>}
+              {f.location && <Row label="위치"><span className="mono break">{whereOf(f)}</span></Row>}
               {showProject && <Row label="프로젝트"><Link to={`/projects/${encodeURIComponent(f.project_key)}`}>{f.project_key}</Link></Row>}
               <Row label="대상">{TARGET_KIND_LABEL[f.target_kind] ?? f.target_kind} · <span className="mono break">{f.target_name}</span></Row>
-              <Row label="처음 발견">{fmtDateTime(f.first_seen_at)} <span className="muted">({daysSince(f.first_seen_at)}일 전)</span></Row>
+              <Row label="처음 발견">{fmtDateTime(f.first_seen_at)} <span className="muted">({fmtDaysAgo(f.first_seen_at)})</span></Row>
               <Row label="마지막 확인">{fmtDateTime(f.last_seen_at)}</Row>
               {f.fixed_at && <Row label="해결">{fmtDateTime(f.fixed_at)}</Row>}
             </dl>
@@ -59,12 +80,20 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
                 <dl className="kv">
                   {details.map(([k, v]) => (
                     <Row key={k} label={DETAIL_LABEL[k] ?? k}>
-                      <span className={k === "snippet" || k === "redacted_match_sha256" ? "mono break" : "pre"}>{typeof v === "string" ? v : JSON.stringify(v)}</span>
+                      <span className={k === "snippet" ? "mono break" : "pre"}>{typeof v === "string" ? v : JSON.stringify(v)}</span>
                     </Row>
                   ))}
                 </dl>
               </section>
             )}
+            <section className="drawer-sec">
+              <h3>출처</h3>
+              <dl className="kv">
+                <Row label="종류">{KIND_LABEL[f.kind] ?? f.kind}</Row>
+                <Row label="찾은 방법">{ORIGIN_LABEL[f.origin] ?? f.origin} · <span className="mono">{f.tool}</span></Row>
+                {hashes.map(([k, v]) => <Row key={k} label={DETAIL_LABEL[k] ?? k}><span className="mono break muted">{String(v)}</span></Row>)}
+              </dl>
+            </section>
           </>
         )}
       </Dialog>

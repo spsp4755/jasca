@@ -13,6 +13,5 @@
 .progress { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; min-width: 96px; }
 .progress > span { display: block; height: 100%; background: var(--accent); transition: width .2s; }
 .admin pre.code { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; overflow-x: auto; margin: 6px 0; }
-.admin ol.steps { margin: 6px 0 0 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; color: var(--text-2); }
 .panel-body > p { margin: 0 0 10px; }
-@media (max-width: 1100px) { .admin { grid-template-columns: 1fr; } .admin-nav { position: static; flex-direction: row; flex-wrap: wrap; } }
+@media (max-width: 1100px) { .admin { grid-template-columns: 1fr; } .admin-nav { position: static; flex-direction: row; flex-wrap: wrap; } .admin-nav .nav-title { display: none; } } /* in a row the group labels would read as tabs */

@@ -44,6 +44,8 @@ L.run(async () => {
   const f = await kim.api.get(`/findings?project=e2e-scan&limit=100`);
   L.ok(f.items.some((i) => i.pkg_name === "lodash" && /^CVE-/.test(i.rule_id)), `real Trivy found CVEs in lodash 4.17.15 (${f.items.length} findings)`);
   await page.getByRole("heading", { name: "lodash-app" }).waitFor();
+  await page.getByText("같은 대상·형식의 이전 스캔이 없습니다").waitFor();
+  L.ok(await page.getByRole("tab", { name: /새로 발견/ }).count() === 0, "a first scan lists its results without the comparison tabs");
   await L.shot(page, "scan-result");
   fs.rmSync(dir, { recursive: true, force: true });
   await browser.close();

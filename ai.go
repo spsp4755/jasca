@@ -51,6 +51,9 @@ type aiSettings struct {
 	Enabled        bool   `json:"enabled"`
 }
 
+// on: switched on and pointed at a server (what GET /auth/config tells signed-in users as ai_enabled).
+func (st aiSettings) on() bool { return st.Enabled && st.BaseURL != "" }
+
 func (s *server) aiConf(ctx context.Context) (aiSettings, error) {
 	c := aiSettings{}
 	_, err := s.getSetting(ctx, "ai", &c)
@@ -304,7 +307,7 @@ func (s *server) aiEnabled(w http.ResponseWriter, ctx context.Context) bool {
 		writeInternal(w, "ai conf", err)
 		return false
 	}
-	if !st.Enabled || st.BaseURL == "" {
+	if !st.on() {
 		writeErr(w, 409, "ai_disabled", "AI 기능이 꺼져 있습니다. 관리자에게 문의하세요.")
 		return false
 	}

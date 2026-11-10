@@ -8,7 +8,7 @@ import Button from "../components/Button";
 import Icon from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { API_BASE, ApiError, api, loginUrl } from "../api/client";
-import { isAdmin, useApi, useMe } from "../api/hooks";
+import { isAdmin, useApi, useAuthConfig, useMe } from "../api/hooks";
 import CiSnippet from "../components/CiSnippet";
 import { SEVERITIES, type Counts, type Project, type ScanDetail, type ScanJobCreated, type Target } from "../api/types";
 import { SEVERITY_LABEL, fmtNumber } from "../lib/format";
@@ -68,6 +68,8 @@ async function sniffKind(file: File): Promise<Kind> {
 }
 
 const baseName = (file: string) => file.replace(/\.(tar\.gz|tgz|tar|zip)$/i, "").slice(0, 200);
+/** JASCA_MAX_SCAN_UPLOAD_MB as people say it: 2048 → "2GB", 500 → "500MB". */
+const fmtLimit = (mb: number) => (mb >= 1024 ? `${+(mb / 1024).toFixed(1)}GB` : `${mb}MB`);
 const fmtSize = (n: number) => (n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)} GB` : `${Math.max(0.1, n / (1 << 20)).toFixed(1)} MB`);
 const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 
@@ -186,6 +188,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   const [editing, setEditing] = useState(true);
   const xhr = useRef<XMLHttpRequest | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const maxMB = useAuthConfig().data?.max_scan_upload_mb;
   useEffect(() => () => xhr.current?.abort(), []);
 
   // First choice once the list is in: ?project=, then the last one used, then the only one; none at all starts a new project.
@@ -257,7 +260,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
           onClick={() => input.current?.click()} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), input.current?.click())}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={drop}>
           {file ? <><Icon name="fileText" size={20} /><span><strong>{file.name}</strong> <span className="muted num">{fmtSize(file.size)}</span></span><span className="dropzone-change">바꾸기</span></>
-            : <><strong>파일을 여기에 끌어다 놓거나 눌러서 고르세요</strong><span className="muted">프로젝트 폴더를 압축한 zip·tar·tar.gz 또는 docker save로 만든 이미지 tar · 기본 최대 2GB</span></>}
+            : <><strong>파일을 여기에 끌어다 놓거나 눌러서 고르세요</strong><span className="muted">프로젝트 폴더를 압축한 zip·tar·tar.gz 또는 docker save로 만든 이미지 tar{maxMB ? ` · 최대 ${fmtLimit(maxMB)}` : ""}</span></>}
           <input ref={input} type="file" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => void pick(e.target.files?.[0])} />
         </div>
         {tried && errs.file && <p id="scan-file-err" className="field-err" role="alert">{errs.file}</p>}
@@ -297,7 +300,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
           </div>
         )}
         <Field label="대상 이름" required error={tried ? errs.target || undefined : undefined}
-          hint={!target.trim() ? "검사 대상을 구분하는 이름입니다. 같은 이름으로 다시 스캔하면 이전 결과와 비교합니다."
+          hint={!target.trim() ? "서비스나 이미지 이름을 쓰세요(예: web-app). 같은 이름으로 다시 스캔하면 이전 결과와 비교합니다."
             : rescan ? "이미 있는 대상입니다. 이전 스캔과 비교해 새로 생긴 것과 사라진 것을 보여 줍니다." : "새 대상으로 등록됩니다. 다음에 같은 이름으로 스캔하면 이번 결과와 비교합니다."}>
           <input className="input" value={target} list="scan-targets" maxLength={200} placeholder="예: web-app"
             onChange={(e) => { setTarget(e.target.value); setTargetEdited(true); }} />
@@ -316,14 +319,23 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
 /** Project picker in front of the shared CI snippet (components/CiSnippet). */
 function CiTab({ projects }: { projects: Project[] }) {
   const [key, setKey] = useState("");
+  const p = projects.find((x) => x.key === key);
   return (
     <Panel title="CI 연동" meta="Trivy JSON 보고서를 CI에서 직접 올립니다">
       <div className="stack">
-        <select className="input" style={{ width: 280 }} aria-label="프로젝트" value={key} onChange={(e) => setKey(e.target.value)}>
-          <option value="">프로젝트 선택</option>{projects.map((p) => <option key={p.key} value={p.key}>{p.name} ({p.key})</option>)}
-        </select>
-        <CiSnippet projectKey={key || "<프로젝트-키>"} />
-        <p className="muted">같은 보고서를 다시 올리면 <code>duplicate: true</code>로 응답하고 새 스캔을 만들지 않습니다.</p>
+        <Field label="프로젝트">
+          <select className="input" style={{ width: 280 }} value={key} onChange={(e) => setKey(e.target.value)}>
+            <option value="">프로젝트를 고르세요</option>{projects.map((x) => <option key={x.key} value={x.key}>{x.name} ({x.key})</option>)}
+          </select>
+        </Field>
+        {!p ? <p className="muted">프로젝트를 고르면 그 프로젝트에 올리는 CI 명령을 보여 줍니다.</p> : (
+          <>
+            <CiSnippet key={p.key} projectKey={p.key} />
+            <p className="muted">{p.my_role === "owner"
+              ? <>업로드 토큰은 <Link to={`/projects/${encodeURIComponent(p.key)}/settings#tokens`}>프로젝트 설정의 API 토큰</Link>에서 만듭니다.</>
+              : "프로젝트 소유자에게 업로드 토큰을 요청하세요."} 같은 보고서를 다시 올려도 스캔이 중복으로 생기지 않습니다.</p>
+          </>
+        )}
       </div>
     </Panel>
   );
@@ -335,7 +347,7 @@ function HarborTab() {
     <Panel title="Harbor 연동">
       <div className="stack">
         <p>Harbor에 이미지를 푸시하면 Harbor가 웹훅으로 JASCA에 알리고, JASCA가 Harbor의 Trivy 보고서를 가져와 자동으로 등록합니다. 사용자가 따로 올릴 필요가 없습니다.</p>
-        <ol className="steps" style={{ margin: "0 0 0 18px" }}>
+        <ol className="steps">
           <li>관리자가 Harbor 연결(주소, 로봇 계정)을 등록하고 웹훅 주소와 비밀값을 Harbor에 설정합니다.</li>
           <li>Harbor 프로젝트와 저장소 패턴을 JASCA 프로젝트에 매핑합니다.</li>
           <li>매핑되지 않은 이미지는 관리자 화면의 &quot;매핑 안 된 이미지&quot; 목록에 쌓입니다.</li>

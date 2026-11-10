@@ -13,6 +13,7 @@ L.run(async () => {
   // lee requests through the finding drawer
   await lee.page.goto(`${L.BASE}/projects/${key}`);
   await lee.page.getByRole("table", { name: "결과 목록" }).getByRole("row", { name: /CVE-2022-37434/ }).locator(".pkg-name").click();
+  L.ok(/패키지를 .+ 버전 이상으로 올리세요\.|아직 조치 버전이 없습니다/.test(await lee.page.locator(".drawer-todo").innerText()), "the drawer starts with what to do");
   await lee.page.getByRole("button", { name: "예외 요청" }).click();
   const dlg = lee.page.getByRole("dialog", { name: "예외 요청" });
   await dlg.getByLabel("사유").fill("내부망 전용 서비스로 해당 기능을 쓰지 않음");
@@ -32,7 +33,11 @@ L.run(async () => {
 
   // kim approves in the approvals queue
   await kim.page.goto(`${L.BASE}/exceptions/approvals`);
+  await kim.page.getByRole("heading", { name: "예외 승인", level: 1 }).waitFor();
   const row = kim.page.getByRole("table", { name: "예외 목록" }).getByRole("row", { name: /내부망 전용/ });
+  const who = (await lee.api.get("/me")).name;
+  L.ok(pend[0].requested_by_name === who && (await row.innerText()).includes(who), "the approver sees who asked (" + who + ")");
+  L.ok(await row.getByRole("link", { name: /CVE-2022-37434/ }).count() === 1, "the vulnerability is a link");
   await row.getByRole("button", { name: "승인", exact: true }).click();
   await kim.page.getByRole("dialog", { name: "예외 승인" }).getByLabel("메모").fill("확인함");
   await kim.page.getByRole("dialog", { name: "예외 승인" }).getByRole("button", { name: "승인", exact: true }).click();

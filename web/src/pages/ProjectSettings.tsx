@@ -170,6 +170,31 @@ function Tokens({ project }: { project: Project }) {
   );
 }
 
+/** The policy sentence and its options: a project's policy and the admin default policy are written the same way. */
+export function PolicyFields({ p, set, disabled, label }: { p: Policy; set: (patch: Partial<Policy>) => void; disabled?: boolean; label: string }) {
+  const off = disabled || !p.enabled;
+  return (
+    <>
+      <label className="check-row"><input type="checkbox" checked={p.enabled} disabled={disabled} onChange={(e) => set({ enabled: e.target.checked })} />{label}</label>
+      <fieldset className="policy-rule" disabled={off}>
+        <legend className="sr-only">실패 조건</legend>
+        <span>열린 결과 중 심각도</span>
+        <select className="input input-sm" aria-label="최소 심각도" value={p.min_severity} onChange={(e) => set({ min_severity: e.target.value as Severity })}>
+          {SEVERITIES.filter((s) => s !== "UNKNOWN").map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}
+        </select>
+        <span>이상이</span>
+        <input className="input input-sm num" type="number" min={0} aria-label="허용 개수" value={p.max_count} onChange={(e) => set({ max_count: Math.max(0, Number(e.target.value) || 0) })} />
+        <span>개를 넘으면 정책 실패</span>
+      </fieldset>
+      <div className="policy-opts">
+        <label className="check-row"><input type="checkbox" checked={p.new_only} disabled={off} onChange={(e) => set({ new_only: e.target.checked })} />이번 스캔에서 새로 나온 결과만 셉니다</label>
+        <label className="check-row"><input type="checkbox" checked={p.fixable_only} disabled={off} onChange={(e) => set({ fixable_only: e.target.checked })} />조치 버전이 있는 결과만 셉니다</label>
+      </div>
+      <p className="side-note">승인된 예외(위험 수용·오탐)는 세지 않습니다. 판정 중 오류가 나면 정책 실패로 처리합니다.</p>
+    </>
+  );
+}
+
 function PolicyForm({ project, owner }: { project: Project; owner: boolean }) {
   const path = `/projects/${project.key}/policy`;
   const q = useApi<Policy>(path);
@@ -180,24 +205,9 @@ function PolicyForm({ project, owner }: { project: Project; owner: boolean }) {
   const dirty = JSON.stringify(p) !== JSON.stringify(q.data);
   const set = (patch: Partial<Policy>) => setP({ ...p, ...patch });
   return (
-    <Section id="policy" title="정책" meta="CI 업로드 응답의 통과/실패를 정합니다">
+    <Section id="policy" title="정책" meta="스캔할 때마다 정책 통과·정책 실패를 정합니다">
       <form className="form" onSubmit={(e) => { e.preventDefault(); save.mutate(undefined); }}>
-        <label className="check-row"><input type="checkbox" checked={p.enabled} disabled={!owner} onChange={(e) => set({ enabled: e.target.checked })} />정책 사용 (끄면 항상 통과)</label>
-        <fieldset className="policy-rule" disabled={!owner || !p.enabled}>
-          <legend className="sr-only">실패 조건</legend>
-          <span>열린 결과 중 심각도</span>
-          <select className="input input-sm" aria-label="최소 심각도" value={p.min_severity} onChange={(e) => set({ min_severity: e.target.value as Severity })}>
-            {SEVERITIES.filter((s) => s !== "UNKNOWN").map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}
-          </select>
-          <span>이상이</span>
-          <input className="input input-sm num" type="number" min={0} aria-label="허용 개수" value={p.max_count} onChange={(e) => set({ max_count: Math.max(0, Number(e.target.value) || 0) })} />
-          <span>개를 넘으면 실패</span>
-        </fieldset>
-        <div className="policy-opts">
-          <label className="check-row"><input type="checkbox" checked={p.new_only} disabled={!owner || !p.enabled} onChange={(e) => set({ new_only: e.target.checked })} />이번 스캔에서 새로 나온 결과만 셉니다</label>
-          <label className="check-row"><input type="checkbox" checked={p.fixable_only} disabled={!owner || !p.enabled} onChange={(e) => set({ fixable_only: e.target.checked })} />조치 버전이 있는 결과만 셉니다</label>
-        </div>
-        <p className="side-note">승인된 예외(위험 수용·오탐)는 세지 않습니다. 판정 중 오류가 나면 실패로 처리합니다.</p>
+        <PolicyFields p={p} set={set} disabled={!owner} label="정책 사용 (끄면 항상 정책 통과)" />
         {owner && <div className="form-actions"><Button type="submit" variant="primary" disabled={!dirty} loading={save.isPending}>저장</Button></div>}
       </form>
     </Section>

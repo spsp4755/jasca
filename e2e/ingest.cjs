@@ -46,5 +46,9 @@ L.run(async () => {
   const scans = await kim.api.get(`/projects/${key}/scans`);
   L.ok((scans.items ?? scans).length >= 7, "scan history has the uploads");
   await L.shot(kim.page, "ingest-results");
+  // AI is off on a fresh install: the vulnerability page says so once instead of offering a button that fails
+  await kim.page.goto(`${L.BASE}/vulns/CVE-2022-37434`);
+  await kim.page.getByText("AI 안내는 관리자가 켜면 쓸 수 있습니다.").waitFor();
+  L.ok(await kim.page.getByRole("button", { name: /안내 받기/ }).count() === 0, "with AI off the vulnerability page offers no AI button");
   await browser.close();
 });

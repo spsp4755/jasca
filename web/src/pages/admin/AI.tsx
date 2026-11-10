@@ -18,7 +18,7 @@ export default function AI() {
   useEffect(() => { if (q.data) { const { api_key_set: _k, ...rest } = q.data; setF(rest); setKey(""); } }, [q.data]);
   useEffect(() => { if (pq.data) setPr(pq.data); }, [pq.data]);
   const body = () => ({ ...f, ...(key ? { api_key: key } : {}) });
-  const save = useSave(() => api.put("/admin/ai", body()), { ok: "AI 설정을 저장했습니다.", invalidate: ["/admin/ai"] });
+  const save = useSave(() => api.put("/admin/ai", body()), { ok: "AI 설정을 저장했습니다.", invalidate: ["/admin/ai", "/auth/config"] }); // /auth/config tells the screens whether to offer AI
   const test = useSave(() => api.post<{ ok?: boolean; error?: string; message?: string }>("/admin/ai/test", body()), {
     onDone: (r) => (r?.error ? toast(`연결 실패: ${r.error}`, "error") : toast("연결했습니다.", "ok")),
   });

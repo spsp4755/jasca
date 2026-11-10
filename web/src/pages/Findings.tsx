@@ -12,7 +12,7 @@ import PageHeader from "../components/PageHeader";
 import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
 import Table, { type Column } from "../components/Table";
-import { KIND_LABEL, daysSince, fmtDate, fmtNumber } from "../lib/format";
+import { KIND_LABEL, fmtDate, fmtDaysAgo, fmtNumber } from "../lib/format";
 import FindingDrawer, { ExceptionRequestDialog } from "./FindingDrawer";
 import { PkgCell, ProjectTarget } from "./Home";
 
@@ -57,20 +57,20 @@ export function FindingsView({ project, projects, targets }: { project?: string;
   const columns: Column<Finding>[] = [
     { key: "sev", header: "심각도", width: 108, render: (r) => <SeverityBadge severity={r.severity} /> },
     {
-      key: "rule", header: "취약점", render: (r) => (
+      key: "rule", header: "취약점", width: "34%", render: (r) => (
         <span className="rule">
-          {r.kind === "vuln" ? <Link to={`/vulns/${encodeURIComponent(r.rule_id)}`} className="mono">{r.rule_id}</Link> : <span className="mono">{r.rule_id}</span>}
+          {r.kind === "vuln" ? <Link to={`/vulns/${encodeURIComponent(r.rule_id)}`} className="mono nw">{r.rule_id}</Link> : <span className="mono">{r.rule_id}</span>}
           {r.kind !== "vuln" && <span className="tag tag-quiet">{KIND_LABEL[r.kind]}</span>}
           {r.title && <span className="rule-title" title={r.title}>{r.title}</span>}
         </span>
       ),
     },
-    { key: "pkg", header: "패키지 · 조치 버전", width: "24%", render: (r) => (r.pkg_name ? <PkgCell name={r.pkg_name} version={r.pkg_version} fixed={r.fixed_version} /> : <span className="mono muted break">{r.location || "—"}</span>) },
+    { key: "pkg", header: "패키지 · 조치 버전", width: "22%", render: (r) => (r.pkg_name ? <PkgCell name={r.pkg_name} version={r.pkg_version} fixed={r.fixed_version} /> : <span className="mono muted break">{r.location || "—"}</span>) },
     project
-      ? { key: "target", header: "대상", width: "20%", render: (r) => <span className="pt-target mono" title={r.target_name}>{r.target_name}</span> }
-      : { key: "where", header: "프로젝트 · 대상", width: "20%", render: (r) => <ProjectTarget project={r.project_key} target={r.target_name} /> },
+      ? { key: "target", header: "대상", width: "18%", nowrap: true, render: (r) => <span className="pt-target mono" title={r.target_name}>{r.target_name}</span> }
+      : { key: "where", header: "프로젝트 · 대상", width: "18%", nowrap: true, render: (r) => <ProjectTarget project={r.project_key} target={r.target_name} /> }, // nowrap + width: cut with an ellipsis, so this column gives way first
     { key: "status", header: "상태", width: 96, render: (r) => <StatusBadge status={r.status} /> },
-    { key: "seen", header: "처음 발견", width: 92, align: "right", render: (r) => <span className="num muted" title={fmtDate(r.first_seen_at)}>{daysSince(r.first_seen_at) === 0 ? "오늘" : `${daysSince(r.first_seen_at)}일 전`}</span> },
+    { key: "seen", header: "처음 발견", width: 92, align: "right", render: (r) => <span className="num muted" title={fmtDate(r.first_seen_at)}>{fmtDaysAgo(r.first_seen_at)}</span> },
   ];
 
   return (
