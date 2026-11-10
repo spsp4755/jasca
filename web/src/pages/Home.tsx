@@ -45,7 +45,6 @@ function FirstRun() {
       <p>검사할 파일만 있으면 시작할 수 있습니다. 프로젝트 폴더를 압축한 파일이나 컨테이너 이미지 tar를 올리면 취약점, 비밀값, 설정 오류를 찾아 심각도별로 정리해 보여 줍니다.</p>
       <div className="first-run-actions">
         <Link to="/scan" className="btn btn-primary"><Icon name="scan" />첫 스캔 하기</Link>
-        <Link to="/scan?tab=ci" className="btn btn-secondary">CI에서 자동으로 올리기</Link>
       </div>
     </section>
   );
