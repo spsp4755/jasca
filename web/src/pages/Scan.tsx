@@ -41,7 +41,7 @@ export default function Scan() {
   const projects = useApi<Project[]>("/projects");
   const s = q.data;
   const project = projects.data?.find((p) => p.id === s?.project_id);
-  const done = s?.status === "done";
+  const done = s?.status === "done"; // below, source "recheck" is special: a re-evaluation keeps no report and its ref is an internal run marker
   const prevId = s?.diff.previous_scan_id ?? null;
   const cur = useQuery({ queryKey: ["scan-findings", s?.id], enabled: done, queryFn: ({ signal }) => scanFindings(s!.id, signal) });
   const prev = useQuery({ queryKey: ["scan-findings", prevId], enabled: done && !!prevId, queryFn: ({ signal }) => scanFindings(prevId!, signal) });
@@ -70,14 +70,14 @@ export default function Scan() {
     fixed: (prev.data?.items ?? []).filter((f) => !curIds.has(f.id)),
     all: cur.data?.items ?? [],
   };
-  const rows = lists[tab as keyof typeof lists];
+  const rows = prevId ? lists[tab as keyof typeof lists] : lists.all; // nothing to compare with: just this scan's results
   const listLoading = cur.isPending || (!!prevId && prev.isPending);
 
   return (
     <>
       <PageHeader title={s ? s.target_name : `스캔 #${id}`}
         crumbs={[{ label: "프로젝트", to: "/projects" }, ...(project ? [{ label: project.name, to: `/projects/${project.key}/scans` }] : []), { label: `스캔 #${id}` }]}
-        description={s && <span className="scan-target"><span className="tag tag-quiet">{TARGET_KIND_LABEL[s.target_kind] ?? s.target_kind}</span><span>스캔 #{s.id} · {SOURCE_LABEL[s.source] ?? s.source} · {fmtDateTime(s.created_at)}</span>{s.ref && <span className="mono muted">@ {s.ref}</span>}</span>}
+        description={s && <span className="scan-target"><span className="tag tag-quiet">{TARGET_KIND_LABEL[s.target_kind] ?? s.target_kind}</span><span>스캔 #{s.id} · {SOURCE_LABEL[s.source] ?? s.source} · {fmtDateTime(s.created_at)}</span>{s.ref && s.source !== "recheck" && <span className="mono muted">@ {s.ref}</span>}</span>}
         actions={s && (
           <>
             {live(s.status) && project && project.my_role !== "viewer" && <Button variant="danger" loading={cancel.isPending} onClick={() => confirm("이 스캔을 취소할까요?") && cancel.mutate()}>스캔 취소</Button>}
@@ -90,37 +90,41 @@ export default function Scan() {
       <div className="detail-grid">
         <div className="detail-main">
           <section className="panel" aria-labelledby="h-sum">
-            <div className="panel-head"><h2 id="h-sum">요약</h2><span className="panel-meta">이 스캔 직후 대상의 열린 결과</span></div>
+            <div className="panel-head"><h2 id="h-sum">요약</h2><span className="panel-meta">스캔이 끝났을 때 이 대상에 열려 있던 결과 전체입니다. 같은 대상의 다른 스캔에서 찾은 것도 셉니다.</span></div>
             <SevTiles c={s?.summary} />
           </section>
 
           {done && (
             <section className="panel" aria-labelledby="h-diff">
               <div className="panel-head">
-                <h2 id="h-diff">이전 스캔 대비</h2>
-                <span className="panel-meta">{prevId ? <>같은 대상·형식의 <Link to={`/scans/${prevId}`}>스캔 #{prevId}</Link>과 비교</> : "같은 대상의 이전 스캔이 없어 모두 새 결과로 봅니다"}</span>
+                <h2 id="h-diff">{prevId ? "이전 스캔 대비" : "이 스캔의 결과"}</h2>
+                <span className="panel-meta">{prevId ? <>같은 대상·형식의 <Link to={`/scans/${prevId}`}>스캔 #{prevId}</Link>과 비교</> : <>{fmtNumber(s.diff.new + s.diff.unchanged)}건 · 같은 대상·형식의 이전 스캔이 없습니다</>}</span>
               </div>
-              <div className="diff-stats">
-                <Stat n={s.diff.new} label="새로 발견" tone={s.diff.new ? "danger" : undefined} />
-                <Stat n={s.diff.fixed} label="이번에 사라짐" tone={s.diff.fixed ? "ok" : undefined} />
-                <Stat n={s.diff.unchanged} label="그대로" />
-              </div>
-              <div className="panel-tabs">
-                <Tabs label="비교 목록" value={tab} onChange={setTab} tabs={[
-                  { id: "new", label: "새로 발견", count: s.diff.new },
-                  { id: "fixed", label: "사라짐", count: s.diff.fixed },
-                  { id: "all", label: "이 스캔의 전체 결과", count: s.diff.new + s.diff.unchanged },
-                ]} />
-              </div>
-              <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
+              {prevId && (
+                <>
+                  <div className="diff-stats">
+                    <Stat n={s.diff.new} label="새로 발견" tone={s.diff.new ? "danger" : undefined} />
+                    <Stat n={s.diff.fixed} label="이번에 사라짐" tone={s.diff.fixed ? "ok" : undefined} />
+                    <Stat n={s.diff.unchanged} label="그대로" />
+                  </div>
+                  <div className="panel-tabs">
+                    <Tabs label="비교 목록" value={tab} onChange={setTab} tabs={[
+                      { id: "new", label: "새로 발견", count: s.diff.new },
+                      { id: "fixed", label: "사라짐", count: s.diff.fixed },
+                      { id: "all", label: "이 스캔의 전체 결과", count: s.diff.new + s.diff.unchanged },
+                    ]} />
+                  </div>
+                </>
+              )}
+              <div {...(prevId ? { role: "tabpanel", id: `tabpanel-${tab}`, "aria-labelledby": `tab-${tab}` } : {})}>
                 {(cur.data?.truncated || prev.data?.truncated) && <p className="side-note" style={{ padding: "0 18px 10px" }}>결과가 많아 앞의 {fmtNumber(MAX_ROWS)}건만 비교했습니다.</p>}
                 <Table<Finding> caption="결과" rows={rows} rowKey={(f) => f.id} loading={listLoading} dense onRowClick={setOpen} maxHeight={560}
-                  empty={<Empty compact icon={tab === "new" ? "shieldCheck" : "inbox"} title={tab === "new" ? "새로 발견된 결과가 없습니다" : tab === "fixed" ? "사라진 결과가 없습니다" : "이 스캔에는 결과가 없습니다"} />}
+                  empty={<Empty compact icon={!prevId || tab === "new" ? "shieldCheck" : "inbox"} title={!prevId || tab === "all" ? "이 스캔에는 결과가 없습니다" : tab === "new" ? "새로 발견된 결과가 없습니다" : "사라진 결과가 없습니다"} />}
                   columns={[
                     { key: "sev", header: "심각도", width: 108, render: (f) => <SeverityBadge severity={f.severity} /> },
                     { key: "rule", header: "취약점", render: (f) => (
                       <span className="rule">
-                        {f.kind === "vuln" ? <Link to={`/vulns/${encodeURIComponent(f.rule_id)}`} className="mono">{f.rule_id}</Link> : <span className="mono">{f.rule_id}</span>}
+                        {f.kind === "vuln" ? <Link to={`/vulns/${encodeURIComponent(f.rule_id)}`} className="mono nw">{f.rule_id}</Link> : <span className="mono">{f.rule_id}</span>}
                         {f.title && <span className="rule-title" title={f.title}>{f.title}</span>}
                       </span>) },
                     { key: "pkg", header: "패키지 · 조치 버전", width: "30%", render: (f) => (f.pkg_name ? <PkgCell name={f.pkg_name} version={f.pkg_version} fixed={f.fixed_version} /> : <span className="mono muted break">{f.location || "—"}</span>) },
@@ -145,7 +149,7 @@ export default function Scan() {
                   <div className="kv-row"><dt>올린 주체</dt><dd>{s.created_by || "시스템"}</dd></div>
                   <div className="kv-row"><dt>시작</dt><dd>{fmtDateTime(s.created_at)}</dd></div>
                   <div className="kv-row"><dt>완료</dt><dd>{fmtDateTime(s.finished_at)}</dd></div>
-                  {!s.has_raw && done && <div className="kv-row"><dt>원본</dt><dd className="muted">보존 기간이 지나 삭제됨</dd></div>}
+                  {!s.has_raw && done && s.source !== "recheck" && <div className="kv-row"><dt>원본</dt><dd className="muted">보존 기간이 지나 삭제됨</dd></div>}
                 </dl>
               )}
             </div>

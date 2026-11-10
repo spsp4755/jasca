@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useDashboard } from "../api/hooks";
-import { SEVERITIES, type Counts, type Dashboard, type PolicyResult } from "../api/types";
+import { SEVERITIES, type Counts, type Dashboard, type FindingOrigin, type PolicyResult } from "../api/types";
 import Button from "../components/Button";
 import Empty from "../components/Empty";
 import Icon from "../components/Icon";
@@ -9,8 +9,10 @@ import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
 import Table from "../components/Table";
 import TrendChart from "../components/TrendChart";
-import { ORIGIN_LABEL, RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, SOURCE_LABEL, daysSince, daysUntil, fmtDate, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
+import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, SOURCE_LABEL, daysSince, daysUntil, fmtDate, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
 
+// why a finding turned up without a new scan, for 새로 알려진 취약점
+const FOUND_BY: Record<FindingOrigin, string> = { scan: "스캔에서 발견", recheck: "DB 갱신으로 발견", advisory: "사내 Advisory로 발견" };
 
 export default function Home() {
   const q = useDashboard();
@@ -120,12 +122,12 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
           <ul className="list">
             {d.newly_known.map((f) => (
               <li key={f.id} className="list-row">
-                <SeverityBadge severity={f.severity} compact />
+                <SeverityBadge severity={f.severity} />
                 <div className="list-main">
                   <Link to={`/vulns/${encodeURIComponent(f.rule_id)}`} className="mono">{f.rule_id}</Link>
                   <span className="list-sub">{f.project_key} · {f.pkg_name} {f.pkg_version}</span>
                 </div>
-                <span className="tag tag-quiet">{ORIGIN_LABEL[f.origin]}</span>
+                <span className="tag tag-quiet">{FOUND_BY[f.origin] ?? f.origin}</span>
               </li>
             ))}
           </ul>
@@ -163,7 +165,7 @@ function RiskSummary({ totals }: { totals?: Counts }) {
         <h2 id="h-risk">열린 결과</h2>
         <p className="risk-big num">{totals ? fmtNumber(totals.open) : <span className="skeleton" style={{ width: 72, height: 30 }} />}</p>
         <p className="risk-caption">
-          {totals ? (totals.critical + totals.high > 0 ? <>CRITICAL·HIGH <b className="num">{fmtNumber(totals.critical + totals.high)}</b>건 먼저 확인하세요</> : "CRITICAL·HIGH 없음") : " "}
+          {totals ? (totals.critical + totals.high > 0 ? <Link to="/findings?severity=CRITICAL,HIGH">CRITICAL·HIGH <b className="num">{fmtNumber(totals.critical + totals.high)}</b>건 먼저 확인하세요</Link> : "CRITICAL·HIGH 없음") : " "}
         </p>
       </div>
       <div className="risk-right">
@@ -206,7 +208,7 @@ export function ProjectTarget({ project, target }: { project: string; target: st
 
 export function SummaryCell({ s }: { s: Partial<Counts> }) {
   const parts = SEVERITIES.map((sev) => [sev, s[sev.toLowerCase() as keyof Counts] ?? 0] as const).filter(([, n]) => n > 0);
-  if (!parts.length) return <span className="muted">발견 없음</span>;
+  if (!parts.length) return <span className="muted">없음</span>;
   return <span className="sev-row">{parts.map(([sev, n]) => <SeverityBadge key={sev} severity={sev} count={n} compact />)}</span>;
 }
 

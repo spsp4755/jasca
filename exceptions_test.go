@@ -23,6 +23,8 @@ type exView struct {
 	DecidedBy   *int64     `json:"decided_by"`
 	DecidedAt   *time.Time `json:"decided_at"`
 	ExpiresAt   time.Time  `json:"expires_at"`
+	// name of the requester, for the approver's list
+	RequestedByName string `json:"requested_by_name"`
 }
 
 func init() {
@@ -169,7 +171,7 @@ func TestGlobalVulnNeedsSecurity(t *testing.T) {
 	e.request(t, e.secA, map[string]any{"scope": "global_vuln", "vuln_id": "CVE-2024-1"}, 201)
 	// global exceptions are listed to everybody who is logged in
 	rec := do(t, e.s, "GET", "/api/v1/exceptions", nil, mck)
-	if l := decode[[]exView](t, rec); len(l) != 1 || l[0].ProjectID != nil {
+	if l := decode[[]exView](t, rec); len(l) != 1 || l[0].ProjectID != nil || l[0].RequestedByName == "" {
 		t.Errorf("list = %+v", l)
 	}
 }

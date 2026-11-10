@@ -5,10 +5,10 @@ import { SEVERITIES } from "../api/types";
 import Empty from "../components/Empty";
 import Icon from "../components/Icon";
 import PageHeader from "../components/PageHeader";
-import StatusBadge from "../components/StatusBadge";
 import Table from "../components/Table";
 import Tabs from "../components/Tabs";
-import { RESOLUTION_LABEL, ROLE_LABEL, SCOPE_LABEL, SEVERITY_LABEL, daysUntil, fmtDate, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
+import { ROLE_LABEL, SEVERITY_LABEL, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
+import { exceptionColumns } from "./Exceptions";
 import ProjectFindings from "./ProjectFindings";
 import ProjectScans from "./ProjectScans";
 import ProjectSettings from "./ProjectSettings";
@@ -101,19 +101,7 @@ function ProjectExceptions({ project }: { project: Project }) {
       {q.isError && <div className="alert alert-danger" role="alert" style={{ margin: "0 18px 12px" }}><Icon name="alert" />{q.error.message}</div>}
       <Table<ExceptionItem> caption="예외 목록" rows={rows} rowKey={(x) => x.id} loading={q.isPending} dense
         empty={<Empty compact icon="shield" title="예외가 없습니다" description="결과 탭에서 결과를 골라 '예외 요청'을 누르면 보안 담당자 승인 후 위험 수용이나 오탐으로 처리됩니다." />}
-        columns={[
-          { key: "what", header: "대상", render: (x) => (x.vuln_id
-            ? <Link className="mono" to={`/vulns/${encodeURIComponent(x.vuln_id)}`}>{x.vuln_id}</Link>
-            : <span className="muted">결과 #{x.finding_id}</span>) },
-          { key: "scope", header: "범위", width: 110, render: (x) => <span className="tag tag-quiet">{SCOPE_LABEL[x.scope] ?? x.scope}</span> },
-          { key: "res", header: "처리", width: 90, render: (x) => RESOLUTION_LABEL[x.resolution] ?? x.resolution },
-          { key: "reason", header: "사유", render: (x) => <span className="clamp" title={x.reason}>{x.reason}</span> },
-          { key: "status", header: "상태", width: 100, render: (x) => <StatusBadge status={x.status} /> },
-          { key: "exp", header: "만료", width: 120, align: "right", render: (x) => (
-            <span title={fmtDate(x.expires_at)} className={x.status === "approved" && daysUntil(x.expires_at) <= 7 ? "due due-soon" : "muted"}>
-              {x.status === "approved" ? `D-${Math.max(0, daysUntil(x.expires_at))}` : fmtDate(x.expires_at)}
-            </span>) },
-        ]} />
+        columns={exceptionColumns(false)} />
     </div>
   );
 }

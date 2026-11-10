@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type ApiError } from "../api/client";
-import { useApi } from "../api/hooks";
+import { useApi, useAuthConfig } from "../api/hooks";
 import type { AiRun, RunRef, Severity, Vuln as VulnT, VulnAffected } from "../api/types";
 import Button from "../components/Button";
 import Empty from "../components/Empty";
@@ -22,6 +22,7 @@ const host = (u: string) => { try { return new URL(u).host; } catch { return u; 
 export default function Vuln() {
   const { id = "" } = useParams();
   const q = useApi<VulnT>(`/vulns/${encodeURIComponent(id)}`);
+  const ai = useAuthConfig().data?.ai_enabled;
   const crumbs = [{ label: "취약점", to: "/findings" }, { label: id }];
   if (q.isError) {
     return (
@@ -73,7 +74,7 @@ export default function Vuln() {
               ]} />
           </section>
 
-          {v && <AiGuide v={v} />}
+          {v && (ai ? <AiGuide v={v} /> : ai === false && <p className="side-note">AI 안내는 관리자가 켜면 쓸 수 있습니다.</p>)}
         </div>
 
         <aside className="detail-side">

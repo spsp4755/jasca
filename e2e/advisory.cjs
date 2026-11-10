@@ -16,8 +16,8 @@ L.run(async () => {
   await page.getByLabel(/^ID/).fill("JASCA-E2E-001");
   await page.getByLabel("심각도").selectOption("CRITICAL");
   await page.getByLabel("제목").fill("사내 점검 대상 libssl");
-  await page.getByLabel("생태계").selectOption("debian");
-  await page.getByLabel("패키지").fill("libssl1.1");
+  await page.getByLabel("패키지 종류").selectOption("debian");
+  await page.getByLabel("패키지", { exact: true }).fill("libssl1.1");
   await page.getByLabel("영향 범위").fill("<1.1.1z");
   await page.getByRole("button", { name: "영향 미리보기" }).click();
   const dlg = page.getByRole("dialog", { name: "영향 미리보기" });

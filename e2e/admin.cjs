@@ -43,6 +43,7 @@ L.run(async () => {
     await page.locator(".admin-main h1, main h1").first().waitFor();
     await page.waitForLoadState("networkidle");
   }
+  L.ok(await page.getByRole("table", { name: "감사 로그" }).getByText("메일(SMTP) 설정 변경").count() > 0, "the audit screen names actions in Korean");
   await page.goto(`${L.BASE}/projects`);
   await page.goto(`${L.BASE}/findings`);
   await page.waitForLoadState("networkidle");

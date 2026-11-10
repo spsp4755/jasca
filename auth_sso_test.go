@@ -246,6 +246,36 @@ func TestAuthConfig(t *testing.T) {
 	}
 }
 
+// Signed-in users learn whether AI is on and the scan upload limit, nothing else about the AI settings; signed-out callers neither.
+func TestAuthConfigInstanceFields(t *testing.T) {
+	s := testServer(t)
+	get := func(opts ...any) map[string]any {
+		t.Helper()
+		rec, out := do(t, s, "GET", "/api/v1/auth/config", nil, opts...), map[string]any{}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
+			t.Fatalf("%d %s", rec.Code, rec.Body.String())
+		}
+		return out
+	}
+	if err := s.putSetting(context.Background(), "ai", aiSettings{BaseURL: "http://ai.example.test/v1", Model: "m", APIKey: "sk-secret-key", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if out := get(); out["ai_enabled"] != nil || out["max_scan_upload_mb"] != nil {
+		t.Fatalf("signed out sees instance fields: %v", out)
+	}
+	kim := loginAs(t, s, mkUser(t, s, "kim", ""))
+	out := get(kim)
+	if out["ai_enabled"] != true || out["max_scan_upload_mb"] != float64(s.cfg.MaxScanUploadMB) || len(out) != 5 {
+		t.Fatalf("signed in, AI on: %v", out)
+	}
+	if err := s.putSetting(context.Background(), "ai", aiSettings{BaseURL: "http://ai.example.test/v1", Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	if out := get(kim); out["ai_enabled"] != false {
+		t.Fatalf("signed in, AI off: %v", out)
+	}
+}
+
 func TestSSOStartRejectsExternalNext(t *testing.T) {
 	s := testServer(t)
 	kc := newFakeKC(t, "/realms/jasca")

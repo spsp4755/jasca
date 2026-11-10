@@ -10,7 +10,7 @@ import Empty from "../components/Empty";
 import Field from "../components/Field";
 import Icon from "../components/Icon";
 import PageHeader from "../components/PageHeader";
-import Table from "../components/Table";
+import Table, { type Column } from "../components/Table";
 import { useToast } from "../components/Toast";
 import { ROLE_LABEL, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
 import { SummaryCell } from "./Home";
@@ -18,6 +18,22 @@ import { SummaryCell } from "./Home";
 export const KEY_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
 /** "Payment API v2" → "payment-api-v2"; Hangul and other letters are dropped, so a Korean name suggests nothing. */
 export const suggestKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
+
+/** Name, open count, counts by severity and last scan: the cells the project list and the report list share. `to` is where the name leads. */
+export function projectColumns(to: (p: Project) => string): Column<Project>[] {
+  return [
+    { key: "name", header: "프로젝트", render: (p) => (
+      <span className="proj-cell">
+        <Link to={to(p)} className="proj-name">{p.name}</Link>
+        <span className="proj-sub"><span className="mono">{p.key}</span>{p.description && <> · {p.description}</>}</span>
+      </span>) },
+    { key: "open", header: "열린 결과", width: 90, align: "right", render: (p) => <b className={`num${p.counts.open ? "" : " muted"}`}>{fmtNumber(p.counts.open)}</b> },
+    { key: "sev", header: "심각도별", width: 280, render: (p) => <SummaryCell s={p.counts} /> },
+    { key: "scan", header: "마지막 스캔", width: 120, align: "right", render: (p) => (p.last_scan_at
+      ? <span className="muted" title={fmtDateTime(p.last_scan_at)}>{fmtRelative(p.last_scan_at)}</span>
+      : <span className="muted">없음</span>) },
+  ];
+}
 
 export default function Projects() {
   const q = useApi<Project[]>("/projects");
@@ -27,6 +43,7 @@ export default function Projects() {
   const all = q.data ?? [];
   const f = filter.trim().toLowerCase();
   const rows = f ? all.filter((p) => `${p.key} ${p.name} ${p.description}`.toLowerCase().includes(f)) : all;
+  const [name, ...counts] = projectColumns((p) => `/projects/${p.key}`);
   return (
     <>
       <PageHeader title="프로젝트" description="내가 멤버이거나 볼 수 있는 프로젝트입니다. 숫자는 열린 결과입니다."
@@ -45,17 +62,9 @@ export default function Projects() {
             : <Empty icon="folder" title="아직 프로젝트가 없습니다" description="프로젝트를 만들면 CI 업로드용 토큰과 명령을 바로 받을 수 있습니다. 만든 사람이 소유자가 됩니다."
                 action={<Button variant="primary" onClick={() => setCreating(true)}>새 프로젝트</Button>} />}
           columns={[
-            { key: "name", header: "프로젝트", render: (p) => (
-              <span className="proj-cell">
-                <Link to={`/projects/${p.key}`} className="proj-name">{p.name}</Link>
-                <span className="proj-sub"><span className="mono">{p.key}</span>{p.description && <> · {p.description}</>}</span>
-              </span>) },
+            name,
             { key: "role", header: "내 역할", width: 96, render: (p) => (p.my_role ? <span className={`tag${p.my_role === "owner" ? "" : " tag-quiet"}`}>{ROLE_LABEL[p.my_role]}</span> : null) },
-            { key: "open", header: "열린 결과", width: 90, align: "right", render: (p) => <b className={`num${p.counts.open ? "" : " muted"}`}>{fmtNumber(p.counts.open)}</b> },
-            { key: "sev", header: "심각도별", width: 280, render: (p) => <SummaryCell s={p.counts} /> },
-            { key: "scan", header: "마지막 스캔", width: 120, align: "right", render: (p) => (p.last_scan_at
-              ? <span className="muted" title={fmtDateTime(p.last_scan_at)}>{fmtRelative(p.last_scan_at)}</span>
-              : <span className="muted">없음</span>) },
+            ...counts,
           ]} />
       </div>
       <NewProjectDialog open={creating} onClose={() => setCreating(false)} />

@@ -41,10 +41,13 @@ type exception struct {
 	FindingRule     *string `json:"finding_rule"`
 	FindingPkg      *string `json:"finding_pkg"`
 	FindingSeverity *string `json:"finding_severity"`
+	// who asked (name, else username; "" once the account is gone), so an approver sees it without a lookup
+	RequestedByName string `json:"requested_by_name"`
 }
 
 const exceptionCols = `select e.id, e.scope, e.project_id, e.finding_id, e.vuln_id, e.resolution, e.reason, e.status, e.requested_by,
-		e.decided_by, e.decided_at, e.decision_note, e.expires_at, e.created_at, p.key, f.rule_id, f.pkg_name, f.severity
+		e.decided_by, e.decided_at, e.decision_note, e.expires_at, e.created_at, p.key, f.rule_id, f.pkg_name, f.severity,
+		coalesce((select coalesce(nullif(u.name, ''), u.username) from users u where u.id = e.requested_by), '')
 	from exceptions e left join projects p on p.id = e.project_id left join findings f on f.id = e.finding_id `
 
 func (s *server) exceptionRoutes() {

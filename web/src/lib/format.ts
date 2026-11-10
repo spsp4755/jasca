@@ -58,12 +58,15 @@ export function fmtRelative(iso?: string | null, now = Date.now()): string {
 /** Whole days from iso to now (age of an open finding). */
 export const daysSince = (iso: string, now = Date.now()) => Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86_400_000));
 
+/** "오늘", "3일 전": how long ago a finding was first seen. */
+export const fmtDaysAgo = (iso: string) => { const d = daysSince(iso); return d === 0 ? "오늘" : `${d}일 전`; };
+
 /** Whole days from now until iso, rounded up: 0 = within the next day, negative = that many days past. */
 export const daysUntil = (iso: string, now = Date.now()) => Math.ceil((new Date(iso).getTime() - now) / 86_400_000);
 
 // Severities keep the names scanners, CVE feeds and CI logs use; the other labels are Korean.
 export const SEVERITY_LABEL: Record<Severity, string> = { CRITICAL: "CRITICAL", HIGH: "HIGH", MEDIUM: "MEDIUM", LOW: "LOW", UNKNOWN: "UNKNOWN" };
-export const SOURCE_LABEL: Record<ScanSource, string> = { upload: "CI 업로드", server: "서버 스캔", harbor: "Harbor", recheck: "재평가" };
+export const SOURCE_LABEL: Record<ScanSource, string> = { upload: "CI 업로드", server: "파일 업로드", harbor: "Harbor", recheck: "재평가" };
 export const ORIGIN_LABEL: Record<FindingOrigin, string> = { scan: "스캔", recheck: "재평가", advisory: "사내 Advisory" };
 export const SCOPE_LABEL: Record<ExceptionScope, string> = { finding: "결과", project_vuln: "프로젝트 전체", global_vuln: "전사" };
 export const RESOLUTION_LABEL: Record<ExceptionResolution, string> = { accepted: "위험 수용", false_positive: "오탐" };

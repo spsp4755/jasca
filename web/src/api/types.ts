@@ -25,7 +25,8 @@ export interface Counts { critical: number; high: number; medium: number; low: n
 
 // --- auth / me ---
 /** tz: IANA zone from JASCA_TZ; the UI shows times in it. */
-export interface AuthConfig { sso_enabled: boolean; tz?: string; signed_in?: boolean }
+/** ai_enabled and max_scan_upload_mb come only when signed in. */
+export interface AuthConfig { sso_enabled: boolean; tz?: string; signed_in?: boolean; ai_enabled?: boolean; max_scan_upload_mb?: number }
 export interface LocalLoginRequest { username: string; password: string }
 export interface LocalLoginResponse { user: Me }
 export interface Me {
@@ -105,6 +106,8 @@ export interface ExceptionItem {
   decided_by: number | null; decided_at: string | null; decision_note: string; expires_at: string; created_at: string;
   project_key?: string;
   finding_rule?: string | null; finding_pkg?: string | null; finding_severity?: Severity | null;
+  /** name (else username) of requested_by; "" when the account is gone */
+  requested_by_name?: string;
 }
 export interface ExceptionCreate {
   scope: ExceptionScope; project_key?: string; finding_ids?: number[]; vuln_id?: string;

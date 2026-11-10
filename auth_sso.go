@@ -62,8 +62,17 @@ func (s *server) ssoRoutes() {
 			writeInternal(w, "auth config", err)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"sso_enabled": sso.Enabled && sso.Issuer != "" && sso.ClientID != "", "tz": s.cfg.Loc.String(),
-			"signed_in": c.User != nil}) // lets the web skip a /me that would only 401 (a console error) when signed out
+		out := map[string]any{"sso_enabled": sso.Enabled && sso.Issuer != "" && sso.ClientID != "", "tz": s.cfg.Loc.String(),
+			"signed_in": c.User != nil} // lets the web skip a /me that would only 401 (a console error) when signed out
+		if c.User != nil { // what the screens need to know up front; a signed-out caller learns nothing about the instance
+			ai, err := s.aiConf(r.Context())
+			if err != nil {
+				writeInternal(w, "auth config", err)
+				return
+			}
+			out["ai_enabled"], out["max_scan_upload_mb"] = ai.on(), s.cfg.MaxScanUploadMB
+		}
+		writeJSON(w, 200, out)
 	})
 	s.handle("GET /api/v1/auth/sso/start", permPublic, s.handleSSOStart)
 	s.handle("GET /api/v1/auth/sso/callback", permPublic, s.handleSSOCallback)
