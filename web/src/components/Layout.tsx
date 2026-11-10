@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthConfig, useLogout, useMe } from "../api/hooks";
 import type { Me } from "../api/types";
+import { SYSTEM_ROLE_LABEL, fmtDept } from "../lib/format";
 import { useHotkeys } from "../lib/hotkeys";
 import { getTheme, setTheme, type ThemeMode } from "../lib/theme";
 import { useMutation } from "@tanstack/react-query";
@@ -14,7 +15,6 @@ import Icon, { type IconName } from "./Icon";
 import ShortcutHelp from "./ShortcutHelp";
 import Sidebar from "./Sidebar";
 
-const ROLE_LABEL: Record<string, string> = { admin: "관리자", security: "보안 담당", "": "일반 사용자" };
 const THEMES: [ThemeMode, string, IconName][] = [["system", "시스템", "monitor"], ["light", "라이트", "sun"], ["dark", "다크", "moon"]];
 
 /** "CVE-2024-1234" or "GHSA-…" opens the vuln page; anything else searches findings. */
@@ -133,8 +133,9 @@ function UserMenu({ me }: { me: Me }) {
           <div className="menu-head">
             <p className="menu-name">{display}</p>
             <p className="menu-sub">{me.username}{me.email && ` · ${me.email}`}</p>
-            <p className="menu-role"><span className="tag">{ROLE_LABEL[me.system_role] ?? me.system_role}</span>
-              {me.depts.slice(0, 2).map((d) => <span key={d} className="tag tag-quiet" title={d}>{d.split("/").pop()}</span>)}
+            <p className="menu-role"><span className="tag">{SYSTEM_ROLE_LABEL[me.system_role] ?? me.system_role}</span>
+              {/* /me lists parent paths too (they grant membership); a chip is a department itself, by its full path */}
+              {me.depts.filter((d) => !me.depts.some((o) => o.startsWith(`${d}/`))).slice(0, 2).map((d) => <span key={d} className="tag tag-quiet">{fmtDept(d)}</span>)}
             </p>
           </div>
           {me.source === "local" && (

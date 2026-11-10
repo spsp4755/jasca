@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -355,5 +356,83 @@ func TestPrincipals(t *testing.T) {
 	}
 	if got := get("bulk"); len(got) != 20 {
 		t.Errorf("limit: %d", len(got))
+	}
+}
+
+// The audit entry of a member change says who was added, removed or changed, by name, and stays small.
+func TestMembersAuditSaysWho(t *testing.T) {
+	s := testServer(t)
+	alice, bob, carol := mkUser(t, s, "alice", ""), mkUser(t, s, "bob", ""), mkUser(t, s, "carol", "")
+	sqlExec(t, s, `update users set name = '밥' where id = $1`, bob.ID)
+	ca := loginAs(t, s, alice)
+	wantCode(t, do(t, s, "POST", "/api/v1/projects", map[string]string{"key": "web", "name": "web"}, ca), 201, "create")
+	m := func(kind, principal, role string) map[string]string {
+		return map[string]string{"principal_kind": kind, "principal": principal, "role": role}
+	}
+	owner := m("user", itoa(alice.ID), "owner")
+	last := func() map[string]any {
+		var d map[string]any
+		if err := s.db.QueryRow(context.Background(), `select details from audit_log where action='project.members' order by id desc limit 1`).Scan(&d); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	js := func(v any) string { b, _ := json.Marshal(v); return string(b) }
+	wantCode(t, do(t, s, "PUT", "/api/v1/projects/web/members", []any{owner, m("user", itoa(bob.ID), "viewer"), m("group", "/dev", "member")}, ca), 204, "add two")
+	if d := last(); js(d["added"]) != `[{"name":"/dev","role":"member"},{"name":"밥","role":"viewer"}]` || d["removed"] != nil || d["changed"] != nil || d["member_count"] != 3.0 {
+		t.Errorf("added: %s", js(d))
+	}
+	wantCode(t, do(t, s, "PUT", "/api/v1/projects/web/members", []any{owner, m("user", itoa(bob.ID), "member"), m("user", itoa(carol.ID), "viewer")}, ca), 204, "change, add, remove")
+	if d := last(); js(d["added"]) != `[{"name":"carol","role":"viewer"}]` || js(d["removed"]) != `[{"name":"/dev","role":"member"}]` ||
+		js(d["changed"]) != `[{"from":"viewer","name":"밥","role":"member"}]` || d["members"] != nil {
+		t.Errorf("diff: %s", js(d))
+	}
+	// 500 new members: the entry lists the first few and counts the rest
+	big := []any{owner}
+	for i := range 499 {
+		big = append(big, m("group", fmt.Sprintf("/g/%03d", i), "viewer"))
+	}
+	wantCode(t, do(t, s, "PUT", "/api/v1/projects/web/members", big, ca), 204, "many")
+	if d := last(); len(d["added"].([]any)) != 20 || d["added_more"] != 479.0 || len(js(d)) > 4000 {
+		t.Errorf("bounded: %d bytes %v", len(js(d)), d["added_more"])
+	}
+}
+
+func TestPolicyMaxCountBound(t *testing.T) {
+	s := testServer(t)
+	ca := loginAs(t, s, mkUser(t, s, "alice", ""))
+	wantCode(t, do(t, s, "POST", "/api/v1/projects", map[string]string{"key": "web", "name": "web"}, ca), 201, "create")
+	for _, n := range []any{3000000000, 1000001, 1.5} {
+		rec := do(t, s, "PUT", "/api/v1/projects/web/policy", map[string]any{"max_count": n}, ca)
+		if rec.Code != 400 || errCode(t, rec) != "bad_request" {
+			t.Errorf("max_count %v: %d %s", n, rec.Code, rec.Body.String())
+		}
+	}
+	wantCode(t, do(t, s, "PUT", "/api/v1/projects/web/policy", map[string]any{"max_count": 1000000}, ca), 200, "upper bound itself")
+}
+
+// Messages people read use the Korean role names, never the stored codes.
+func TestRoleWordsInMessagesAreKorean(t *testing.T) {
+	s := testServer(t)
+	alice, bob := mkUser(t, s, "alice", ""), mkUser(t, s, "bob", "")
+	ca := loginAs(t, s, alice)
+	wantCode(t, do(t, s, "POST", "/api/v1/projects", map[string]string{"key": "web", "name": "web"}, ca), 201, "create")
+	m := func(principal, role string) map[string]string {
+		return map[string]string{"principal_kind": "user", "principal": principal, "role": role}
+	}
+	msgs := []string{
+		do(t, s, "PUT", "/api/v1/projects/web/members", []any{m(itoa(alice.ID), "member")}, ca).Body.String(),
+		do(t, s, "PUT", "/api/v1/projects/web/members", []any{m(itoa(alice.ID), "boss")}, ca).Body.String(),
+	}
+	wantCode(t, do(t, s, "PUT", "/api/v1/projects/web/members", []any{m(itoa(alice.ID), "owner"), m(itoa(bob.ID), "member")}, ca), 204, "add bob")
+	pid := qint64(t, s, `select id from projects`)
+	tid := qint64(t, s, `insert into targets(project_id, kind, name) values($1, 'fs', 'app') returning id`, pid)
+	scan := qint64(t, s, `insert into scans(project_id, target_id, source, format, status, created_by_user) values($1, $2, 'server', 'trivy', 'queued', $3) returning id`, pid, tid, alice.ID)
+	rec := do(t, s, "POST", "/api/v1/scans/"+itoa(scan)+"/cancel", nil, loginAs(t, s, bob))
+	wantCode(t, rec, 403, "a member cancels someone else's scan")
+	for _, msg := range append(msgs, rec.Body.String()) {
+		if strings.Contains(msg, "owner") || strings.Contains(msg, "member") || strings.Contains(msg, "viewer") || !strings.Contains(msg, "소유자") {
+			t.Errorf("message: %s", msg)
+		}
 	}
 }

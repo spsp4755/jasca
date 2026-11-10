@@ -191,8 +191,10 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   useEffect(() => () => xhr.current?.abort(), []);
 
   // First choice once the list is in: ?project=, then the last one used, then the only one; none at all starts a new project.
+  // A ?project= the user may only view chooses nothing: falling back would quietly send the upload to another project.
+  const readOnly = projects.find((p) => p.key === sp.get("project") && p.my_role === "viewer");
   useEffect(() => {
-    if (!loaded || key) return;
+    if (!loaded || key || readOnly) return;
     let last = "";
     try { last = localStorage.getItem(LAST_PROJECT) ?? ""; } catch { /* storage blocked */ }
     const has = (k: string | null) => !!k && writable.some((p) => p.key === k);
@@ -278,6 +280,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
 
       <section className="scan-part" aria-labelledby="h-where">
         <h2 id="h-where"><span className="scan-part-n" aria-hidden="true">2</span>결과를 저장할 곳</h2>
+        {readOnly && !key && <div className="alert alert-warn" role="alert"><Icon name="alert" />{readOnly.name} 프로젝트는 보기 전용이라 스캔을 올릴 수 없습니다. 다른 프로젝트를 고르거나 소유자에게 멤버 권한을 요청하세요.</div>}
         <Field label="프로젝트" required error={tried ? errs.project || undefined : undefined}>
           <select className="input" value={key} onChange={(e) => { setKey(e.target.value); setConflict(false); }}>
             {!isNew && !key && <option value="">프로젝트를 고르세요</option>}

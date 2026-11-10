@@ -72,6 +72,7 @@ ol.steps { margin: 6px 0 0 20px; list-style: decimal; display: flex; flex-direct
 
 /* ---- tables (dense, sticky header) ---- */
 .table-wrap { overflow-x: clip; }
+.table-wrap.table-wide { overflow-x: auto; } /* set by Table when the table is wider than its box */
 .table-scroll { overscroll-behavior: contain; }
 .table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .table th {

@@ -134,12 +134,13 @@ export default function AdvisoryEdit() {
         </form>
       )}
       <Dialog open={preview !== null} onClose={() => setPreview(null)} size="lg" title="영향 미리보기"
-        description={preview ? `${preview.length.toLocaleString("ko-KR")}건의 기존 스캔 결과가 이 Advisory에 걸립니다.` : undefined}
+        description={!preview ? undefined : f.active ? `${preview.length.toLocaleString("ko-KR")}건의 기존 스캔 결과가 이 Advisory에 걸립니다.`
+          : `"사용 중"이 꺼져 있습니다. 저장하면 이 Advisory로 생긴 결과 ${preview.length.toLocaleString("ko-KR")}건이 해결됨으로 바뀌고, 새 결과는 생기지 않습니다.`}
         footer={<><Button onClick={() => setPreview(null)}>계속 수정</Button><Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>저장</Button></>}>
         <Table dense maxHeight={320} caption="영향 미리보기" rows={preview ?? []} rowKey={(r) => `${r.project_key}|${r.target}|${r.pkg}|${r.version}`}
           columns={[{ key: "p", header: "프로젝트", render: (r) => r.project_key }, { key: "t", header: "대상", render: (r) => r.target },
             { key: "k", header: "패키지", mono: true, render: (r) => r.pkg }, { key: "v", header: "버전", mono: true, render: (r) => r.version }]}
-          empty={<Empty compact title="영향 받는 결과가 없습니다" description="저장해도 지금 있는 스캔 결과는 바뀌지 않습니다." />} />
+          empty={<Empty compact title={f.active ? "영향 받는 결과가 없습니다" : "해결됨으로 바뀔 결과가 없습니다"} description="저장해도 지금 있는 스캔 결과는 바뀌지 않습니다." />} />
       </Dialog>
     </>
   );

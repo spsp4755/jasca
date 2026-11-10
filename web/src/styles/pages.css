@@ -3,7 +3,8 @@
 /* ---- small shared bits ---- */
 .break { word-break: break-all; }
 .pre { white-space: pre-wrap; }
-.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ex-act { display: flex; gap: 6px; } /* exception row buttons: one line, never wrapped out of reach */
 .tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .check-row { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; }
 .input.input-sm { height: 30px; font-size: 13px; padding: 0 8px; width: auto; }

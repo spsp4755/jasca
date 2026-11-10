@@ -27,30 +27,19 @@ type reportFinding struct {
 	FirstSeenAt  time.Time `json:"first_seen_at"`
 }
 
-type reportException struct {
-	ID         int64     `json:"id"`
-	Scope      string    `json:"scope"`
-	VulnID     *string   `json:"vuln_id"`
-	FindingID  *int64    `json:"finding_id"`
-	Resolution string    `json:"resolution"`
-	Status     string    `json:"status"`
-	Reason     string    `json:"reason"`
-	ExpiresAt  time.Time `json:"expires_at"`
-}
-
 // handleProjectReport returns everything the printable report page shows; the page does the layout.
 func (s *server) handleProjectReport(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	ctx, pid := r.Context(), c.Project.ID
 	fail := func(err error) { writeInternal(w, "report", err) }
 	rep := struct {
-		Project     *project          `json:"project"`
-		GeneratedAt time.Time         `json:"generated_at"`
-		Summary     any               `json:"summary"`
-		Targets     []targetView      `json:"targets"`
-		Findings    []reportFinding   `json:"findings"`
-		Exceptions  []reportException `json:"exceptions"`
-		Policy      policy            `json:"policy"`
-		AIReport    any               `json:"ai_report"`
+		Project     *project        `json:"project"`
+		GeneratedAt time.Time       `json:"generated_at"`
+		Summary     any             `json:"summary"`
+		Targets     []targetView    `json:"targets"`
+		Findings    []reportFinding `json:"findings"`
+		Exceptions  []exception     `json:"exceptions"` // as GET /exceptions lists them, so the page names them the same way
+		Policy      policy          `json:"policy"`
+		AIReport    any             `json:"ai_report"`
 	}{Project: c.Project, GeneratedAt: time.Now().UTC()}
 	var sev sevCounts
 	var byKind struct{ Vuln, Misconfig, Secret, SAST int }
@@ -93,8 +82,8 @@ func (s *server) handleProjectReport(w http.ResponseWriter, r *http.Request, c *
 		fail(err)
 		return
 	}
-	if rep.Exceptions, err = collect[reportException](ctx, s, `select id, scope, vuln_id, finding_id, resolution, status, reason, expires_at
-		from exceptions where project_id = $1 and status = 'approved' and expires_at > now() order by expires_at, id`, pid); err != nil {
+	if rep.Exceptions, err = collect[exception](ctx, s, exceptionCols+`where e.project_id = $1 and e.status = 'approved' and e.expires_at > now()
+		order by e.expires_at, e.id`, pid); err != nil {
 		fail(err)
 		return
 	}

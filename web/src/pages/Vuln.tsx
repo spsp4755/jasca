@@ -43,7 +43,7 @@ export default function Vuln() {
   return (
     <>
       <PageHeader crumbs={crumbs} title={id}
-        description={v ? v.title || "제목 없음" : <span className="skeleton" style={{ width: 280 }} />}
+        description={v ? <>{v.advisory && <><Link className="tag" to={`/advisories/${encodeURIComponent(id)}`}>사내 Advisory</Link>{" "}</>}{v.title || "제목 없음"}</> : <span className="skeleton" style={{ width: 280 }} />}
         actions={<Link className="btn btn-secondary" to={`/findings?q=${encodeURIComponent(id)}&status=`}><Icon name="search" />결과에서 보기</Link>} />
       <div className="detail-grid">
         <div className="detail-main">
@@ -51,7 +51,7 @@ export default function Vuln() {
             <div className="panel-head"><h2 id="h-desc">설명</h2></div>
             <div className="panel-body">
               {!v ? <span className="skeleton skeleton-block" style={{ height: 80 }} />
-                : v.description ? <p className="prose pre">{v.description}</p> : <p className="muted">스캐너 보고서에 설명이 없습니다.</p>}
+                : v.description ? <p className="prose pre">{v.description}</p> : <p className="muted">{v.advisory ? "Advisory에 설명이 적혀 있지 않습니다." : "스캐너 보고서에 설명이 없습니다."}</p>}
             </div>
           </section>
 
@@ -89,13 +89,17 @@ export default function Vuln() {
                         <span className={`cvss-score cvss-${band(v.cvss_score).toLowerCase()}`}>{v.cvss_score.toFixed(1)}</span>
                         <span className="cvss-text"><b>CVSS</b><SeverityBadge severity={band(v.cvss_score)} /></span>
                       </>
-                    ) : <span className="muted">CVSS 점수 없음</span>}
+                    ) : <span className="muted">{v.advisory ? "사내 Advisory라 CVSS 점수가 없습니다" : "CVSS 점수 없음"}</span>}
                   </div>
                   {v.cvss_vector && <p className="mono cvss-vector break" title="CVSS 벡터">{v.cvss_vector}</p>}
-                  <p className="side-note">심각도는 결과마다 다를 수 있습니다. 배포판(Debian 등)이 매긴 값이 결과에 그대로 남습니다.</p>
+                  {!v.advisory && <p className="side-note">심각도는 결과마다 다를 수 있습니다. 배포판(Debian 등)이 매긴 값이 결과에 그대로 남습니다.</p>}
                   <dl className="kv kv-tight">
-                    <div className="kv-row"><dt>공개일</dt><dd>{fmtDate(v.published_at)}</dd></div>
-                    <div className="kv-row"><dt>최종 수정</dt><dd>{fmtDate(v.last_modified_at)}</dd></div>
+                    {v.advisory
+                      ? <div className="kv-row"><dt>출처</dt><dd><Link to={`/advisories/${encodeURIComponent(id)}`}>사내 Advisory</Link> · 보안 담당자가 등록</dd></div>
+                      : <>
+                        <div className="kv-row"><dt>공개일</dt><dd>{fmtDate(v.published_at)}</dd></div>
+                        <div className="kv-row"><dt>최종 수정</dt><dd>{fmtDate(v.last_modified_at)}</dd></div>
+                      </>}
                     {(v.cwe_ids ?? []).length > 0 && <div className="kv-row"><dt>CWE</dt><dd className="tags">{v.cwe_ids.map((c) => <span key={c} className="tag tag-quiet">{c}</span>)}</dd></div>}
                   </dl>
                 </>

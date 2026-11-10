@@ -24,6 +24,12 @@ L.run(async () => {
   await members.getByRole("row", { name: /그룹.*개발본부\/플랫폼팀/ }).waitFor();
   L.ok(true, "department 개발본부/플랫폼팀 added as a member group");
 
+  // the policy count refuses what cannot be saved, in words
+  await page.getByLabel("허용 개수").fill("1.5");
+  await page.getByRole("alert").filter({ hasText: "허용 개수는 0부터 1,000,000까지의 정수로 입력하세요." }).waitFor();
+  L.ok(await page.locator("#policy").getByRole("button", { name: "저장" }).isDisabled(), "a non-integer policy count shows a message and cannot be saved");
+  await page.getByLabel("허용 개수").fill("0");
+
   // lee belongs to that department and can now open the project, but is not an owner
   const lee = await L.sso(browser, "lee");
   const mine = await lee.api.get("/projects/e2e-proj");

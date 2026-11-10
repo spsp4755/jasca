@@ -5,8 +5,10 @@ import Button from "../../components/Button";
 import Table from "../../components/Table";
 import { useApi } from "../../api/hooks";
 import { ApiError, api, qs } from "../../api/client";
-import { fmtDateTime } from "../../lib/format";
+import { statusLabel } from "../../components/StatusBadge";
+import { KIND_LABEL, RESOLUTION_LABEL, ROLE_LABEL, SCOPE_LABEL, SYSTEM_ROLE_LABEL, fmtDateTime } from "../../lib/format";
 import type { AuditEntry, AuditPage, Project } from "../../api/types";
+import { NOTIFY_EVENTS } from "../ProjectSettings";
 import { Loading } from "./parts";
 
 const LIMIT = 50;
@@ -39,20 +41,36 @@ const DETAIL: Record<string, string> = {
   base_url: "주소", rows: "행 수", digest: "다이제스트", duplicate: "중복", bytes: "크기(바이트)", kind: "종류", ok: "성공", host: "호스트", port: "포트",
   format: "형식", ref: "태그·커밋(ref)", tls: "TLS", findings: "결과 수", policy_passed: "정책 통과", total: "대상 수", scanners: "스캐너", error: "오류",
   version: "버전", updated_at: "갱신 시각", groups: "그룹 수", users: "사용자 수", principal_kind: "구분", principal: "대상", role: "역할", channel_id: "채널 번호", events: "이벤트",
+  role_from_sso: "Keycloak 역할 따름", added: "추가", removed: "제거", changed: "역할 변경", member_count: "멤버 수",
 };
+// Stored codes by detail key, in the words the other screens use. A code missing here is shown as it is.
+const CODE: Record<string, Record<string, string>> = {
+  system_role: SYSTEM_ROLE_LABEL, before: SYSTEM_ROLE_LABEL, after: SYSTEM_ROLE_LABEL, role: ROLE_LABEL, from: ROLE_LABEL,
+  resolution: RESOLUTION_LABEL, scope: SCOPE_LABEL, scanners: KIND_LABEL, events: Object.fromEntries(NOTIFY_EVENTS),
+  scopes: { upload: "업로드", read: "읽기" }, kind: { mattermost: "Mattermost", email: "이메일" },
+  method: { local: "로컬 계정", sso: "Keycloak" }, op: { sso_role: "Keycloak 역할 반영" },
+};
+const code = (k: string, v: unknown) => (typeof v !== "string" ? String(v) : k === "was" ? statusLabel(v) : CODE[k]?.[v] ?? v);
+const MEMBER_LISTS = new Set(["added", "removed", "changed"]); // project.members: [{name, role, from?}]
+const HIDDEN = new Set(["project_key", "added_more", "removed_more", "changed_more"]); // its own column; folded into the lists
 // The server logs that a secret changed, never its value. Should a value ever arrive under such a key, it is not shown.
 const SECRET_KEY = /(secret|password|token|api_?key|credential)$/i;
 
-function value(k: string, v: unknown): string {
+function value(k: string, v: unknown, d: Record<string, unknown>): string {
   if (typeof v === "boolean") return v ? "예" : "아니오";
   if (SECRET_KEY.test(k)) return "(숨김)";
-  if (Array.isArray(v)) return v.every((x) => typeof x !== "object") ? v.join(", ") || "없음" : `${v.length}개`;
+  if (Array.isArray(v) && MEMBER_LISTS.has(k)) {
+    return (v as { name: string; role: string; from?: string }[]).map((m) => `${m.name}(${m.from ? `${code("role", m.from)} → ` : ""}${code("role", m.role)})`).join(", ")
+      + (d[`${k}_more`] ? ` 외 ${d[`${k}_more`]}` : "");
+  }
+  if (Array.isArray(v)) return v.every((x) => typeof x !== "object") ? v.map((x) => code(k, x)).join(", ") || "없음" : `${v.length}개`;
   if (v && typeof v === "object") return `(${detailText(v as Record<string, unknown>)})`;
-  return typeof v === "string" && /_at$/.test(k) ? fmtDateTime(v) : String(v);
+  return typeof v === "string" && /_at$/.test(k) ? fmtDateTime(v) : code(k, v);
 }
-/** "키: 값 · 키: 값" with Korean key names; empty values are left out. */
+/** "키: 값 · 키: 값" with Korean key names and values. Empty values are left out, unless empty is itself a value (the role "일반 사용자"). */
 function detailText(d: Record<string, unknown>): string {
-  return Object.entries(d).filter(([, v]) => v !== null && v !== "").map(([k, v]) => `${DETAIL[k] ?? k}: ${value(k, v)}`).join(" · ");
+  return Object.entries(d).filter(([k, v]) => v !== null && !HIDDEN.has(k) && (v !== "" || CODE[k]?.[""] !== undefined) && !(k === "after" && "before" in d))
+    .map(([k, v]) => (k === "before" && "after" in d ? `역할: ${code(k, v)} → ${code("after", d.after)}` : `${DETAIL[k] ?? k}: ${value(k, v, d)}`)).join(" · ");
 }
 
 export default function Audit() {
@@ -89,6 +107,7 @@ export default function Audit() {
             { key: "at", header: "시각", nowrap: true, render: (e) => fmtDateTime(e.at) },
             { key: "who", header: "행위자", nowrap: true, render: who },
             { key: "action", header: "동작", nowrap: true, render: (e) => <span title={e.action}>{ACTION[e.action] ?? e.action}</span> },
+            { key: "project", header: "프로젝트", nowrap: true, render: (e) => e.project_key || "-" },
             { key: "target", header: "대상", render: (e) => e.target || "-" },
             { key: "ip", header: "IP", mono: true, nowrap: true, render: (e) => e.ip || "-" },
             { key: "d", header: "상세", render: (e) => { const s = detailText(e.details ?? {}); return s ? <span className="clamp muted" title={s}>{s}</span> : "-"; } },

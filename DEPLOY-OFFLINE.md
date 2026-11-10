@@ -85,7 +85,7 @@ SSO는 선택입니다. 설정하지 않아도 로컬 관리자(`admin`)로 로�
    - Valid redirect URIs: `https://<접속 주소>/api/v1/auth/sso/callback`
    - 요청 scope는 `openid profile email`입니다. Credentials 탭의 Client Secret을 복사해 둡니다.
    - 신형 Keycloak의 Valid post logout redirect URIs는 쓰지 않습니다(JASCA는 Keycloak 로그아웃을 호출하지 않고 자체 세션만 끝냅니다).
-2. **역할 매핑**(시스템 관리자와 보안 담당 지정): Keycloak에 역할 두 개를 만들고 사용자에게 줍니다(예: `jasca-admin`, `jasca-security`). 역할은 realm 역할이나 이 client의 역할 어느 쪽이든 됩니다. 토큰에 실리는 기본 `roles` scope를 지우지 마세요. 역할 이름은 JASCA의 **관리 → SSO (Keycloak)** 에 "관리자 역할", "보안 담당 역할"로 입력합니다. 두 역할을 모두 가지면 관리자가 되고, 둘 다 없으면 일반 사용자입니다. **로그인할 때마다 다시 계산**되므로 Keycloak에서 역할을 빼면 다음 로그인부터 내려갑니다. 단, **관리 → 사용자·역할**에서 역할을 직접 바꾼 사용자는 그 뒤로 Keycloak 역할을 따르지 않고 JASCA에서 정한 역할을 유지합니다. 구형 Keycloak의 master realm(`/realms/master`)이면 `master-realm` client의 역할도 함께 읽습니다.
+2. **역할 매핑**(시스템 관리자와 보안 담당 지정): Keycloak에 역할 두 개를 만들고 사용자에게 줍니다(예: `jasca-admin`, `jasca-security`). 역할은 realm 역할이나 이 client의 역할 어느 쪽이든 됩니다. 토큰에 실리는 기본 `roles` scope를 지우지 마세요. 역할 이름은 JASCA의 **관리 → SSO (Keycloak)** 에 "관리자 역할", "보안 담당 역할"로 입력합니다. 두 역할을 모두 가지면 관리자가 되고, 둘 다 없으면 일반 사용자입니다. **로그인할 때마다 다시 계산**되므로 Keycloak에서 역할을 빼면 다음 로그인부터 내려갑니다. 단, **관리 → 사용자·역할**에서 역할을 직접 바꾼 사용자는 그 뒤로 Keycloak 역할을 따르지 않고 JASCA에서 정한 역할을 유지합니다. 같은 화면에서 역할을 **Keycloak 역할 따름**으로 되돌리면 다음 Keycloak 로그인부터 다시 Keycloak 역할로 정해집니다. 구형 Keycloak의 master realm(`/realms/master`)이면 `master-realm` client의 역할도 함께 읽습니다.
 3. **groups 매퍼**(그룹 단위 프로젝트 멤버 지정에 사용): client → Client scopes → 전용 scope → Add mapper → *Group Membership*.
    - Token Claim Name `groups`, **Full group path = ON**, **Add to ID token = ON**.
    - Full path가 꺼져 있으면 `/`로 시작하지 않는 값은 무시하고(서버 로그에 안내가 남습니다) 저장된 그룹 소속을 그대로 둡니다. 매퍼가 없어도 로그인은 되며, 그룹은 동기화(아래 5번)가 채웁니다.
@@ -122,7 +122,7 @@ SSO는 선택입니다. 설정하지 않아도 로컬 관리자(`admin`)로 로�
 1. 로컬 `admin`으로 로그인합니다(`https://<접속 주소>/login?local=1`).
 2. **관리 → SSO (Keycloak)**: Issuer URL, Client ID, Client Secret, 관리자 역할, 보안 담당 역할, **사이트 주소**(`https://<접속 주소>`; 비우면 브라우저가 접속한 주소)를 입력하고 "SSO 로그인 사용"을 켭니다. 사이트 주소는 로그인 콜백 주소, 알림 링크, **Harbor 웹훅 URL**의 기준이므로 꼭 넣으세요.
 3. **관리 → Keycloak 동기화**: 서비스 계정 Client ID/Secret을 입력하고 **지금 동기화**로 확인합니다(결과에 그룹 수와 사용자 수가 보입니다).
-4. 로그인 화면에서 Keycloak으로 한 번 로그인해 보고, **관리 → 사용자·역할**에서 계정, 역할, 부서, 그룹을 확인합니다. 로그인 화면에는 Keycloak 버튼만 보이고, 비상용 로컬 로그인은 `/login?local=1`로만 열립니다.
+4. 로그인 화면에서 Keycloak으로 한 번 로그인해 보고, **관리 → 사용자·역할**에서 계정, 역할, 부서를 확인합니다. 로그인 화면에는 Keycloak 버튼만 보이고, 비상용 로컬 로그인은 `/login?local=1`로만 열립니다.
 
 로컬 `admin`과 같은 아이디(`admin`)를 쓰는 Keycloak 사용자는 로그인되지 않습니다(`conflict`). Keycloak에서 다른 아이디를 쓰세요.
 
@@ -141,7 +141,7 @@ SSO로 **처음 로그인하는 순간** 부서는 다음 중 하나가 맞을 �
 1. `https://<접속 주소>/login?local=1`에서 `admin` / 설치 때 정한 `JASCA_BOOTSTRAP_PASSWORD`로 로그인합니다. 처음부터 강한 값(12~72자)을 쓰고, 로그인 뒤 오른쪽 위 사용자 메뉴의 **비밀번호 바꾸기**로 바꿀 수 있습니다. Secret의 값은 빈 DB의 최초 `admin` 생성에만 쓰이고(이후에는 바꾼 비밀번호가 유지됩니다), 시작할 때마다 12~72자로 설정되어 있어야 앱이 시작합니다.
 2. 로그인 5회 실패하면 15분간 잠기고, IP별 요청 제한도 있습니다.
 3. **관리 → Trivy DB**에서 DB를 올립니다(다음 절). Keycloak을 쓰면 위 절차로 SSO를 설정합니다.
-4. 처음 관리자는 SSO 역할 매핑으로 정하는 것을 권장합니다. 이미 로그인(또는 동기화)된 사용자는 **관리 → 사용자·역할**에서 역할을 지정할 수도 있습니다(여기서 바꾼 역할은 JASCA 안에서만 적용되고 Keycloak과 관계없이 유지됩니다).
+4. 처음 관리자는 SSO 역할 매핑으로 정하는 것을 권장합니다. 이미 로그인(또는 동기화)된 사용자는 **관리 → 사용자·역할**에서 역할을 지정할 수도 있습니다(여기서 바꾼 역할은 JASCA 안에서만 적용되고, **Keycloak 역할 따름**으로 되돌리기 전까지 Keycloak과 관계없이 유지됩니다).
 
 ## Trivy DB 오프라인 갱신
 

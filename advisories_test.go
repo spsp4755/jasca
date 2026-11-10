@@ -363,3 +363,41 @@ func TestAdvisoryInputLimits(t *testing.T) {
 	mw.Close()
 	wantCode(t, httpReq(t, e.s, "POST", "/api/v1/advisories/import", bytes.NewReader(b.Bytes()), mw.FormDataContentType(), e.secA), 413, "11MB multipart")
 }
+
+// Switched off, an advisory creates nothing: its preview lists the findings that saving will resolve.
+func TestAdvisoryPreviewWhenOff(t *testing.T) {
+	e := newExEnv(t)
+	_, mck, _ := e.project(t, "web")
+	mustUpload(t, e.s, "web", "target=app&kind=fs", pkgDoc("app", "npm", [2]string{"left-pad", "1.3.0"}), mck)
+	body := advBody("INT-2026-001", "npm", "left-pad", "<1.3.1")
+	rows := func(active bool) []map[string]string {
+		body["active"] = active
+		rec := do(t, e.s, "POST", "/api/v1/advisories/preview", body, e.secA)
+		wantCode(t, rec, 200, "preview")
+		return decode[[]map[string]string](t, rec)
+	}
+	if r := rows(false); len(r) != 0 {
+		t.Errorf("off and never saved: nothing to resolve, got %v", r)
+	}
+	if r := rows(true); len(r) != 1 {
+		t.Errorf("on: %v", r)
+	}
+	body["active"] = true
+	wantCode(t, do(t, e.s, "POST", "/api/v1/advisories", body, e.secA), 201, "create")
+	if r := rows(false); len(r) != 1 || r[0]["project_key"] != "web" || r[0]["target"] != "app" || r[0]["pkg"] != "left-pad" || r[0]["version"] != "1.3.0" {
+		t.Errorf("off after saving: the open finding it will resolve, got %v", r)
+	}
+	body["active"] = false
+	wantCode(t, do(t, e.s, "PUT", "/api/v1/advisories/INT-2026-001", body, e.secA), 200, "switch off")
+	if o, fx := advFindings(t, e.s, "INT-2026-001"); o != 0 || fx != 1 {
+		t.Errorf("after switching off: open=%d fixed=%d", o, fx)
+	}
+	if r := rows(false); len(r) != 0 {
+		t.Errorf("already resolved: %v", r)
+	}
+	// the vulnerability page can tell an internal advisory from a CVE
+	v := decode[map[string]any](t, do(t, e.s, "GET", "/api/v1/vulns/INT-2026-001", nil, mck))
+	if v["advisory"] != true {
+		t.Errorf("vuln of an advisory: %v", v)
+	}
+}

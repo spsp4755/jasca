@@ -38,15 +38,6 @@ type dashFinding struct {
 	FirstSeenAt  time.Time `json:"first_seen_at"`
 }
 
-type dashException struct {
-	ID         int64     `json:"id"`
-	ProjectKey *string   `json:"project_key"`
-	Scope      string    `json:"scope"`
-	VulnID     *string   `json:"vuln_id"`
-	Resolution string    `json:"resolution"`
-	ExpiresAt  time.Time `json:"expires_at"`
-}
-
 type dashScan struct {
 	ID         int64           `json:"id"`
 	ProjectKey string          `json:"project_key"`
@@ -80,12 +71,12 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request, c *reqC
 	// (NULL project) is visible to admin and security only, which visibleProjectsSQL's "true" gives.
 	vis := func(alias string, n int) (string, []any) { return s.visibleProjectsSQL(c.User, alias, n) }
 	d := struct {
-		Totals      sevCounts       `json:"totals"`
-		Trend       []trendPoint    `json:"trend"`
-		Oldest      []dashFinding   `json:"oldest_critical"`
-		Expiring    []dashException `json:"expiring_exceptions"`
-		RecentScans []dashScan      `json:"recent_scans"`
-		NewlyKnown  []dashFinding   `json:"newly_known"`
+		Totals      sevCounts     `json:"totals"`
+		Trend       []trendPoint  `json:"trend"`
+		Oldest      []dashFinding `json:"oldest_critical"`
+		Expiring    []exception   `json:"expiring_exceptions"`
+		RecentScans []dashScan    `json:"recent_scans"`
+		NewlyKnown  []dashFinding `json:"newly_known"`
 	}{}
 	cond, args := vis("f", 1)
 	k := &d.Totals
@@ -127,8 +118,7 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request, c *reqC
 		return
 	}
 	cond, args = vis("e", 1)
-	if d.Expiring, err = collect[dashException](ctx, s, `select e.id, p.key, e.scope, e.vuln_id, e.resolution, e.expires_at
-		from exceptions e left join projects p on p.id = e.project_id where e.status = 'approved'
+	if d.Expiring, err = collect[exception](ctx, s, exceptionCols+`where e.status = 'approved'
 		and e.expires_at > now() and e.expires_at <= now() + interval '14 days' and `+cond+` order by e.expires_at, e.id limit 50`, args...); err != nil {
 		fail(err)
 		return
