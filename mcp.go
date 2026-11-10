@@ -422,14 +422,6 @@ func sec(t *time.Time) *time.Time {
 	return new(t.Truncate(time.Second))
 }
 
-// clip cuts s to at most n characters.
-func clip(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
-	return string([]rune(s)[:n]) + "…"
-}
-
 // targetID resolves a target argument: the target's name, or kind:name when two kinds share the name.
 func (m *mcpCall) targetID(name string) (int64, error) {
 	var list []targetView
