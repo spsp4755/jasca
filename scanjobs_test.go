@@ -867,6 +867,15 @@ func TestScanNothingExamined(t *testing.T) {
 	if sc.Policy == nil || sc.Policy.Passed || len(sc.Policy.Reasons) != 1 {
 		t.Fatalf("nothing examined must not pass the policy: %+v", sc.Policy)
 	}
+	// a wrong file sent to a target that has open findings must not close them: that scan saw nothing
+	useFakeTrivy(t, s, []byte(npmDoc))
+	if _, sc := runScan(t, s, ck, "app", "fs", mkZip(t, arEnt{name: "package-lock.json", body: "{}"})); sc.Summary.Open == 0 {
+		t.Fatalf("seed scan found nothing: %+v", sc)
+	}
+	useFakeTrivy(t, s, []byte(emptyDoc))
+	if _, sc := runScan(t, s, ck, "app", "fs", mkZip(t, arEnt{name: "notes.txt", body: "hello"})); sc.Summary.Open == 0 {
+		t.Fatalf("a scan that examined nothing resolved the target's findings: %+v", sc)
+	}
 	// only Java archives and no Java DB: both warnings
 	if _, sc := runScan(t, s, ck, "war", "fs", mkZip(t, arEnt{name: "build/app.war", body: "PK"})); len(sc.Summary.Warnings) != 2 || sc.Policy.Passed {
 		t.Fatalf("war only, no Java DB: %+v", sc)

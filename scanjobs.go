@@ -418,13 +418,15 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 			return fmt.Errorf("%w: rewrite report: %v", errTrivyRun, err)
 		}
 	}
-	// no package, no finding, no result of any kind: nothing was examined, which is not the same as clean
+	// no package, no finding, no result of any kind: nothing was examined, which is not the same as clean.
+	// Such a scan is not marked complete either, so a wrong file sent to a target does not resolve its open findings.
 	notJudged := ""
 	if len(rep.Packages) == 0 && len(rep.Findings) == 0 && len(rep.Complete) == 0 {
 		warnings, notJudged = append(warnings, warnNothing), notJudgedNothing
-	}
-	for _, sc := range opts.Scanners { // trivy JSON does not say which scanners ran
-		rep.Complete[sc+":trivy"] = true
+	} else {
+		for _, sc := range opts.Scanners { // trivy JSON does not say which scanners ran
+			rep.Complete[sc+":trivy"] = true
+		}
 	}
 	ref := ""
 	if p.Kind == "image" {
