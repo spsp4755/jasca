@@ -3,6 +3,7 @@ package trivy
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
@@ -18,9 +19,26 @@ type Options struct {
 	Scanners      []string
 	Timeout       time.Duration
 	NoJavaDB      bool // no java-db installed: skip Java archives, or Trivy 0.76.1 fails the scan at the first JAR
+	// Chosen by the admin; a zero value adds no flag. The caller validates the values.
+	IgnoreUnfixed, IncludeDevDeps bool
+	Severities, PkgTypes          []string
+	DetectionPriority             string
+	SkipDirs, SkipFiles           []string // glob patterns, fs and image only
 }
 
-// Args builds the argv (without the binary). Every flag and value is its own element; no shell is involved.
+// listArg is --flag=value for one of Trivy's list flags, which parse their value as a CSV line: a value with a comma
+// or a quote goes in quoted. Glued to the flag, a value that starts with "-" can never be read as a flag.
+func listArg(flag, v string) string {
+	var b strings.Builder
+	w := csv.NewWriter(&b)
+	w.Write([]string{v})
+	w.Flush()
+	return flag + "=" + strings.TrimSuffix(b.String(), "\n")
+}
+
+// Args builds the argv (without the binary). Every flag and value is its own element or one --flag=value element; no
+// shell is involved. Only flags the subcommand has in Trivy 0.76.1 are passed (sbom has no files to skip and no
+// misconfig checks; only fs has --include-dev-deps).
 func Args(kind, input string, o Options) []string {
 	scanners := strings.Join(o.Scanners, ",")
 	if kind == "sbom" || scanners == "" {
@@ -31,13 +49,37 @@ func Args(kind, input string, o Options) []string {
 	a := []string{kind, "--format", "json", "--list-all-pkgs", "--skip-db-update", "--skip-java-db-update",
 		"--offline-scan", "--cache-dir", o.CacheDir, "--cache-backend", "memory", "--skip-version-check", "--disable-telemetry",
 		"--scanners", scanners, "--quiet"}
-	if kind != "sbom" { // sbom has no misconfig checks and rejects the flag
+	if o.IgnoreUnfixed {
+		a = append(a, "--ignore-unfixed")
+	}
+	if len(o.Severities) > 0 {
+		a = append(a, "--severity="+strings.Join(o.Severities, ","))
+	}
+	if len(o.PkgTypes) > 0 {
+		a = append(a, "--pkg-types="+strings.Join(o.PkgTypes, ","))
+	}
+	if o.DetectionPriority != "" {
+		a = append(a, "--detection-priority="+o.DetectionPriority)
+	}
+	if o.Timeout > 0 { // Trivy's own limit is 5m by default; a minute more than ours, so ours fires first and is the one reported
+		a = append(a, "--timeout="+(o.Timeout+time.Minute).String())
+	}
+	if kind != "sbom" {
 		a = append(a, "--skip-check-update")
+		for _, d := range o.SkipDirs {
+			a = append(a, listArg("--skip-dirs", d))
+		}
 		if o.NoJavaDB {
 			for _, g := range []string{"**/*.jar", "**/*.war", "**/*.ear", "**/*.par"} {
-				a = append(a, "--skip-files", g)
+				a = append(a, "--skip-files="+g)
 			}
 		}
+		for _, f := range o.SkipFiles {
+			a = append(a, listArg("--skip-files", f))
+		}
+	}
+	if kind == "fs" && o.IncludeDevDeps {
+		a = append(a, "--include-dev-deps")
 	}
 	if kind == "image" {
 		return append(a, "--input", input)

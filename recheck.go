@@ -344,9 +344,13 @@ func (s *server) sbomFindings(ctx context.Context, tmpName string, summary map[s
 	if err != nil {
 		return nil, err
 	}
+	conf, err := s.trivyConf(ctx) // the same filters as a scan, or this would add back what the scan left out
+	if err != nil {
+		return nil, err
+	}
 	var out bytes.Buffer
 	s.trivy.mu.Lock() // never while a DB bundle is being installed
-	err = trivy.Run(ctx, trivy.Options{Bin: s.cfg.TrivyBin, CacheDir: s.trivyCacheDir(), Timeout: s.cfg.ScanTimeout}, "sbom", f.Name(), &out)
+	err = trivy.Run(ctx, s.trivyOptions(conf), "sbom", f.Name(), &out)
 	s.trivy.mu.Unlock()
 	if err != nil {
 		return nil, err

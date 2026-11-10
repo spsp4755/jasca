@@ -64,7 +64,7 @@ Trivy 실행 파일은 `Dockerfile`에서 공식 이미지(`aquasec/trivy:<버�
 1. 새 버전의 다이제스트를 확인합니다: `docker buildx imagetools inspect aquasec/trivy:<새버전>` 의 `Digest`(또는 `docker pull` 후 `docker image inspect --format '{{index .RepoDigests 0}}'`).
 2. `Dockerfile`의 `COPY --from=aquasec/trivy:...@sha256:...` 줄과 `Trivy-NOTICE.txt`를 만드는 `printf` 줄의 버전 문자열을 바꿉니다.
 3. 문서의 버전 표기를 바꿉니다: `DEPLOY-OFFLINE.md`(릴리스 파일 표, 서드파티 라이선스), `internal/trivy/trivy_test.go`의 주석에 적힌 버전, 필요하면 CHANGELOG.
-4. 실제 Trivy로 통합 테스트를 돌립니다(아래 "테스트" 의 `JASCA_TEST_TRIVY=1`). Trivy가 CLI 플래그를 바꾸면 `internal/trivy/run.go`의 `Args`와 그 테스트가 먼저 실패합니다(예: `sbom`은 `--skip-check-update`를 받지 않음).
+4. 실제 Trivy로 통합 테스트를 돌립니다(아래 "테스트" 의 `JASCA_TEST_TRIVY=1`). Trivy가 CLI 플래그를 바꾸면 `internal/trivy/run.go`의 `Args`와 그 테스트가 먼저 실패합니다(예: `sbom`은 `--skip-check-update`를 받지 않음). 관리자가 고르는 스캔 옵션의 플래그는 `TestRunRealTrivyAllOptions`가 fs, image, sbom에 모두 넣어 실제 Trivy로 확인합니다.
 5. Trivy DB 스키마는 Trivy 버전과 묶여 있습니다. 새 버전이 요구하는 DB(`trivy-db:2` 등)를 올려도 `metadata.json` 검사에서 통과하는지 확인하고, 필요하면 DEPLOY-OFFLINE.md의 `oras pull` 태그를 고칩니다.
 6. 이미지를 빌드해 서버 스캔 한 건과 재평가 한 번을 직접 확인한 뒤 릴리스합니다.
 

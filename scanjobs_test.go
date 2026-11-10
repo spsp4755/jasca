@@ -12,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -200,7 +202,7 @@ func TestScanJobWithFakeTrivy(t *testing.T) {
 		t.Fatalf("trivy calls: %v", calls)
 	}
 	// no Java DB installed: Java archives are skipped, or real Trivy fails the whole scan at the first JAR
-	if args, _ := os.ReadFile(argsPath); !strings.Contains(string(args), "--skip-files\n**/*.jar") {
+	if args, _ := os.ReadFile(argsPath); !strings.Contains(string(args), "--skip-files=**/*.jar") {
 		t.Fatalf("no java db, args:\n%s", args)
 	}
 	fakeTrivyDB(t, s)
@@ -328,12 +330,17 @@ func TestScanCancel(t *testing.T) {
 
 // mkBundle builds a trivy-db bundle; truncate cuts it in half.
 func mkBundle(t *testing.T, version int, truncate bool) []byte {
+	return mkBundleOf(t, "trivy.db", version, truncate)
+}
+
+// mkBundleOf builds a bundle around dbFile: "trivy.db" (db.tar.gz) or "trivy-java.db" (javadb.tar.gz).
+func mkBundleOf(t *testing.T, dbFile string, version int, truncate bool) []byte {
 	t.Helper()
 	var b bytes.Buffer
 	zw := gzip.NewWriter(&b)
 	tw := tar.NewWriter(zw)
 	meta := []byte(`{"Version":` + itoa(int64(version)) + `,"NextUpdate":"2026-11-10T00:00:00Z","UpdatedAt":"2026-11-09T00:00:00Z"}`)
-	for name, body := range map[string][]byte{"trivy.db": bytes.Repeat([]byte{7}, 2<<20), "metadata.json": meta} {
+	for name, body := range map[string][]byte{dbFile: bytes.Repeat([]byte{7}, 2<<20), "metadata.json": meta} {
 		tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg})
 		tw.Write(body)
 	}
@@ -425,6 +432,209 @@ func TestTrivyDBUploadKeepsOldOnFailure(t *testing.T) {
 }
 
 // Uploads of deleted projects and files a crash left behind are removed; queued scans keep their upload.
+// A Java DB goes in on its own, before or after the main DB, and the answer says which one was installed. It starts
+// no recheck: the recheck evaluates stored package lists, which a Java DB does not change.
+func TestJavaDBUpload(t *testing.T) {
+	s := testServer(t)
+	useFakeTrivy(t, s, []byte(`{}`))
+	adm := loginAs(t, s, mkUser(t, s, "adm", "admin"))
+	type status struct {
+		Kind      string  `json:"kind"`
+		DBVersion int     `json:"db_version"`
+		UpdatedAt *string `json:"updated_at"`
+		JavaDB    *struct {
+			UpdatedAt string `json:"updated_at"`
+		} `json:"java_db"`
+		RecheckRunID int64 `json:"recheck_run_id"`
+	}
+	postDB := func(b []byte) status {
+		body, h := multipartReq(t, nil, b)
+		rec := do(t, s, "POST", "/api/v1/admin/trivy/db", body, adm, h)
+		wantCode(t, rec, 200, "bundle")
+		return decode[status](t, rec)
+	}
+	st := postDB(mkBundleOf(t, "trivy-java.db", 1, false))
+	if st.Kind != "java-db" || st.JavaDB == nil || st.JavaDB.UpdatedAt != "2026-11-09T00:00:00Z" || st.DBVersion != 0 || st.UpdatedAt != nil || st.RecheckRunID != 0 {
+		t.Fatalf("java db before the main db: %+v", st)
+	}
+	if st := decode[status](t, do(t, s, "GET", "/api/v1/admin/trivy", nil, adm)); st.JavaDB == nil || st.DBVersion != 0 {
+		t.Fatalf("status with only a java db: %+v", st)
+	}
+	if st = postDB(mkBundle(t, 2, false)); st.Kind != "db" || st.DBVersion != 2 || st.JavaDB == nil || st.RecheckRunID == 0 {
+		t.Fatalf("main db after the java db: %+v", st)
+	}
+	if st = postDB(mkBundleOf(t, "trivy-java.db", 1, false)); st.Kind != "java-db" || st.DBVersion != 2 || st.RecheckRunID != 0 {
+		t.Fatalf("java db replaced: %+v", st)
+	}
+	if n := qInt(t, s, `select count(*) from recheck_runs`); n != 1 {
+		t.Fatalf("recheck runs: %d, want 1 (only the main DB starts one)", n)
+	}
+	if auditCount(t, s, "trivy.db_upload") != 3 || qInt(t, s, `select count(*) from audit_log where action='trivy.db_upload' and target='java-db'`) != 2 {
+		t.Fatal("uploads not audited with their kind")
+	}
+}
+
+func fullTrivyOptions() map[string]any {
+	return map[string]any{"scanners": []string{"vuln", "misconfig"}, "ignore_unfixed": true, "severities": []string{"CRITICAL", "HIGH"},
+		"pkg_types": []string{"library"}, "include_dev_deps": true, "detection_priority": "comprehensive",
+		"skip_dirs": []string{"-rf", "node_modules"}, "skip_files": []string{"**/*.min.js"}, "timeout_min": 30}
+}
+
+func TestTrivySettings(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	useFakeTrivy(t, s, []byte(`{}`))
+	adm := loginAs(t, s, mkUser(t, s, "adm", "admin"))
+	get := func() trivySettings {
+		return decode[trivySettings](t, do(t, s, "GET", "/api/v1/admin/trivy", nil, adm))
+	}
+	// a value stored before the options existed has only scanners: everything else is the default
+	if err := s.putSetting(ctx, "trivy", map[string]any{"scanners": []string{"vuln"}}); err != nil {
+		t.Fatal(err)
+	}
+	def := trivySettings{Scanners: []string{"vuln"}, Severities: []string{"CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"},
+		PkgTypes: []string{"os", "library"}, DetectionPriority: "precise", SkipDirs: []string{}, SkipFiles: []string{}}
+	rec := do(t, s, "GET", "/api/v1/admin/trivy", nil, adm)
+	if got := decode[trivySettings](t, rec); !reflect.DeepEqual(got, def) {
+		t.Fatalf("old stored value: %+v", got)
+	}
+	if b := rec.Body.String(); !strings.Contains(b, `"skip_dirs":[]`) || !strings.Contains(b, `"default_timeout_min":15`) {
+		t.Fatalf("status body: %s", b)
+	}
+	// severities and pkg_types come back in Trivy's order whatever order they were sent in
+	in := fullTrivyOptions()
+	in["severities"] = []string{"HIGH", "CRITICAL"}
+	wantCode(t, do(t, s, "PUT", "/api/v1/admin/trivy", in, adm), 200, "put all options")
+	full := trivySettings{Scanners: []string{"vuln", "misconfig"}, IgnoreUnfixed: true, Severities: []string{"CRITICAL", "HIGH"},
+		PkgTypes: []string{"library"}, IncludeDevDeps: true, DetectionPriority: "comprehensive",
+		SkipDirs: []string{"-rf", "node_modules"}, SkipFiles: []string{"**/*.min.js"}, TimeoutMin: 30}
+	if got := get(); !reflect.DeepEqual(got, full) {
+		t.Fatalf("after put: %+v", got)
+	}
+	// a field the request leaves out keeps its stored value, as the other settings do
+	wantCode(t, do(t, s, "PUT", "/api/v1/admin/trivy", map[string]any{"ignore_unfixed": false, "timeout_min": 0}, adm), 200, "partial put")
+	full.IgnoreUnfixed, full.TimeoutMin = false, 0
+	if got := get(); !reflect.DeepEqual(got, full) {
+		t.Fatalf("after partial put: %+v", got)
+	}
+	long := strings.Repeat("가", 200)
+	fifty := slices.Repeat([]string{"x"}, 50)
+	for i := range fifty {
+		fifty[i] = "dir" + itoa(int64(i))
+	}
+	wantCode(t, do(t, s, "PUT", "/api/v1/admin/trivy", map[string]any{"skip_dirs": fifty, "skip_files": []string{long}, "timeout_min": 240,
+		"severities": []string{}, "pkg_types": []string{}}, adm), 200, "limits")
+	if got := get(); len(got.SkipDirs) != 50 || got.SkipFiles[0] != long || got.TimeoutMin != 240 || len(got.Severities) != 5 || len(got.PkgTypes) != 2 {
+		t.Fatalf("limits: %+v", got)
+	}
+	before := get()
+	for name, bad := range map[string]map[string]any{
+		"unknown severity":     {"severities": []string{"HIGH", "BOGUS"}},
+		"lower-case severity":  {"severities": []string{"high"}},
+		"severity twice":       {"severities": []string{"HIGH", "HIGH"}},
+		"unknown pkg type":     {"pkg_types": []string{"os", "jar"}},
+		"pkg type twice":       {"pkg_types": []string{"os", "os"}},
+		"unknown priority":     {"detection_priority": "fast"},
+		"51 dirs":              {"skip_dirs": append(slices.Clone(fifty), "one-more")},
+		"51 files":             {"skip_files": append(slices.Clone(fifty), "one-more")},
+		"empty pattern":        {"skip_files": []string{""}},
+		"201 chars":            {"skip_dirs": []string{long + "가"}},
+		"newline in a pattern": {"skip_dirs": []string{"a\nb"}},
+		"NUL in a pattern":     {"skip_files": []string{"a\x00b"}},
+		"tab in a pattern":     {"skip_files": []string{"a\tb"}},
+		"DEL in a pattern":     {"skip_files": []string{"a\x7fb"}},
+		"negative timeout":     {"timeout_min": -1},
+		"timeout over 240":     {"timeout_min": 241},
+		"no scanner":           {"scanners": []string{}},
+		"unknown scanner":      {"scanners": []string{"vuln", "license"}},
+		"unknown field":        {"skip_dir": []string{"x"}},
+	} {
+		if rec := do(t, s, "PUT", "/api/v1/admin/trivy", bad, adm); rec.Code != 400 {
+			t.Errorf("%s: %d %s", name, rec.Code, rec.Body.String())
+		}
+	}
+	if got := get(); !reflect.DeepEqual(got, before) {
+		t.Fatalf("a refused PUT changed the setting: %+v", got)
+	}
+	wantCode(t, do(t, s, "PUT", "/api/v1/admin/trivy", fullTrivyOptions(), loginAs(t, s, mkUser(t, s, "sec", "security"))), 403, "security")
+	var details string
+	if err := s.db.QueryRow(ctx, `select details::text from audit_log where action='trivy.settings' order by id limit 1`).Scan(&details); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"scanners", "ignore_unfixed", "severities", "pkg_types", "include_dev_deps", "detection_priority", "skip_dirs", "skip_files", "timeout_min"} {
+		if !strings.Contains(details, `"`+k+`"`) {
+			t.Errorf("audit details lack %s: %s", k, details)
+		}
+	}
+	if auditCount(t, s, "trivy.settings") != 3 {
+		t.Fatalf("settings audits: %d", auditCount(t, s, "trivy.settings"))
+	}
+}
+
+// The admin's options reach every server-side Trivy run: file scans, a CycloneDX upload and the recheck. A filter
+// that the recheck did not get would let it add back what the scan left out.
+func TestTrivyOptionsReachEveryRun(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	_, ck := memberSession(t, s)
+	fakeTrivyDB(t, s)
+	useFakeTrivy(t, s, sbomStyle(t, readFixture(t, "trivy/fs-mixed.json")))
+	argsPath := filepath.Join(t.TempDir(), "args")
+	t.Setenv("FAKETRIVY_ARGS", argsPath)
+	wantCode(t, do(t, s, "PUT", "/api/v1/admin/trivy", fullTrivyOptions(), loginAs(t, s, mkUser(t, s, "adm", "admin"))), 200, "put options")
+	everywhere := []string{"--ignore-unfixed", "--severity=CRITICAL,HIGH", "--pkg-types=library", "--detection-priority=comprehensive", "--timeout=31m0s"}
+	files := []string{"--skip-dirs=-rf", "--skip-dirs=node_modules", "--skip-files=**/*.min.js", "--skip-files=**/*.jar"}
+	check := func(what, kind string, want, not []string) {
+		t.Helper()
+		b, _ := os.ReadFile(argsPath)
+		a := strings.Split(string(b), "\n")
+		if a[0] != kind {
+			t.Fatalf("%s: ran %q, want %s", what, a[0], kind)
+		}
+		for _, w := range want {
+			if !slices.Contains(a, w) {
+				t.Errorf("%s: no %s in %v", what, w, a)
+			}
+		}
+		for _, e := range a {
+			for _, n := range not {
+				if e == n || strings.HasPrefix(e, n+"=") { // n is a flag name, or one exact --flag=value
+					t.Errorf("%s: has %s", what, e)
+				}
+			}
+		}
+		os.Remove(argsPath)
+	}
+	run := func() {
+		t.Helper()
+		if ran, err := s.runNextJob(ctx); !ran || err != nil {
+			t.Fatalf("run: %v %v", ran, err)
+		}
+	}
+	mustScanJob(t, s, ck, "web-src", "fs", mkZip(t, arEnt{name: "package-lock.json", body: "{}"}))
+	run()
+	check("fs scan", "fs", append(slices.Concat(everywhere, files), "--include-dev-deps", "--scanners"), nil)
+	mustScanJob(t, s, ck, "app", "image", mkTarGz(t, false, arEnt{name: "manifest.json", body: "[]"}))
+	run()
+	check("image scan", "image", slices.Concat(everywhere, files), []string{"--include-dev-deps"})
+	sbomOnly := []string{"--skip-dirs", "--skip-files", "--include-dev-deps", "--skip-check-update"} // trivy sbom rejects these
+	mustUpload(t, s, "web", "", readFixture(t, "cyclonedx/image.json"), ck)
+	check("CycloneDX upload", "sbom", everywhere, sbomOnly)
+	if _, err := s.startRecheck(ctx, "manual"); err != nil {
+		t.Fatal(err)
+	}
+	run()
+	check("recheck", "sbom", everywhere, sbomOnly)
+
+	// only scanners stored (before the options existed): no option flag, the time limit from the config (15 minutes)
+	if err := s.putSetting(ctx, "trivy", map[string]any{"scanners": []string{"vuln", "secret"}}); err != nil {
+		t.Fatal(err)
+	}
+	mustScanJob(t, s, ck, "web-src", "fs", mkZip(t, arEnt{name: "package-lock.json", body: "{ }"}))
+	run()
+	check("defaults", "fs", []string{"--timeout=16m0s", "--skip-files=**/*.jar"}, []string{"--ignore-unfixed", "--severity", "--pkg-types", "--detection-priority", "--skip-dirs", "--skip-files=**/*.min.js", "--include-dev-deps"})
+}
+
 func TestWorkDirCleanup(t *testing.T) {
 	s := testServer(t)
 	_, ck := memberSession(t, s)

@@ -161,11 +161,24 @@ export interface SyncSettings {
   last_run: string | null; last_error: string;
 }
 export type TrivyScanner = "vuln" | "secret" | "misconfig";
-export interface TrivyStatus {
-  /** schema version of the installed DB; 0 = none installed. java_db is {updated_at} or null. */
-  db_version: number; updated_at: string | null; next_update: string | null; java_db: { updated_at: string } | null;
-  scanners: TrivyScanner[]; trivy_version: string;
+export type TrivyPkgType = "os" | "library";
+/** What the admin chose for every server-side Trivy run (PUT /admin/trivy; a field left out keeps its stored value). */
+export interface TrivyOptions {
+  scanners: TrivyScanner[]; ignore_unfixed: boolean;
+  /** all five = no filter */
+  severities: Severity[]; pkg_types: TrivyPkgType[]; include_dev_deps: boolean; detection_priority: "precise" | "comprehensive";
+  /** glob patterns, at most 50 of 1-200 characters each */
+  skip_dirs: string[]; skip_files: string[];
+  /** minutes, 1-240; 0 = default_timeout_min */
+  timeout_min: number;
 }
+export interface TrivyStatus extends TrivyOptions {
+  /** schema version of the installed DB; 0 = none installed. java_db is {updated_at} or null, also without a DB. */
+  db_version: number; updated_at: string | null; next_update: string | null; java_db: { updated_at: string } | null;
+  trivy_version: string; default_timeout_min: number;
+}
+/** POST /admin/trivy/db: kind is what the file turned out to be; recheck_run_id is 0 when no recheck started (Java DB). */
+export interface TrivyUpload extends TrivyStatus { kind: "db" | "java-db"; recheck_run_id: number }
 export interface RecheckRun {
   id: number; reason: "trivydb" | "manual"; state: "running" | "done" | "failed" | "canceled"; total: number; done: number;
   new_findings: number; started_at: string; finished_at: string | null; error: string;

@@ -34,7 +34,7 @@ sh e2e/run.sh login admin      # 일부만 (빈 DB에서는 login이 먼저 SSO 
 | exceptions.cjs | lee가 결과 창에서 예외 요청, lee는 승인 못 함(버튼 없음, API 403), kim이 승인 화면에서 승인, 결과가 열림이 아님, kim도 자기 요청은 승인 못 함 |
 | advisory.cjs | 화면에서 사내 Advisory를 만들면(영향 미리보기 포함) 이미 올라간 패키지에 재스캔 없이 결과가 생김 |
 | scan.cjs | 작은 tar.gz를 올려 서버의 실제 Trivy로 검사, 완료와 결과 확인 |
-| trivydb.cjs | 잘못된 DB 번들은 한국어 메시지로 거부되고 기존 DB 유지, 올바른 번들은 적용되고 재검사 실행이 끝남 |
+| trivydb.cjs | 잘못된 DB 번들은 한국어 메시지로 거부되고 기존 DB 유지, 취약점 DB 칸에서 고른 Java DB도 Java DB로 적용되고 그렇게 안내됨(재평가 없음), 올바른 번들은 적용되고 재평가 실행이 끝남, 스캔 옵션 저장과 서버 검증 메시지 |
 | admin.cjs | SSO·동기화·Harbor 로봇·SMTP·AI 비밀값을 넣고 모든 관리 API와 화면을 훑으며 모든 JSON 응답과 서버 로그에 그 값이 없는지 검사 |
 | a11y.cjs | 로그인·홈·프로젝트(탭 전부)·취약점·스캔·예외·Advisory·보고서·관리 화면 전체를 라이트·다크로 axe(wcag2a, wcag2aa): serious/critical 위반 0건 |
 | console.cjs | 세 사용자의 화면 순회 뒤, 모든 스위트가 기록한 페이지·콘솔 오류가 없음. 예외는 `lib.cjs`의 `CONSOLE_ALLOW`에 이유와 함께 적힌 것뿐 |

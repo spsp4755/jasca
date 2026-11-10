@@ -239,7 +239,11 @@ func (s *server) runServerScan(ctx context.Context, j *job) error {
 	if err != nil {
 		return err
 	}
-	err = s.serverScan(ctx, j, projectID, p)
+	conf, err := s.trivyConf(ctx) // a scan never runs without the admin's filters because they could not be read
+	opts := s.trivyOptions(conf)
+	if err == nil {
+		err = s.serverScan(ctx, j, projectID, p, opts)
+	}
 	if err == nil || errors.Is(err, errScanCanceled) || errors.Is(context.Cause(ctx), errJobCanceled) {
 		if err != nil {
 			return errJobCanceled
@@ -250,7 +254,7 @@ func (s *server) runServerScan(ctx context.Context, j *job) error {
 	if ae, ok := errors.AsType[*archiveError](err); ok {
 		msg = ae.msg
 	} else if errors.Is(err, context.DeadlineExceeded) {
-		msg = fmt.Sprintf("제한 시간(%d분)을 넘겨 스캔을 중단했습니다.", int(s.cfg.ScanTimeout.Minutes()))
+		msg = fmt.Sprintf("제한 시간(%d분)을 넘겨 스캔을 중단했습니다.", int(opts.Timeout.Minutes()))
 	} else if errors.Is(err, errTrivyRun) {
 		msg = "Trivy 실행에 실패했습니다. 이미지 tar(docker save) 또는 압축 파일이 맞는지 확인하세요."
 	} else if ctx.Err() != nil {
@@ -267,10 +271,10 @@ func (s *server) runServerScan(ctx context.Context, j *job) error {
 
 var errTrivyRun = errors.New("trivy failed")
 
-func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scanJobPayload) error {
-	if s.cfg.ScanTimeout > 0 {
+func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scanJobPayload, opts trivy.Options) error {
+	if opts.Timeout > 0 { // the whole scan: unpacking, Trivy, storing the result
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, s.cfg.ScanTimeout)
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
 		defer cancel()
 	}
 	work := s.workDir(*j.ScanID)
@@ -286,7 +290,6 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 		os.Remove(input) // frees the disk before trivy runs
 		input = src
 	}
-	scanners := s.trivyScanners(ctx)
 	out, err := os.Create(filepath.Join(work, "report.json"))
 	if err != nil {
 		return err
@@ -295,7 +298,8 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 	// shortcut: no s.trivy.mu here (a scan may take SCAN_TIMEOUT_MIN and would block DB uploads); a scan that opens
 	// the DB in the instant between InstallBundle's two renames fails with a Trivy error and is simply retried.
 	db, _ := trivy.Status(s.trivyCacheDir()) // without a java-db, JAR/WAR/EAR files are skipped (shown on the admin Trivy page)
-	err = trivy.Run(ctx, trivy.Options{Bin: s.cfg.TrivyBin, CacheDir: s.trivyCacheDir(), Scanners: scanners, NoJavaDB: !db.JavaDB}, p.Kind, input, out)
+	opts.NoJavaDB = !db.JavaDB
+	err = trivy.Run(ctx, opts, p.Kind, input, out)
 	if err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("%w (%v)", context.Cause(ctx), err)
@@ -319,7 +323,7 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 	if err != nil {
 		return fmt.Errorf("%w: parse report: %v", errTrivyRun, err)
 	}
-	for _, sc := range scanners { // trivy JSON does not say which scanners ran
+	for _, sc := range opts.Scanners { // trivy JSON does not say which scanners ran
 		rep.Complete[sc+":trivy"] = true
 	}
 	ref := ""
@@ -329,15 +333,4 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 	_, err = s.ingest(ctx, ingestInput{ProjectID: projectID, TargetKind: p.Kind, TargetName: p.Target, Ref: ref,
 		Source: "server", Report: rep, Raw: raw, UserID: j.CreatedBy, ScanID: j.ScanID})
 	return err
-}
-
-var trivyScannerNames = []string{"vuln", "secret", "misconfig"}
-
-// trivyScanners is the admin's scanner list (setting "trivy"), default vuln + secret.
-func (s *server) trivyScanners(ctx context.Context) []string {
-	var st trivySettings
-	if ok, err := s.getSetting(ctx, "trivy", &st); err != nil || !ok || len(st.Scanners) == 0 {
-		return []string{"vuln", "secret"}
-	}
-	return slices.DeleteFunc(st.Scanners, func(x string) bool { return !slices.Contains(trivyScannerNames, x) })
 }
