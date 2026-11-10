@@ -76,6 +76,7 @@ legend { padding: 0; }
 }
 .ci-copy { position: absolute; top: 10px; right: 10px; }
 .ci-notes { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); padding-left: 16px; list-style: disc; }
+.mcp-lead { margin: 0; font-size: 13.5px; color: var(--text-2); line-height: 1.6; }
 .ci-notes code, .ai-note code { font-family: var(--mono); font-size: 0.95em; color: var(--text-2); }
 
 /* ---- principal picker ---- */
@@ -230,6 +231,7 @@ legend { padding: 0; }
 .settings-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .settings-main > .alert { margin-bottom: 0; }
 .settings-sec .panel-body > .table-wrap { margin: 0 -18px -16px; border-top: 1px solid var(--line); }
+.settings-sec .panel-body > .ci + .table-wrap { margin-top: 16px; }
 .settings-danger { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
 .settings-danger h2 { color: var(--danger); }
 .danger-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 13.5px; color: var(--text-2); }

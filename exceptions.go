@@ -68,7 +68,7 @@ func (s *server) loadException(ctx context.Context, id int64) (*exception, error
 
 // project exceptions follow project visibility; global ones (no project) are visible to every logged-in user
 func (s *server) handleExceptionList(w http.ResponseWriter, r *http.Request, c *reqCtx) {
-	cond, args := s.visibleProjectsSQL(c.User, "e", 1)
+	cond, args := s.callerProjectsSQL(c, "e", 1)
 	wh := &where{conds: []string{"(e.project_id is null or " + cond + ")"}, args: args}
 	q := r.URL.Query()
 	if v := q.Get("status"); v != "" {

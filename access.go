@@ -155,6 +155,19 @@ func (s *server) visibleProjectsSQL(u *user, alias string, argN int) (cond strin
 		memberMatchSQL(fmt.Sprintf("$%d::bigint", argN)) + ")", []any{u.ID}
 }
 
+// callerProjectsSQL is visibleProjectsSQL for the caller of a handler that the MCP tools also run (mcp.go): there the
+// caller is an API token, which sees exactly its own project. Over REST these handlers never see a token, because
+// their permUser refuses one.
+func (s *server) callerProjectsSQL(c *reqCtx, alias string, argN int) (cond string, args []any) {
+	if c.Token == nil {
+		return s.visibleProjectsSQL(c.User, alias, argN)
+	}
+	if !sqlAliasRe.MatchString(alias) {
+		panic("callerProjectsSQL: bad alias " + alias)
+	}
+	return fmt.Sprintf("%s.project_id = $%d", alias, argN), []any{c.Token.ProjectID}
+}
+
 func rankRole(r string) int {
 	return map[string]int{"viewer": 1, "member": 2, "owner": 3}[r]
 }

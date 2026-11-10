@@ -14,9 +14,10 @@ import PrincipalPicker, { principalKey } from "../components/PrincipalPicker";
 import Table from "../components/Table";
 import TokenDialog from "../components/TokenDialog";
 import { useToast } from "../components/Toast";
+import { copyText } from "../lib/clipboard";
 import { ROLE_LABEL, SEVERITY_LABEL, daysUntil, fmtDate, fmtDateTime, fmtRelative } from "../lib/format";
 
-const SECTIONS = [["general", "일반"], ["members", "멤버"], ["ci", "CI 연동"], ["tokens", "API 토큰"], ["policy", "정책"], ["notify", "알림"], ["danger", "삭제"]] as const;
+const SECTIONS = [["general", "일반"], ["members", "멤버"], ["ci", "CI 연동"], ["tokens", "API 토큰"], ["mcp", "MCP 연동"], ["policy", "정책"], ["notify", "알림"], ["danger", "삭제"]] as const;
 const OWNER_ONLY = new Set(["tokens", "danger"]);
 const ROLES: ProjectRole[] = ["owner", "member", "viewer"];
 const ROLE_HINT: Record<ProjectRole, string> = { owner: "설정 관리", member: "업로드·예외 요청", viewer: "조회만" };
@@ -54,6 +55,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
           <CiSnippet projectKey={project.key} />
         </Section>
         {owner && <Tokens project={project} />}
+        <Mcp project={project} owner={owner} />
         <PolicyForm project={project} owner={owner} />
         <Notify project={project} owner={owner} />
         {owner && <Danger project={project} />}
@@ -166,6 +168,52 @@ function Tokens({ project }: { project: Project }) {
               onClick={() => confirm(`"${t.name}" 토큰을 폐기할까요? 이 토큰을 쓰는 CI는 바로 실패합니다.`) && revoke.mutate(t.id)}>폐기</Button>)) },
         ]} />
       <TokenDialog open={creating} onClose={() => setCreating(false)} projectKey={project.key} />
+    </Section>
+  );
+}
+
+// What the server's MCP tools do (mcp.go), one line each for the person setting up an agent.
+const MCP_TOOLS: [string, string][] = [
+  ["project_summary", "프로젝트 요약: 심각도별 열린 결과 수, 대상 수, 마지막 스캔 시각, 정책 기준"],
+  ["list_findings", "결과 목록. 심각도·상태·종류·대상·검색어·조치 버전 유무로 거릅니다"],
+  ["get_finding", "결과 한 건의 상세: 위치, 설치·조치 버전, 예외 상태"],
+  ["get_vulnerability", "취약점(CVE) 설명, CVSS, 참고 링크와 이 프로젝트에서 영향받는 대상"],
+  ["list_targets", "대상 목록: 종류, 마지막 스캔 시각, 심각도별 열린 결과 수"],
+  ["list_scans", "최근 스캔: 상태, 결과 수, 정책 통과·실패와 그 이유"],
+  ["get_scan", "스캔 한 건과 직전 스캔 대비 새 결과·해결·그대로인 결과 수"],
+  ["list_exceptions", "예외 목록: 범위, 처리 방식, 상태, 요청자, 만료일"],
+];
+
+function Mcp({ project, owner }: { project: Project; owner: boolean }) {
+  const toast = useToast();
+  const url = `${location.origin}/mcp`;
+  const config = JSON.stringify({ mcpServers: { [`jasca-${project.key}`]: { type: "http", url, headers: { Authorization: "Bearer <토큰>" } } } }, null, 2);
+  const copy = async (text: string, what: string) => toast((await copyText(text)) ? `${what} 복사했습니다.` : "복사하지 못했습니다. 직접 선택해 복사하세요.", "info");
+  return (
+    <Section id="mcp" title="MCP 연동" meta="AI 에이전트가 이 프로젝트를 조회하는 주소">
+      <div className="ci">
+        <p className="mcp-lead">
+          AI 코딩·보안 에이전트를 MCP(Model Context Protocol)로 연결하면 에이전트가 이 프로젝트의 결과, 대상, 스캔, 예외를 직접 조회합니다.
+          조회만 할 수 있으며, <b>읽기</b> 권한이 있는 {owner ? <a href="#tokens">API 토큰</a> : "API 토큰"}이 필요합니다{!owner && "(프로젝트 소유자가 만듭니다)"}.
+        </p>
+        <div className="secret-box">
+          <code className="mono">{url}</code>
+          <Button size="sm" icon="copy" onClick={() => copy(url, "주소를")}>주소 복사</Button>
+        </div>
+        <div className="ci-code">
+          <pre aria-label="MCP 클라이언트 설정"><code>{config}</code></pre>
+          <Button size="sm" icon="copy" className="ci-copy" onClick={() => copy(config, "설정을")}>복사</Button>
+        </div>
+        <ul className="ci-notes">
+          <li>Streamable HTTP(<code>type: "http"</code>)를 지원하는 MCP 클라이언트의 설정 파일에 넣고, <code>&lt;토큰&gt;</code>을 토큰 값으로 바꾸세요.</li>
+          <li>토큰이 속한 프로젝트만 보입니다. 다른 프로젝트는 그 프로젝트의 토큰으로 따로 연결하세요.</li>
+        </ul>
+      </div>
+      <Table<[string, string]> caption="MCP 도구" rows={MCP_TOOLS} rowKey={(t) => t[0]} dense
+        columns={[
+          { key: "name", header: "도구", width: 190, mono: true, render: (t) => t[0] },
+          { key: "desc", header: "에이전트가 할 수 있는 일", render: (t) => t[1] },
+        ]} />
     </Section>
   );
 }

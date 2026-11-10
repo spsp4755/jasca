@@ -103,7 +103,7 @@ func (s *server) handleVulnGet(w http.ResponseWriter, r *http.Request, c *reqCtx
 		writeInternal(w, "vuln get", err)
 		return
 	}
-	cond, args := s.visibleProjectsSQL(c.User, "f", 2)
+	cond, args := s.callerProjectsSQL(c, "f", 2)
 	rows, _ := s.db.Query(ctx, `select p.key, t.name, f.id, f.severity, f.status, f.pkg_name, f.pkg_version, f.fixed_version
 		from findings f join targets t on t.id = f.target_id join projects p on p.id = f.project_id
 		where f.rule_id = $1 and `+cond+` order by p.key, t.name, f.id limit 1000`, append([]any{v.ID}, args...)...)

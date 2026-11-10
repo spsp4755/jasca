@@ -286,6 +286,11 @@ func TestWebFallback(t *testing.T) {
 	if rec.Code != 404 || errCode(t, rec) != "not_found" {
 		t.Errorf("unknown api: %d %s", rec.Code, rec.Body.String())
 	}
+	// an MCP client probing for OAuth metadata after a 401 must not be handed the app's HTML
+	rec = do(t, s, "GET", "/.well-known/oauth-protected-resource/mcp", nil)
+	if rec.Code != 404 || errCode(t, rec) != "not_found" {
+		t.Errorf("well-known: %d %s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestAPIErrorsAreJSON(t *testing.T) {

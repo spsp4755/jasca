@@ -34,6 +34,7 @@ type server struct {
 	loginDepts deptLog                   // the last 20 SSO logins' department outcomes
 	jobs       jobRunner                 // jobs.go
 	trivy      trivyState                // trivydb.go
+	mcpLimiter *limiter                  // mcp.go: requests per API token
 }
 
 // reqCtx is what the middleware learned about the caller. User and Token are never both set.

@@ -20,6 +20,11 @@ func (s *server) serveWeb(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 		writeErr(w, 404, "not_found", "없는 API입니다.")
 		return
 	}
+	// An MCP client that gets a 401 looks for OAuth metadata here; the app's HTML would read as broken JSON to it.
+	if strings.HasPrefix(r.URL.Path, "/.well-known/") {
+		writeErr(w, 404, "not_found", "찾을 수 없습니다.")
+		return
+	}
 	if name := strings.TrimPrefix(path.Clean(r.URL.Path), "/"); name != "" {
 		if st, err := fs.Stat(webFiles, name); err == nil && !st.IsDir() {
 			if strings.HasPrefix(name, "assets/") {
