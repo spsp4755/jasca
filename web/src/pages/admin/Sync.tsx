@@ -5,7 +5,7 @@ import Button from "../../components/Button";
 import Table from "../../components/Table";
 import { useApi } from "../../api/hooks";
 import { api } from "../../api/client";
-import { fmtDateTime } from "../../lib/format";
+import { fmtDateTime, fmtDept } from "../../lib/format";
 import type { DeptLogin, SyncRunResult, SyncStatus } from "../../api/types";
 import { Check, Loading, Panel, SecretField, useSave } from "./parts";
 import { useToast } from "../../components/Toast";
@@ -55,7 +55,7 @@ export default function Sync() {
           columns={[
             { key: "at", header: "시각", nowrap: true, render: (r) => fmtDateTime(r.at) },
             { key: "user", header: "사용자", render: (r) => r.user },
-            { key: "depts", header: "부서", render: (r) => (r.depts ?? []).join(", ") || <span className="muted">-</span> },
+            { key: "depts", header: "부서", render: (r) => (r.depts ?? []).map(fmtDept).join(", ") || <span className="muted">-</span> },
             { key: "source", header: "출처", nowrap: true, render: (r) => <span className={`tag${r.source === "error" || r.source === "missing" ? "" : " tag-quiet"}`}>{SRC[r.source] ?? r.source}</span> },
           ]} />
       </Panel>

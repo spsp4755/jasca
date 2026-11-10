@@ -65,7 +65,19 @@ L.run(async () => {
   L.ok(await users.getByRole("row", { name: /lee.*개발본부\/플랫폼팀/ }).count() === 1, "lee's department 개발본부/플랫폼팀 shown");
   const parkRow = users.getByRole("row", { name: /park/ });
   L.ok(!/\//.test(await parkRow.locator("td").nth(2).innerText()), "park has no department");
+  L.ok((await users.getByRole("row", { name: /kim.*보안실/ }).locator("td").nth(2).innerText()).trim() === "보안실/취약점팀", "department shown without the stored leading slash");
   await L.shot(page, "login-users");
+
+  // an admin can change a role that came from Keycloak; the change is JASCA-only and survives the next Keycloak login
+  const setRole = (v) => Promise.all([
+    page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes("/admin/users/") && r.ok()),
+    page.getByLabel("park 역할").selectOption(v),
+  ]);
+  L.ok(await page.getByLabel("park 역할").isEnabled(), "a Keycloak-mapped user's role can be changed");
+  await setRole("security");
+  L.ok((await (await L.sso(browser, "park")).api.get("/me")).system_role === "security", "park keeps the role set in JASCA after a Keycloak login");
+  await setRole(""); // back to a plain user for the later suites
+  L.ok((await (await L.sso(browser, "park")).api.get("/me")).system_role === "", "park is a plain user again");
 
   // a signed-in user can sign out
   await kim.page.locator(".usermenu-btn").click();

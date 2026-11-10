@@ -36,6 +36,8 @@ export const fmtMonthDay = (date: string) => {
   const d = valid(date);
   return ok(d) ? mdFmt.format(d) : date;
 };
+/** A stored department path ("/AI실/보안팀") as people write it: no leading slash. */
+export const fmtDept = (path: string) => path.replace(/^\//, "");
 export const fmtNumber = (n?: number | null) => (n == null ? "—" : numFmt.format(n));
 
 /** "방금", "5분 전", "3일 전", "2일 후" … falls back to the date after 30 days. */
