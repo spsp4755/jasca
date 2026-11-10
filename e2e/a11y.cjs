@@ -48,7 +48,7 @@ L.run(async () => {
   await p.keyboard.press("Escape");
   await visit(p, "/vulns/CVE-2022-37434", "vuln");
   await visit(p, "/scan", "scan upload");
-  await visit(p, "/scan?tab=ci", "scan ci");
+  await visit(p, "/scan?tab=harbor", "scan harbor");
   await visit(p, "/exceptions", "exceptions");
   await visit(p, "/exceptions/approvals", "exception approvals");
   await visit(p, "/advisories", "advisories");

@@ -9,7 +9,6 @@ import Icon from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { API_BASE, ApiError, api, loginUrl } from "../api/client";
 import { isAdmin, useApi, useAuthConfig, useMe } from "../api/hooks";
-import CiSnippet from "../components/CiSnippet";
 import { SEVERITIES, type Counts, type Project, type ScanDetail, type ScanJobCreated, type Target } from "../api/types";
 import { SEVERITY_LABEL, fmtNumber } from "../lib/format";
 import { Panel } from "./admin/parts";
@@ -316,31 +315,6 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   );
 }
 
-/** Project picker in front of the shared CI snippet (components/CiSnippet). */
-function CiTab({ projects }: { projects: Project[] }) {
-  const [key, setKey] = useState("");
-  const p = projects.find((x) => x.key === key);
-  return (
-    <Panel title="CI 연동" meta="Trivy JSON 보고서를 CI에서 직접 올립니다">
-      <div className="stack">
-        <Field label="프로젝트">
-          <select className="input" style={{ width: 280 }} value={key} onChange={(e) => setKey(e.target.value)}>
-            <option value="">프로젝트를 고르세요</option>{projects.map((x) => <option key={x.key} value={x.key}>{x.name} ({x.key})</option>)}
-          </select>
-        </Field>
-        {!p ? <p className="muted">프로젝트를 고르면 그 프로젝트에 올리는 CI 명령을 보여 줍니다.</p> : (
-          <>
-            <CiSnippet key={p.key} projectKey={p.key} />
-            <p className="muted">{p.my_role === "owner"
-              ? <>업로드 토큰은 <Link to={`/projects/${encodeURIComponent(p.key)}/settings#tokens`}>프로젝트 설정의 API 토큰</Link>에서 만듭니다.</>
-              : "프로젝트 소유자에게 업로드 토큰을 요청하세요."} 같은 보고서를 다시 올려도 스캔이 중복으로 생기지 않습니다.</p>
-          </>
-        )}
-      </div>
-    </Panel>
-  );
-}
-
 function HarborTab() {
   const { data: me } = useMe();
   return (
@@ -361,18 +335,18 @@ function HarborTab() {
 
 export default function ScanNew() {
   const [sp, setSp] = useSearchParams();
-  const tab = sp.get("tab") ?? "upload";
+  const tab = sp.get("tab") === "harbor" ? "harbor" : "upload";
   const projects = useApi<Project[]>("/projects");
   const list = projects.data ?? [];
   return (
     <>
-      <PageHeader title="스캔하기" description="파일을 올리면 서버가 바로 검사합니다. 매번 올리기 번거로우면 CI나 Harbor에서 자동으로 등록하세요." />
+      <PageHeader title="스캔하기" description="파일을 올리면 서버가 바로 검사합니다. Harbor를 쓰면 이미지를 푸시할 때 자동으로 등록할 수도 있습니다." />
       <div className="page-narrow">
         <Tabs label="스캔 방법" value={tab} onChange={(t) => setSp({ tab: t }, { replace: true })}
-          tabs={[{ id: "upload", label: "파일 올려서 검사" }, { id: "ci", label: "CI에서 자동으로" }, { id: "harbor", label: "Harbor에서 자동으로" }]} />
+          tabs={[{ id: "upload", label: "파일 올려서 검사" }, { id: "harbor", label: "Harbor에서 자동으로" }]} />
         {projects.error && <div className="alert alert-danger" role="alert">{projects.error.message}</div>}
         <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
-          {tab === "ci" ? <CiTab projects={list} /> : tab === "harbor" ? <HarborTab /> : <UploadTab projects={list} loaded={projects.isSuccess} />}
+          {tab === "harbor" ? <HarborTab /> : <UploadTab projects={list} loaded={projects.isSuccess} />}
         </div>
       </div>
     </>
