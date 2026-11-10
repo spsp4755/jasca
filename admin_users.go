@@ -51,8 +51,9 @@ func (s *server) handleAdminUsers(w http.ResponseWriter, r *http.Request, c *req
 func (s *server) handleAdminUserPatch(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	ctx, id := r.Context(), pathID(r)
 	var in struct {
-		SystemRole *string `json:"system_role"`
-		Active     *bool   `json:"active"`
+		SystemRole  *string `json:"system_role"`
+		RoleFromSSO *bool   `json:"role_from_sso"` // true: the role follows Keycloak again from the user's next login
+		Active      *bool   `json:"active"`
 	}
 	if err := readJSON(r, 4<<10, &in); err != nil {
 		writeBodyErr(w, err)
@@ -62,14 +63,27 @@ func (s *server) handleAdminUserPatch(w http.ResponseWriter, r *http.Request, c 
 		badRequest(w, "역할은 빈 값, admin, security 중 하나입니다.")
 		return
 	}
-	if id == c.User.ID && (in.SystemRole != nil && *in.SystemRole != "admin" || in.Active != nil && !*in.Active) {
+	if in.RoleFromSSO != nil && (!*in.RoleFromSSO || in.SystemRole != nil) {
+		badRequest(w, "role_from_sso는 true만, system_role 없이 보낼 수 있습니다.")
+		return
+	}
+	lowers := in.SystemRole != nil && *in.SystemRole != "admin" || in.Active != nil && !*in.Active
+	if id == c.User.ID && (lowers || in.RoleFromSSO != nil) {
 		badRequest(w, "자기 자신의 관리자 권한을 내리거나 계정을 비활성화할 수 없습니다.")
 		return
 	}
-	var name string
+	var name, source string
 	err := s.tx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `select username from users where id = $1 for update`, id).Scan(&name); err != nil {
+		if err := tx.QueryRow(ctx, `select username, source from users where id = $1 for update`, id).Scan(&name, &source); err != nil {
 			return err
+		}
+		if source == "local" && (lowers || in.RoleFromSSO != nil) { // the only local account is the bootstrap admin
+			return errLocalAdmin
+		}
+		if in.RoleFromSSO != nil {
+			if _, err := tx.Exec(ctx, `update users set role_from_sso = true where id = $1`, id); err != nil {
+				return err
+			}
 		}
 		if in.SystemRole != nil {
 			if _, err := tx.Exec(ctx, `update users set system_role = $2, role_from_sso = false where id = $1`, id, *in.SystemRole); err != nil {
@@ -91,11 +105,15 @@ func (s *server) handleAdminUserPatch(w http.ResponseWriter, r *http.Request, c 
 		writeErr(w, 404, "not_found", "찾을 수 없습니다.")
 		return
 	}
+	if errors.Is(err, errLocalAdmin) {
+		badRequest(w, "로컬 관리자(admin)는 Keycloak에 문제가 생겼을 때 쓰는 비상용 계정이라 비활성화하거나 역할을 바꿀 수 없습니다.")
+		return
+	}
 	if err != nil {
 		writeInternal(w, "admin user patch", err)
 		return
 	}
-	s.audit(ctx, c, "user.update", nil, name, map[string]any{"system_role": in.SystemRole, "active": in.Active})
+	s.audit(ctx, c, "user.update", nil, name, map[string]any{"system_role": in.SystemRole, "role_from_sso": in.RoleFromSSO, "active": in.Active})
 	u, err := collect[adminUser](ctx, s, `select id, username, name, email, source, system_role, role_from_sso, active,
 			last_login_at, created_at, array(select path from user_depts where user_id = u.id order by path),
 			array(select path from user_groups where user_id = u.id order by path) from users u where id = $1`, id)
@@ -105,6 +123,8 @@ func (s *server) handleAdminUserPatch(w http.ResponseWriter, r *http.Request, c 
 	}
 	writeJSON(w, 200, u[0])
 }
+
+var errLocalAdmin = errors.New("the local admin account cannot be disabled or demoted")
 
 // --- retention (read by trimRaw in ingest.go, and trimmed daily for every target) ---
 
@@ -165,8 +185,8 @@ func (s *server) handleDefaultPolicyPut(w http.ResponseWriter, r *http.Request, 
 		writeBodyErr(w, err)
 		return
 	}
-	if !slices.Contains(policySeverities, p.MinSeverity) || p.MaxCount < 0 {
-		badRequest(w, "심각도 기준은 CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN 중 하나이고 허용 건수는 0 이상이어야 합니다.")
+	if msg := p.problem(); msg != "" {
+		badRequest(w, msg)
 		return
 	}
 	if err := s.putSetting(r.Context(), "default_policy", p); err != nil {

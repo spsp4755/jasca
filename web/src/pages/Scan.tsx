@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { API_BASE, api, qs, type ApiError } from "../api/client";
-import { useApi } from "../api/hooks";
+import { useApi, useMe } from "../api/hooks";
 import { SEVERITIES, type Counts, type Finding, type FindingPage, type Project, type ScanDetail } from "../api/types";
 import Button from "../components/Button";
 import Empty from "../components/Empty";
@@ -41,6 +41,9 @@ export default function Scan() {
   const projects = useApi<Project[]>("/projects");
   const s = q.data;
   const project = projects.data?.find((p) => p.id === s?.project_id);
+  const me = useMe().data;
+  // POST /scans/{id}/cancel: whoever started it, an owner of the project, or an admin (an owner everywhere)
+  const canCancel = !!s && !!me && (s.created_by_user === me.id || project?.my_role === "owner");
   const done = s?.status === "done"; // below, source "recheck" is special: a re-evaluation keeps no report and its ref is an internal run marker
   const prevId = s?.diff.previous_scan_id ?? null;
   const cur = useQuery({ queryKey: ["scan-findings", s?.id], enabled: done, queryFn: ({ signal }) => scanFindings(s!.id, signal) });
@@ -80,7 +83,7 @@ export default function Scan() {
         description={s && <span className="scan-target"><span className="tag tag-quiet">{TARGET_KIND_LABEL[s.target_kind] ?? s.target_kind}</span><span>스캔 #{s.id} · {SOURCE_LABEL[s.source] ?? s.source} · {fmtDateTime(s.created_at)}</span>{s.ref && s.source !== "recheck" && <span className="mono muted">@ {s.ref}</span>}</span>}
         actions={s && (
           <>
-            {live(s.status) && project && project.my_role !== "viewer" && <Button variant="danger" loading={cancel.isPending} onClick={() => confirm("이 스캔을 취소할까요?") && cancel.mutate()}>스캔 취소</Button>}
+            {live(s.status) && canCancel && <Button variant="danger" loading={cancel.isPending} onClick={() => confirm("이 스캔을 취소할까요?") && cancel.mutate()}>스캔 취소</Button>}
             {s.has_raw && <a className="btn btn-secondary" href={`${API_BASE}/scans/${s.id}/raw`} download><Icon name="fileText" />원본 보고서</a>}
           </>
         )} />

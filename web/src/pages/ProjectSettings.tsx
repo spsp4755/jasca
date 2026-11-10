@@ -171,8 +171,12 @@ function Tokens({ project }: { project: Project }) {
 }
 
 /** The policy sentence and its options: a project's policy and the admin default policy are written the same way. */
+/** What is wrong with the count as typed, "" when it can be saved (the API takes whole numbers from 0 to 1,000,000). */
+export const policyCountError = (p: Policy) => (Number.isInteger(p.max_count) && p.max_count >= 0 && p.max_count <= 1_000_000 ? "" : "허용 개수는 0부터 1,000,000까지의 정수로 입력하세요.");
+
 export function PolicyFields({ p, set, disabled, label }: { p: Policy; set: (patch: Partial<Policy>) => void; disabled?: boolean; label: string }) {
   const off = disabled || !p.enabled;
+  const countErr = policyCountError(p);
   return (
     <>
       <label className="check-row"><input type="checkbox" checked={p.enabled} disabled={disabled} onChange={(e) => set({ enabled: e.target.checked })} />{label}</label>
@@ -183,9 +187,12 @@ export function PolicyFields({ p, set, disabled, label }: { p: Policy; set: (pat
           {SEVERITIES.filter((s) => s !== "UNKNOWN").map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}
         </select>
         <span>이상이</span>
-        <input className="input input-sm num" type="number" min={0} aria-label="허용 개수" value={p.max_count} onChange={(e) => set({ max_count: Math.max(0, Number(e.target.value) || 0) })} />
+        {/* NaN (an emptied or half-typed box) shows as empty and is reported below instead of turning into 0 */}
+        <input className="input input-sm num" type="number" min={0} max={1_000_000} step={1} aria-label="허용 개수" aria-invalid={countErr ? true : undefined} aria-describedby={countErr ? "policy-count-err" : undefined}
+          value={Number.isNaN(p.max_count) ? "" : p.max_count} onChange={(e) => set({ max_count: e.target.value === "" ? NaN : Number(e.target.value) })} />
         <span>개를 넘으면 정책 실패</span>
       </fieldset>
+      {countErr && <p id="policy-count-err" className="field-err" role="alert">{countErr}</p>}
       <div className="policy-opts">
         <label className="check-row"><input type="checkbox" checked={p.new_only} disabled={off} onChange={(e) => set({ new_only: e.target.checked })} />이번 스캔에서 새로 나온 결과만 셉니다</label>
         <label className="check-row"><input type="checkbox" checked={p.fixable_only} disabled={off} onChange={(e) => set({ fixable_only: e.target.checked })} />조치 버전이 있는 결과만 셉니다</label>
@@ -208,7 +215,7 @@ function PolicyForm({ project, owner }: { project: Project; owner: boolean }) {
     <Section id="policy" title="정책" meta="스캔할 때마다 정책 통과·정책 실패를 정합니다">
       <form className="form" onSubmit={(e) => { e.preventDefault(); save.mutate(undefined); }}>
         <PolicyFields p={p} set={set} disabled={!owner} label="정책 사용 (끄면 항상 정책 통과)" />
-        {owner && <div className="form-actions"><Button type="submit" variant="primary" disabled={!dirty} loading={save.isPending}>저장</Button></div>}
+        {owner && <div className="form-actions"><Button type="submit" variant="primary" disabled={!dirty || !!policyCountError(p)} loading={save.isPending}>저장</Button></div>}
       </form>
     </Section>
   );

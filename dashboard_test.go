@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -291,5 +293,105 @@ func TestProjectReport(t *testing.T) {
 	if r.Summary.BySeverity["open"] != 2 || r.Summary.ByKind["vuln"] != 2 || len(r.Targets) != 1 || len(r.Findings) != 2 ||
 		r.Findings[0]["rule_id"] != "CVE-1" || r.Exceptions == nil || r.Policy == nil || r.AIReport["output"] != "hello" {
 		t.Errorf("report: %s", rec.Body.String())
+	}
+}
+
+// The built-in local admin is the way back in when Keycloak is down: nobody may deactivate or demote it.
+func TestLocalAdminProtected(t *testing.T) {
+	s := testServer(t)
+	ck := loginAs(t, s, mkUser(t, s, "adm", "admin"))
+	local := qint64(t, s, `select id from users where source='local' and username='admin'`)
+	for _, body := range []map[string]any{{"active": false}, {"system_role": ""}, {"system_role": "security"}} {
+		rec := do(t, s, "PATCH", "/api/v1/admin/users/"+itoa(local), body, ck)
+		if rec.Code != 400 || !strings.Contains(rec.Body.String(), "비상용") {
+			t.Errorf("%v: %d %s", body, rec.Code, rec.Body.String())
+		}
+	}
+	if n := qInt(t, s, `select count(*) from users where id=$1 and active and system_role='admin'`, local); n != 1 {
+		t.Error("the local admin was changed")
+	}
+	wantCode(t, do(t, s, "PATCH", "/api/v1/admin/users/"+itoa(local), map[string]any{"system_role": "admin", "active": true}, ck), 200, "no-op patch")
+}
+
+// An admin's role override can be handed back to Keycloak: the next Keycloak login decides the role again.
+func TestRoleFollowsSSOAgain(t *testing.T) {
+	s := testServer(t)
+	adm, u := mkUser(t, s, "adm", "admin"), mkUser(t, s, "u", "")
+	ck := loginAs(t, s, adm)
+	path := "/api/v1/admin/users/" + itoa(u.ID)
+	wantCode(t, do(t, s, "PATCH", path, map[string]any{"system_role": "security"}, ck), 200, "override")
+	rec := do(t, s, "PATCH", path, map[string]any{"role_from_sso": true}, ck)
+	wantCode(t, rec, 200, "follow keycloak")
+	if got := decode[adminUser](t, rec); !got.RoleFromSSO || got.SystemRole != "security" {
+		t.Errorf("after follow: %+v (the role itself changes at the next login)", got)
+	}
+	if _, _, before, after, err := s.ssoUpsert(context.Background(), "u", "u", "u", "", ""); err != nil || before != "security" || after != "" {
+		t.Errorf("next login: before=%q after=%q err=%v", before, after, err)
+	}
+	wantCode(t, do(t, s, "PATCH", path, map[string]any{"role_from_sso": true, "system_role": "admin"}, ck), 400, "both at once")
+	wantCode(t, do(t, s, "PATCH", path, map[string]any{"role_from_sso": false}, ck), 400, "false means nothing")
+	wantCode(t, do(t, s, "PATCH", "/api/v1/admin/users/"+itoa(adm.ID), map[string]any{"role_from_sso": true}, ck), 400, "own account")
+	local := qint64(t, s, `select id from users where source='local'`)
+	wantCode(t, do(t, s, "PATCH", "/api/v1/admin/users/"+itoa(local), map[string]any{"role_from_sso": true}, ck), 400, "a local account has no Keycloak role")
+	var d string
+	s.db.QueryRow(context.Background(), `select details::text from audit_log where action='user.update' order by id desc limit 1`).Scan(&d)
+	if !strings.Contains(d, `"role_from_sso": true`) {
+		t.Errorf("audit details: %s", d)
+	}
+}
+
+// Audit rows name their project, and keep naming it (and stay findable by key) after the project is deleted.
+func TestAuditKeepsProjectKey(t *testing.T) {
+	s := testServer(t)
+	ck := loginAs(t, s, mkUser(t, s, "adm", "admin"))
+	wantCode(t, do(t, s, "POST", "/api/v1/projects", map[string]string{"key": "gone", "name": "곧 삭제"}, ck), 201, "create")
+	wantCode(t, do(t, s, "PUT", "/api/v1/projects/gone/policy", map[string]any{"max_count": 1}, ck), 200, "policy")
+	sqlExec(t, s, `insert into audit_log(action, project_id) select 'old.row', id from projects where key='gone'`) // written before keys were stored
+	keys := func(q string) map[string]string {
+		p := decode[struct{ Items []auditEntry }](t, do(t, s, "GET", "/api/v1/audit"+q, nil, ck))
+		out := map[string]string{}
+		for _, e := range p.Items {
+			out[e.Action] = e.ProjectKey
+		}
+		return out
+	}
+	if k := keys(""); k["policy.update"] != "gone" || k["project.create"] != "gone" || k["old.row"] != "gone" {
+		t.Errorf("live project: %v", k)
+	}
+	wantCode(t, do(t, s, "DELETE", "/api/v1/projects/gone", nil, ck), 204, "delete")
+	for _, q := range []string{"", "?project=gone"} {
+		if k := keys(q); k["policy.update"] != "gone" || k["old.row"] != "gone" || k["project.delete"] != "gone" || len(k) < 4 {
+			t.Errorf("after delete %q: %v", q, k)
+		}
+	}
+}
+
+func TestDefaultPolicyMaxCountBound(t *testing.T) {
+	s := testServer(t)
+	ck := loginAs(t, s, mkUser(t, s, "adm", "admin"))
+	for _, n := range []any{3000000000, 1000001, -1, 1.5} {
+		rec := do(t, s, "PUT", "/api/v1/admin/default-policy", map[string]any{"min_severity": "HIGH", "max_count": n}, ck)
+		wantCode(t, rec, 400, fmt.Sprint("max_count ", n))
+	}
+	wantCode(t, do(t, s, "PUT", "/api/v1/admin/default-policy", map[string]any{"min_severity": "HIGH", "max_count": 1000000}, ck), 200, "upper bound itself")
+}
+
+// The report and the home page say what a finding-scope exception covers, like the exceptions page does.
+func TestReportAndDashboardNameFindingExceptions(t *testing.T) {
+	s := testServer(t)
+	a := mkProject(t, s, "proj-a")
+	seedFinding(t, s, a, "a/app", "CVE-1", "CRITICAL", "accepted", "scan", 5)
+	sqlExec(t, s, `update findings set pkg_name='zlib'`)
+	sqlExec(t, s, `insert into exceptions(scope, project_id, finding_id, resolution, reason, status, expires_at)
+		select 'finding', $1, id, 'accepted', '사유입니다', 'approved', now() + interval '5 days' from findings`, a)
+	ck := loginAs(t, s, mkUser(t, s, "adm", "admin"))
+	rep := decode[struct{ Exceptions []map[string]any }](t, do(t, s, "GET", "/api/v1/projects/proj-a/report", nil, ck))
+	dash := decode[struct {
+		Expiring []map[string]any `json:"expiring_exceptions"`
+	}](t, do(t, s, "GET", "/api/v1/dashboard", nil, ck))
+	for name, l := range map[string][]map[string]any{"report": rep.Exceptions, "dashboard": dash.Expiring} {
+		if len(l) != 1 || l[0]["finding_rule"] != "CVE-1" || l[0]["finding_pkg"] != "zlib" || l[0]["finding_severity"] != "CRITICAL" || l[0]["project_key"] != "proj-a" {
+			t.Errorf("%s: %v", name, l)
+		}
 	}
 }

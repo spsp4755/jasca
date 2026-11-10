@@ -89,6 +89,8 @@ export interface VulnAffected {
 export interface Vuln {
   id: string; title: string; description: string; cvss_score: number | null; cvss_vector: string; refs: string[];
   cwe_ids: string[]; published_at: string | null; last_modified_at: string | null; ai_guide: string; ai_guide_at: string | null;
+  /** the id is an internal advisory (/advisories/{id}) */
+  advisory?: boolean;
   affected: VulnAffected[];
 }
 
@@ -106,8 +108,10 @@ export interface ExceptionItem {
   decided_by: number | null; decided_at: string | null; decision_note: string; expires_at: string; created_at: string;
   project_key?: string;
   finding_rule?: string | null; finding_pkg?: string | null; finding_severity?: Severity | null;
-  /** name (else username) of requested_by; "" when the account is gone */
-  requested_by_name?: string;
+  /** name (else username) of requested_by and decided_by; "" when the account is gone */
+  requested_by_name?: string; decided_by_name?: string;
+  /** finding scope: the target the finding is on */
+  finding_target?: string | null;
 }
 export interface ExceptionCreate {
   scope: ExceptionScope; project_key?: string; finding_ids?: number[]; vuln_id?: string;
@@ -126,16 +130,12 @@ export interface DashboardFinding {
   id: number; project_key: string; target: string; rule_id: string; title: string; severity: Severity;
   pkg_name: string; pkg_version: string; fixed_version: string; origin: FindingOrigin; first_seen_at: string;
 }
-export interface DashboardException {
-  id: number; project_key: string | null; scope: ExceptionScope; vuln_id: string | null; resolution: ExceptionResolution;
-  expires_at: string;
-}
 export interface DashboardScan {
   id: number; project_key: string; target: string; source: ScanSource; status: JobState; summary: Partial<Counts>;
   policy: PolicyResult | null; created_at: string;
 }
 export interface Dashboard {
-  totals: Counts; trend: TrendPoint[]; oldest_critical: DashboardFinding[]; expiring_exceptions: DashboardException[];
+  totals: Counts; trend: TrendPoint[]; oldest_critical: DashboardFinding[]; expiring_exceptions: ExceptionItem[];
   recent_scans: DashboardScan[]; newly_known: DashboardFinding[];
 }
 
@@ -143,6 +143,8 @@ export interface Dashboard {
 export interface AuditEntry {
   id: number; at: string; actor_user: number | null; actor_token: number | null; ip: string; action: string;
   project_id: number | null; target: string; details: Record<string, unknown>; actor?: string;
+  /** "" without a project; kept after the project is deleted */
+  project_key?: string;
 }
 export interface AuditPage { items: AuditEntry[]; next_cursor: string | null }
 export interface Channel { id: number; name: string; kind: ChannelKind }
@@ -152,7 +154,8 @@ export interface AdminUser {
   id: number; username: string; name: string; email: string; source: "local" | "sso"; system_role: SystemRole;
   role_from_sso: boolean; active: boolean; last_login_at: string | null; created_at: string; depts: string[]; groups: string[];
 }
-export interface AdminUserPatch { system_role?: SystemRole; active?: boolean }
+/** role_from_sso: true hands the role back to Keycloak (decided again at the user's next Keycloak login). */
+export interface AdminUserPatch { system_role?: SystemRole; role_from_sso?: true; active?: boolean }
 export interface SSOSettings {
   issuer: string; client_id: string; client_secret_set: boolean; admin_role: string; security_role: string;
   public_url: string; enabled: boolean;
@@ -224,8 +227,7 @@ export interface ProjectReportData {
   summary: { by_severity: Counts; by_kind: Record<FindingKind, number> };
   targets: Target[];
   findings: ReportFinding[];
-  exceptions: { id: number; scope: ExceptionScope; vuln_id: string | null; finding_id: number | null; resolution: ExceptionResolution;
-    status: ExceptionStatus; reason: string; expires_at: string }[];
+  exceptions: ExceptionItem[];
   policy: Policy;
   ai_report: { id: number; output: string; created_at: string } | null;
 }

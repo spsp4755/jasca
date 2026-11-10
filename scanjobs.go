@@ -189,7 +189,7 @@ func (s *server) handleScanCancel(w http.ResponseWriter, r *http.Request, c *req
 		return
 	}
 	if c.User == nil || (c.Role != "owner" && (createdBy == nil || *createdBy != c.User.ID)) {
-		writeErr(w, 403, "forbidden", "스캔을 요청한 사람, 프로젝트 owner, 관리자만 취소할 수 있습니다.")
+		writeErr(w, 403, "forbidden", "스캔을 요청한 사람, 프로젝트 소유자, 관리자만 취소할 수 있습니다.")
 		return
 	}
 	tag, err := s.db.Exec(ctx, `update scans set status = 'canceled', error = '사용자가 취소했습니다.', finished_at = now()

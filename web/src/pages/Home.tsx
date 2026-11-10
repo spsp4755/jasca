@@ -10,6 +10,7 @@ import StatusBadge from "../components/StatusBadge";
 import Table from "../components/Table";
 import TrendChart from "../components/TrendChart";
 import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, SOURCE_LABEL, daysSince, daysUntil, fmtDate, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
+import { exceptionWhat } from "./Exceptions";
 
 // why a finding turned up without a new scan, for 새로 알려진 취약점
 const FOUND_BY: Record<FindingOrigin, string> = { scan: "스캔에서 발견", recheck: "DB 갱신으로 발견", advisory: "사내 Advisory로 발견" };
@@ -82,7 +83,7 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
               return (
                 <li key={x.id} className="list-row">
                   <div className="list-main">
-                    <span className="mono">{x.vuln_id ?? `예외 #${x.id}`}</span>
+                    <Link className="mono" to={`/exceptions?id=${x.id}`}>{exceptionWhat(x)}</Link>
                     <span className="list-sub">{x.project_key ?? "전사"} · {SCOPE_LABEL[x.scope]} · {RESOLUTION_LABEL[x.resolution]}</span>
                   </div>
                   <span className={`due${left <= 3 ? " due-soon" : ""}`} title={fmtDate(x.expires_at)}>

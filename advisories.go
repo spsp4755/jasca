@@ -447,10 +447,27 @@ func (s *server) handleAdvisoryDelete(w http.ResponseWriter, r *http.Request, c 
 	w.WriteHeader(204)
 }
 
-// handleAdvisoryPreview lists what an advisory would hit, without saving anything.
+// handleAdvisoryPreview lists what saving an advisory would do, without saving anything: the packages it would hit,
+// or for one that is switched off the findings it has now, which saving resolves (syncAdvisories).
 func (s *server) handleAdvisoryPreview(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	req, ok := s.readAdvisoryReq(w, r, false)
 	if !ok {
+		return
+	}
+	if req.Active != nil && !*req.Active {
+		rows, _ := s.db.Query(r.Context(), `select p.key as project_key, t.name as target, f.pkg_name as pkg, f.pkg_version as version
+			from findings f join targets t on t.id = f.target_id join projects p on p.id = f.project_id
+			where f.tool = 'advisory' and f.rule_id = $1 and f.status <> 'fixed' and not t.recheck_excluded
+			order by p.key, t.name, f.pkg_name limit 1000`, req.ID)
+		out, err := pgx.CollectRows(rows, pgx.RowToMap)
+		if err != nil {
+			writeInternal(w, "advisory preview", err)
+			return
+		}
+		if out == nil {
+			out = []map[string]any{}
+		}
+		writeJSON(w, 200, out)
 		return
 	}
 	a := &advisory{ID: req.ID, Title: req.Title, Severity: req.Severity, Affected: req.Affected, Active: true}

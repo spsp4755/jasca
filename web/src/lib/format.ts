@@ -1,4 +1,4 @@
-import type { ExceptionResolution, ExceptionScope, FindingKind, FindingOrigin, ProjectRole, ScanSource, Severity, TargetKind } from "../api/types";
+import type { ExceptionResolution, ExceptionScope, FindingKind, FindingOrigin, ProjectRole, ScanSource, Severity, SystemRole, TargetKind } from "../api/types";
 
 export const DEFAULT_TZ = "Asia/Seoul";
 /** Zone every time is shown in (JASCA_TZ, from GET /auth/config). Set by useAuthConfig before signed-in pages render. */
@@ -75,6 +75,7 @@ export const RESOLUTION_LABEL: Record<ExceptionResolution, string> = { accepted:
 export const KIND_LABEL: Record<FindingKind, string> = { vuln: "취약점", misconfig: "설정 오류", secret: "비밀값", sast: "코드 분석" };
 export const TARGET_KIND_LABEL: Record<TargetKind, string> = { image: "이미지", repo: "저장소", fs: "파일시스템", sbom: "SBOM" };
 export const ROLE_LABEL: Record<ProjectRole, string> = { owner: "소유자", member: "멤버", viewer: "보기 전용" };
+export const SYSTEM_ROLE_LABEL: Record<SystemRole, string> = { "": "일반 사용자", security: "보안 담당", admin: "관리자" };
 /** Local YYYY-MM-DD `days` from today, for <input type="date"> values and min/max. */
 export const dateInput = (days = 0) => {
   const d = new Date(Date.now() + days * 86_400_000);

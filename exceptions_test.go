@@ -29,7 +29,7 @@ type exView struct {
 
 func init() {
 	body := map[string]any{"scope": "project_vuln", "project_key": "{key}", "vuln_id": "CVE-2024-0001",
-		"resolution": "accepted", "reason": "x", "expires_at": "{exp}"}
+		"resolution": "accepted", "reason": "matrix reason", "expires_at": "{exp}"}
 	matrixRoutes = append(matrixRoutes,
 		matrixCase{Method: "GET", Path: "/api/v1/exceptions?project={key}", List: "[]"},
 		matrixCase{Method: "POST", Path: "/api/v1/exceptions", Body: body},
@@ -386,5 +386,119 @@ func TestExceptionListNamesFindingAndNoDuplicates(t *testing.T) {
 	f := list[1]
 	if f["finding_rule"] != "CVE-2024-1" || f["finding_pkg"] != "zlib" || f["finding_severity"] != "HIGH" {
 		t.Fatalf("finding brief: %v", f)
+	}
+}
+
+// The API enforces what the request dialog enforces: an open finding, a real reason, an expiry from tomorrow to a year.
+func TestExceptionCreateEnforcesDialogRules(t *testing.T) {
+	e := newExEnv(t)
+	pid, mck, _ := e.project(t, "web", "CVE-2024-1", "CVE-2024-2")
+	fid := qint64(t, e.s, `select id from findings where project_id=$1 and rule_id='CVE-2024-1'`, pid)
+	pv := func(k string, v any) map[string]any {
+		return map[string]any{"scope": "project_vuln", "project_key": "web", "vuln_id": "CVE-2024-2", k: v}
+	}
+	msg := func(body map[string]any, want int) string {
+		t.Helper()
+		body["resolution"] = "accepted"
+		if body["reason"] == nil {
+			body["reason"] = "정당한 사유"
+		}
+		if body["expires_at"] == nil {
+			body["expires_at"] = futureISO(30 * 24 * time.Hour)
+		}
+		rec := do(t, e.s, "POST", "/api/v1/exceptions", body, mck)
+		wantCode(t, rec, want, "request")
+		var e struct{ Message string }
+		json.Unmarshal(rec.Body.Bytes(), &e) // a 201 answers a list
+		return e.Message
+	}
+	if m := msg(pv("reason", "네 글자"), 400); !strings.Contains(m, "5") {
+		t.Errorf("short reason: %s", m)
+	}
+	if m := msg(pv("reason", strings.Repeat("가", 2001)), 400); !strings.Contains(m, "2000") {
+		t.Errorf("long reason: %s", m)
+	}
+	// the dialog sends the end of a local day from tomorrow on: never less than 24h ahead (less a second), in any zone
+	for _, d := range []time.Duration{time.Minute, 12 * time.Hour, 22 * time.Hour} {
+		if m := msg(pv("expires_at", futureISO(d)), 400); !strings.Contains(m, "내일") {
+			t.Errorf("expiry in %v: %s", d, m)
+		}
+	}
+	// ... and never more than a year plus the hour a day gains when summer time ends
+	msg(pv("expires_at", futureISO(365*24*time.Hour+3*time.Hour)), 400)
+	if n := qInt(t, e.s, `select count(*) from exceptions`); n != 0 {
+		t.Fatalf("%d invalid requests were stored", n)
+	}
+	// what the dialog can send passes: tomorrow 23:59:59 seen from 23:59:59 today, and day 364 on a 25-hour day
+	msg(pv("expires_at", futureISO(24*time.Hour-time.Second)), 201)
+	sqlExec(t, e.s, `delete from exceptions`)
+	msg(pv("expires_at", futureISO(365*24*time.Hour+time.Hour-time.Second)), 201)
+	msg(pv("reason", "다섯 글자"), 409) // same target still pending: the reason passed
+	// a finding that is not open
+	sqlExec(t, e.s, `update findings set status='fixed', fixed_at=now() where id=$1`, fid)
+	if m := msg(map[string]any{"scope": "finding", "finding_ids": []int64{fid}}, 409); !strings.Contains(m, "열린 결과") {
+		t.Errorf("fixed finding: %s", m)
+	}
+	sqlExec(t, e.s, `update findings set status='open', fixed_at=null where id=$1`, fid)
+	msg(map[string]any{"scope": "finding", "finding_ids": []int64{fid}}, 201)
+}
+
+// An exception past its time reads as expired at once, before the hourly job stores that; the job still notifies.
+func TestExpiredShownBeforeTheJobRuns(t *testing.T) {
+	e := newExEnv(t)
+	_, mck, _ := e.project(t, "web", "CVE-2024-1", "CVE-2024-2")
+	ap := e.request(t, mck, map[string]any{"scope": "project_vuln", "project_key": "web", "vuln_id": "CVE-2024-1"}, 201)[0]
+	pe := e.request(t, mck, map[string]any{"scope": "project_vuln", "project_key": "web", "vuln_id": "CVE-2024-2"}, 201)[0]
+	e.decide(t, e.secA, ap.ID, "approve", 200)
+	sqlExec(t, e.s, `update exceptions set expires_at = now() - interval '1 second'`)
+	list := func(q string) map[int64]string {
+		out := map[int64]string{}
+		for _, x := range decode[[]exView](t, do(t, e.s, "GET", "/api/v1/exceptions"+q, nil, e.secA)) {
+			out[x.ID] = x.Status
+		}
+		return out
+	}
+	if l := list(""); l[ap.ID] != "expired" || l[pe.ID] != "expired" {
+		t.Errorf("list: %v", l)
+	}
+	if l := list("?status=approved,pending"); len(l) != 0 {
+		t.Errorf("status filter still finds them: %v", l)
+	}
+	if l := list("?status=expired"); len(l) != 2 {
+		t.Errorf("status=expired: %v", l)
+	}
+	wantCode(t, do(t, e.s, "POST", "/api/v1/exceptions/"+itoa(ap.ID)+"/revoke", nil, e.secA), 409, "revoke after expiry")
+	// the expired request no longer stands in the way of a new one
+	e.request(t, mck, map[string]any{"scope": "project_vuln", "project_key": "web", "vuln_id": "CVE-2024-2"}, 201)
+	emits := captureEmits(t)
+	e.s.expireExceptions(context.Background())
+	if len(*emits) != 2 || !strings.Contains((*emits)[0], "exception_expired") {
+		t.Errorf("the job must still send exception_expired: %v", *emits)
+	}
+}
+
+// What the audit log and the notifications need: the finding, its target and the people, by name.
+func TestExceptionCarriesNamesForAuditAndNotify(t *testing.T) {
+	e := newExEnv(t)
+	pid, mck, _ := e.project(t, "web", "CVE-2024-1")
+	fid := qint64(t, e.s, `select id from findings where project_id=$1`, pid)
+	emits := captureEmits(t)
+	ex := e.request(t, mck, map[string]any{"scope": "finding", "finding_ids": []int64{fid}}, 201)[0]
+	e.decide(t, e.secA, ex.ID, "approve", 200)
+	var row map[string]any
+	json.Unmarshal(do(t, e.s, "GET", "/api/v1/exceptions", nil, e.secA).Body.Bytes(), &[]*map[string]any{&row})
+	if row["finding_target"] != "app" || row["decided_by_name"] != "seca" || row["requested_by_name"] != "m-web" {
+		t.Errorf("list row: %v", row)
+	}
+	var target string
+	e.s.db.QueryRow(context.Background(), `select target from audit_log where action='exception.approve'`).Scan(&target)
+	if target != "CVE-2024-1 · zlib" {
+		t.Errorf("audit target = %q", target)
+	}
+	last := (*emits)[len(*emits)-1]
+	for _, want := range []string{`"requested_by":"m-web"`, `"decided_by":"seca"`, `"finding_rule":"CVE-2024-1"`, `"finding_pkg":"zlib"`, `"finding_severity":"HIGH"`, `"target":"app"`, `"note":"ok"`} {
+		if !strings.Contains(last, want) {
+			t.Errorf("approved payload misses %s: %s", want, last)
+		}
 	}
 }

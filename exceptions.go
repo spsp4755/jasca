@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"slices"
@@ -41,14 +42,23 @@ type exception struct {
 	FindingRule     *string `json:"finding_rule"`
 	FindingPkg      *string `json:"finding_pkg"`
 	FindingSeverity *string `json:"finding_severity"`
-	// who asked (name, else username; "" once the account is gone), so an approver sees it without a lookup
-	RequestedByName string `json:"requested_by_name"`
+	// who asked and who decided (name, else username; "" once the account is gone), so nobody has to look them up
+	RequestedByName string  `json:"requested_by_name"`
+	FindingTarget   *string `json:"finding_target"` // finding scope: the name of the target the finding is on
+	DecidedByName   string  `json:"decided_by_name"`
 }
 
-const exceptionCols = `select e.id, e.scope, e.project_id, e.finding_id, e.vuln_id, e.resolution, e.reason, e.status, e.requested_by,
+// exStatusSQL is the status people see: past its time an exception is expired at once, whenever the job that
+// stores that (and reopens the findings, and notifies) runs next.
+const exStatusSQL = `(case when e.status in ('pending', 'approved') and e.expires_at <= now() then 'expired' else e.status end)`
+
+const exUserNameSQL = `coalesce((select coalesce(nullif(u.name, ''), u.username) from users u where u.id = e.%s), '')`
+
+var exceptionCols = `select e.id, e.scope, e.project_id, e.finding_id, e.vuln_id, e.resolution, e.reason, ` + exStatusSQL + `, e.requested_by,
 		e.decided_by, e.decided_at, e.decision_note, e.expires_at, e.created_at, p.key, f.rule_id, f.pkg_name, f.severity,
-		coalesce((select coalesce(nullif(u.name, ''), u.username) from users u where u.id = e.requested_by), '')
-	from exceptions e left join projects p on p.id = e.project_id left join findings f on f.id = e.finding_id `
+		` + fmt.Sprintf(exUserNameSQL, "requested_by") + `, t.name, ` + fmt.Sprintf(exUserNameSQL, "decided_by") + `
+	from exceptions e left join projects p on p.id = e.project_id left join findings f on f.id = e.finding_id
+		left join targets t on t.id = f.target_id `
 
 func (s *server) exceptionRoutes() {
 	s.handle("GET /api/v1/exceptions", permUser, s.handleExceptionList)
@@ -72,7 +82,7 @@ func (s *server) handleExceptionList(w http.ResponseWriter, r *http.Request, c *
 	wh := &where{conds: []string{"(e.project_id is null or " + cond + ")"}, args: args}
 	q := r.URL.Query()
 	if v := q.Get("status"); v != "" {
-		wh.add("e.status = any(?)", strings.Split(v, ","))
+		wh.add(exStatusSQL+" = any(?)", strings.Split(v, ","))
 	}
 	if v := q.Get("project"); v != "" {
 		wh.add("p.key = ?", v)
@@ -109,13 +119,17 @@ func (s *server) handleExceptionCreate(w http.ResponseWriter, r *http.Request, c
 	}
 	req.Reason, req.VulnID = strings.TrimSpace(req.Reason), strings.TrimSpace(req.VulnID)
 	exp, err := time.Parse(time.RFC3339, req.ExpiresAt)
-	switch {
+	// The request dialog sends the end of a day, in the browser's zone, from tomorrow to 364 days ahead, both counted
+	// in 24-hour steps from now. In any zone that is between 24h less a second and 365 days plus the hour a day gains
+	// when summer time ends. The same rule here, with an hour of slack for a browser clock that is off.
+	ahead := exp.Sub(time.Now())
+	switch n := utf8.RuneCountInString(req.Reason); {
 	case req.Resolution != "accepted" && req.Resolution != "false_positive":
 		badRequest(w, "처리 방식은 accepted 또는 false_positive입니다.")
-	case req.Reason == "" || utf8.RuneCountInString(req.Reason) > 2000:
-		badRequest(w, "사유를 1~2000자로 입력하세요.")
-	case err != nil || !exp.After(time.Now()) || exp.After(time.Now().AddDate(0, 0, 365)):
-		badRequest(w, "만료일은 지금 이후, 최대 365일 이내의 RFC3339 시각이어야 합니다.")
+	case n < 5 || n > 2000:
+		badRequest(w, "사유를 5~2000자로 입력하세요.")
+	case err != nil || ahead < 23*time.Hour || ahead > 365*24*time.Hour+2*time.Hour:
+		badRequest(w, "만료일은 내일부터 1년 안의 날짜여야 합니다(RFC3339 시각).")
 	default:
 		goto valid
 	}
@@ -152,7 +166,8 @@ valid:
 		}
 		for _, id := range req.FindingIDs {
 			var pid int64
-			if err := s.db.QueryRow(ctx, `select project_id from findings where id = $1`, id).Scan(&pid); err != nil {
+			var status string
+			if err := s.db.QueryRow(ctx, `select project_id, status from findings where id = $1`, id).Scan(&pid, &status); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					notFoundErr(w)
 				} else {
@@ -161,6 +176,10 @@ valid:
 				return
 			}
 			if !role(pid) {
+				return
+			}
+			if status != "open" {
+				writeErr(w, 409, "conflict", "열린 결과만 예외를 요청할 수 있습니다. 이미 해결되었거나 예외 처리된 결과가 들어 있습니다.")
 				return
 			}
 			targets = append(targets, target{&pid, new(int64(id))})
@@ -203,7 +222,7 @@ valid:
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		for _, t := range targets {
 			var dup bool
-			if err := tx.QueryRow(ctx, `select exists(select 1 from exceptions where status = 'pending' and scope = $1
+			if err := tx.QueryRow(ctx, `select exists(select 1 from exceptions where status = 'pending' and expires_at > now() and scope = $1
 				and project_id is not distinct from $2 and finding_id is not distinct from $3 and vuln_id is not distinct from $4)`,
 				req.Scope, t.projectID, t.findingID, vuln).Scan(&dup); err != nil {
 				return err
@@ -244,14 +263,24 @@ valid:
 	writeJSON(w, 201, out)
 }
 
+// exTarget names what the exception covers for the audit log: the vulnerability, or the finding's rule and package.
 func exTarget(ex *exception) string {
-	if ex.VulnID != nil {
+	switch {
+	case ex.VulnID != nil:
 		return *ex.VulnID
-	}
-	if ex.FindingID != nil {
+	case ex.FindingRule != nil:
+		return strings.TrimSuffix(*ex.FindingRule+" · "+deref(ex.FindingPkg), " · ")
+	case ex.FindingID != nil:
 		return "finding:" + itoa(*ex.FindingID)
 	}
 	return ""
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // emitException sends an exception event to its project. A global exception has none, so it goes to every project
@@ -269,7 +298,10 @@ func (s *server) emitException(ctx context.Context, event string, ex *exception,
 		}
 	}
 	p := map[string]any{"exception_id": ex.ID, "scope": ex.Scope, "vuln_id": ex.VulnID, "finding_id": ex.FindingID, "resolution": ex.Resolution,
-		"reason": ex.Reason, "expires_at": ex.ExpiresAt, "project_key": ex.ProjectKey}
+		"reason": ex.Reason, "expires_at": ex.ExpiresAt, "project_key": ex.ProjectKey,
+		// what renderMsg needs to say it in words
+		"requested_by": ex.RequestedByName, "decided_by": ex.DecidedByName, "finding_rule": ex.FindingRule, "finding_pkg": ex.FindingPkg,
+		"finding_severity": ex.FindingSeverity, "target": ex.FindingTarget}
 	if note != "" {
 		p["note"] = note
 	}

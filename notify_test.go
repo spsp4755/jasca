@@ -197,7 +197,7 @@ func TestEmailEscapes(t *testing.T) {
 	p := mkProject(t, s, "web")
 	ch := mkChannel(t, s, "email", "mail", `{"to":["sec@example.internal"]}`, true)
 	sqlExec(t, s, `insert into notify_subs values($1,$2,'{new_critical}')`, p, ch)
-	s.emit(ctx, p, "new_critical", map[string]any{"title": "<script>alert(1)</script>", "top": []any{"<img src=x onerror=1>"}})
+	s.emit(ctx, p, "new_critical", map[string]any{"target": "<script>alert(1)</script>", "critical": 1, "top": []any{"CRITICAL CVE-1 <img src=x onerror=1>"}})
 	s.deliverDue(ctx)
 	if countDeliveries(t, s, "state='sent'") != 1 {
 		var e string
@@ -231,7 +231,7 @@ func TestEmailEscapes(t *testing.T) {
 		t.Errorf("html not escaped: %s", html)
 	}
 	if !strings.Contains(text, "<script>alert(1)</script>") {
-		t.Errorf("plain text lost the title: %s", text)
+		t.Errorf("plain text lost the target name: %s", text)
 	}
 }
 
@@ -318,4 +318,140 @@ func TestUserChannelsListMinimal(t *testing.T) {
 		t.Error("config leaked")
 	}
 	wantCode(t, do(t, s, "GET", "/api/v1/channels", nil), 401, "anonymous")
+}
+
+// Every event reads as a short message a person can act on: no field names, no codes, times in JASCA_TZ.
+func TestNotifyMessagesForPeople(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	if err := s.putSetting(ctx, "sso", ssoSettings{PublicURL: "https://jasca.example.internal/"}); err != nil {
+		t.Fatal(err)
+	}
+	ex := func(more string) string {
+		return `"exception_id":17,"resolution":"accepted","reason":"내부망 전용 서비스로\n해당 기능을 쓰지 않음","expires_at":"2026-12-10T14:59:59Z","requested_by":"이개발"` + more
+	}
+	finding := `,"scope":"finding","finding_id":85,"finding_rule":"CVE-2022-37434","finding_pkg":"zlib","finding_severity":"CRITICAL","target":"alpine-app"`
+	for _, c := range []struct{ event, data, want string }{
+		{"new_critical", `"scan_id":7,"target":"alpine-app","critical":1,"high":3,"top":["CRITICAL CVE-2022-37434 (zlib) heap overflow","HIGH CVE-2 (a)","HIGH CVE-3 (b)","HIGH CVE-4 (c)"]`,
+			`[웹 서비스] 새 CRITICAL/HIGH 취약점 4건
+대상: alpine-app
+CRITICAL 1건, HIGH 3건
+- CRITICAL CVE-2022-37434 (zlib) heap overflow
+- HIGH CVE-2 (a)
+- HIGH CVE-3 (b)
+
+https://jasca.example.internal/scans/7`},
+		{"policy_failed", `"scan_id":7,"target":"alpine-app","reasons":["심각도 CRITICAL 이상 열린 결과가 3건으로 허용 0건을 넘었습니다."]`,
+			`[웹 서비스] 정책 실패
+대상: alpine-app
+사유: 심각도 CRITICAL 이상 열린 결과가 3건으로 허용 0건을 넘었습니다.
+
+https://jasca.example.internal/scans/7`},
+		{"scan_failed", `"scan_id":7,"target":"app","error":"Trivy 실행에 실패했습니다."`,
+			`[웹 서비스] 스캔 실패
+대상: app
+원인: Trivy 실행에 실패했습니다.
+
+https://jasca.example.internal/scans/7`},
+		{"exception_requested", ex(finding),
+			`[웹 서비스] 예외 요청
+요청: 이개발
+취약점: CVE-2022-37434 · zlib · CRITICAL (대상 alpine-app의 결과 1건)
+처리: 위험 수용
+사유: 내부망 전용 서비스로 해당 기능을 쓰지 않음
+만료: 2026-12-10 23:59
+
+https://jasca.example.internal/exceptions?id=17`},
+		{"exception_approved", ex(`,"scope":"project_vuln","vuln_id":"CVE-2022-37434","decided_by":"김보안","note":"확인함"`),
+			`[웹 서비스] 예외 승인
+승인: 김보안 (요청: 이개발)
+취약점: CVE-2022-37434 (프로젝트 전체)
+처리: 위험 수용
+메모: 확인함
+만료: 2026-12-10 23:59
+
+https://jasca.example.internal/exceptions?id=17`},
+		{"exception_rejected", `"exception_id":17,"scope":"global_vuln","vuln_id":"CVE-2022-37434","resolution":"false_positive","requested_by":"이개발","decided_by":"김보안","note":"근거 부족"`,
+			`[웹 서비스] 예외 반려
+반려: 김보안 (요청: 이개발)
+취약점: CVE-2022-37434 (전사)
+처리: 오탐
+메모: 근거 부족
+
+https://jasca.example.internal/exceptions?id=17`},
+		{"exception_expiring", ex(finding),
+			`[웹 서비스] 예외 만료 임박
+취약점: CVE-2022-37434 · zlib · CRITICAL (대상 alpine-app의 결과 1건)
+처리: 위험 수용
+만료: 2026-12-10 23:59 (지나면 결과가 다시 열립니다)
+요청: 이개발
+
+https://jasca.example.internal/exceptions?id=17`},
+		// a delivery queued before the upgrade has no names: the message still reads well
+		{"exception_expired", `"exception_id":17,"scope":"finding","finding_id":85,"vuln_id":null,"resolution":"accepted","reason":"r","expires_at":"2026-12-10T14:59:59Z"`,
+			`[웹 서비스] 예외 만료
+취약점: 결과 #85 (결과 1건)
+처리: 위험 수용
+만료: 2026-12-10 23:59 (이 예외로 처리되던 결과는 다시 열렸습니다)
+
+https://jasca.example.internal/exceptions?id=17`},
+		{"new_known", `"run_id":3,"count":4`,
+			`[웹 서비스] 새로 알려진 취약점 4건
+취약점 DB가 갱신되어, 이미 스캔한 대상에서 취약점 4건이 새로 확인되었습니다.
+다시 스캔하지 않아도 결과 목록에 "재평가"로 표시됩니다.
+
+https://jasca.example.internal/projects/web?origin=recheck`},
+	} {
+		m := s.renderMsg(ctx, c.event, []byte(`{"project_key":"web","project_name":"웹 서비스","data":{`+c.data+`}}`))
+		if got := m.text(); got != c.want {
+			t.Errorf("%s:\n%s\n--- want\n%s", c.event, got, c.want)
+		}
+		if m.subject() != "[JASCA] "+strings.SplitN(c.want, "\n", 2)[0] {
+			t.Errorf("%s subject: %s", c.event, m.subject())
+		}
+	}
+	if len(eventLabels) != 10 {
+		t.Errorf("an event was added (%d): give it a message here", len(eventLabels))
+	}
+	m := s.renderMsg(ctx, "test", []byte(`{"data":{"channel":"보안팀 채널"}}`))
+	if got, want := m.text(), "알림 채널 시험 메시지\n채널: 보안팀 채널\nJASCA가 보낸 시험 메시지입니다. 이 메시지가 보이면 채널 설정이 올바릅니다."; got != want {
+		t.Errorf("test message:\n%s", got)
+	}
+	t.Log("\n" + s.renderMsg(ctx, "exception_requested", []byte(`{"project_key":"web","project_name":"웹 서비스","data":{`+ex(finding)+`}}`)).mattermostText())
+}
+
+// Reasons, names and titles come from users and scanners: they cannot add links, mentions or formatting to a
+// Mattermost post, nor markup to a mail.
+func TestNotifyNeutralisesUserText(t *testing.T) {
+	s := testServer(t)
+	evil := "[재인증](http://evil.example/login) @channel <!here> <http://evil.example|사내 포털> **굵게** ![x](http://evil.example/p.png) <script>alert(1)</script>\n# 제목\n> 인용 `code` ~~x~~ |a|b| ~town-square #tag"
+	raw, _ := json.Marshal(map[string]any{"project_key": "web", "project_name": "웹 @all\r\n**서비스**", "data": map[string]any{
+		"exception_id": 1, "scope": "project_vuln", "vuln_id": "CVE-1](http://evil.example)", "resolution": "accepted", "reason": evil,
+		"requested_by": "<b>이개발</b> @here", "expires_at": "2026-12-10T14:59:59Z"}})
+	m := s.renderMsg(context.Background(), "exception_requested", raw)
+	mm := m.mattermostText()
+	for _, bad := range []string{"@channel", "@all", "@here", "](", "<", "![", "**굵", "`code`", "~~x", "|a|", " ~town", " #tag"} {
+		if strings.Contains(mm, bad) {
+			t.Errorf("Mattermost text keeps %q:\n%s", bad, mm)
+		}
+	}
+	lines := strings.Split(strings.TrimSpace(mm), "\n")
+	if len(lines) != 6 || !strings.HasPrefix(lines[0], "**") || !strings.HasSuffix(lines[0], "예외 요청**") {
+		t.Errorf("user text added lines or broke the title (%d lines):\n%s", len(lines), mm)
+	}
+	for _, l := range lines[1:] {
+		if !strings.Contains(l, ": ") || strings.HasPrefix(l, "#") || strings.HasPrefix(l, ">") {
+			t.Errorf("line does not start with our label: %q", l)
+		}
+	}
+	h := m.html()
+	if strings.Contains(h, "<script") || strings.Contains(h, "<b>") || strings.Contains(h, `href="http://evil`) || !strings.Contains(h, "&lt;script&gt;") {
+		t.Errorf("html: %s", h)
+	}
+	if strings.ContainsAny(m.subject(), "\r\n") {
+		t.Errorf("subject has a line break: %q", m.subject())
+	}
+	if !strings.Contains(m.text(), "[재인증](http://evil.example/login)") {
+		t.Errorf("plain text must keep what the user wrote: %s", m.text())
+	}
 }

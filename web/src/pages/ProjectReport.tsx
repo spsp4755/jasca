@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../components/PageHeader";
 import Table from "../components/Table";
 import Button from "../components/Button";
 import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
+import Empty from "../components/Empty";
 import { PkgCell, SummaryCell } from "./Home";
 import { useToast } from "../components/Toast";
 import { ApiError, api } from "../api/client";
 import { useApi, useAuthConfig } from "../api/hooks";
 import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, TARGET_KIND_LABEL, fmtDate, fmtDateTime, fmtNumber } from "../lib/format";
+import { exceptionWhat } from "./Exceptions";
 import { renderMarkdown } from "../lib/markdown";
 import type { AiRun, ProjectReportData, RunRef } from "../api/types";
 import { Loading } from "./admin/parts";
@@ -27,7 +29,7 @@ export default function ProjectReport() {
   const qc = useQueryClient();
   const q = useApi<ProjectReportData>(`/projects/${k}/report`);
   const ai = useAuthConfig().data?.ai_enabled;
-  const runs = useApi<AiRun[]>(ai ? `/projects/${k}/ai-reports` : null, {
+  const runs = useApi<AiRun[]>(ai && !q.isError ? `/projects/${k}/ai-reports` : null, {
     refetchInterval: (query) => (query.state.data?.some((r) => RUNNING.includes(r.state)) ? 3000 : false), staleTime: 0,
   });
   const [sel, setSel] = useState<number | null>(null);
@@ -44,6 +46,19 @@ export default function ProjectReport() {
   // the API sends the 100 most severe open findings; the report lists the CRITICAL and HIGH ones and counts the rest
   const top = (d?.findings ?? []).filter((f) => f.severity === "CRITICAL" || f.severity === "HIGH");
   const rest = t ? (["medium", "low", "unknown"] as const).filter((s) => t[s] > 0).map((s) => `${s.toUpperCase()} ${fmtNumber(t[s])}건`) : [];
+  if (q.isError) { // nothing to print or summarise: only say so
+    const missing = q.error.status === 404;
+    return (
+      <>
+        <PageHeader title="프로젝트 보고서" crumbs={[{ label: "보고서", to: "/reports" }, { label: key }]} />
+        <div className="panel">
+          <Empty icon={missing ? "folder" : "alert"} title={missing ? "프로젝트를 찾을 수 없습니다" : "보고서를 불러오지 못했습니다"}
+            description={missing ? "키가 틀렸거나, 삭제되었거나, 멤버가 아닌 프로젝트입니다. 소유자에게 멤버 추가를 요청하세요." : q.error.message}
+            action={<Link to="/reports" className="btn btn-secondary btn-sm">보고서 목록</Link>} />
+        </div>
+      </>
+    );
+  }
   return (
     <>
       <PageHeader title={d?.project?.name ? `${d.project.name} 보고서` : "프로젝트 보고서"} crumbs={[{ label: "보고서", to: "/reports" }, { label: key }]}
@@ -80,7 +95,7 @@ export default function ProjectReport() {
                   { key: "t", header: "대상", nowrap: true, render: (r) => r.target }]} />}</section>}
               {(d.exceptions ?? []).length > 0 && <section><h2>예외</h2>
                 <Table dense rows={d.exceptions} rowKey={(r) => r.id} caption="예외" columns={[
-                  { key: "v", header: "취약점", mono: true, render: (r) => r.vuln_id ?? (r.finding_id ? `결과 #${r.finding_id}` : "—") }, { key: "sc", header: "범위", render: (r) => SCOPE_LABEL[r.scope] },
+                  { key: "v", header: "취약점", mono: true, render: exceptionWhat }, { key: "sc", header: "범위", render: (r) => SCOPE_LABEL[r.scope] },
                   { key: "r", header: "처리", render: (r) => RESOLUTION_LABEL[r.resolution] }, { key: "st", header: "상태", render: (r) => <StatusBadge status={r.status} /> },
                   { key: "e", header: "만료", render: (r) => fmtDate(r.expires_at) }]} /></section>}
               {shown?.state === "done" && <section className="page-break"><h2>AI 요약 ({fmtDateTime(shown.finished_at ?? shown.created_at)})</h2><div className="md">{renderMarkdown(shown.output)}</div></section>}

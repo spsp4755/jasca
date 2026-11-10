@@ -209,6 +209,12 @@ func (s *server) handleProjectPatch(w http.ResponseWriter, r *http.Request, c *r
 
 func (s *server) handleProjectDelete(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	ctx := r.Context()
+	// audit rows lose their project_id with the project: the ones written before keys were stored get the key now
+	if _, err := s.db.Exec(ctx, `update audit_log set details = details || jsonb_build_object('project_key', $2::text)
+		where project_id = $1 and not details ? 'project_key'`, c.Project.ID, c.Project.Key); err != nil {
+		writeInternal(w, "project delete", err)
+		return
+	}
 	rows, _ := s.db.Query(ctx, `delete from projects where id=$1 returning (select coalesce(array_agg(id), '{}') from scans where project_id=$1 and status in ('queued', 'running'))`, c.Project.ID)
 	scans, err := pgx.CollectRows(rows, pgx.RowTo[[]int64])
 	if err != nil {
@@ -221,7 +227,7 @@ func (s *server) handleProjectDelete(w http.ResponseWriter, r *http.Request, c *
 		}
 	}
 	// the project row is gone, so the audit row names it by key and id only
-	s.audit(ctx, c, "project.delete", nil, c.Project.Key, map[string]any{"project_id": c.Project.ID, "name": c.Project.Name})
+	s.audit(ctx, c, "project.delete", nil, c.Project.Key, map[string]any{"project_id": c.Project.ID, "name": c.Project.Name, "project_key": c.Project.Key})
 	w.WriteHeader(204)
 }
 
@@ -282,7 +288,7 @@ func (s *server) handleMembersPut(w http.ResponseWriter, r *http.Request, c *req
 			return
 		}
 		if rankRole(m.Role) == 0 {
-			badRequest(w, "역할은 owner, member, viewer 중 하나입니다.")
+			badRequest(w, "역할은 소유자, 멤버, 보기 전용 중 하나입니다.")
 			return
 		}
 		if k := m.PrincipalKind + " " + m.Principal; seen[k] {
@@ -296,9 +302,10 @@ func (s *server) handleMembersPut(w http.ResponseWriter, r *http.Request, c *req
 		}
 	}
 	if owners == 0 {
-		badRequest(w, "owner가 최소 한 명은 있어야 합니다.")
+		badRequest(w, "소유자가 최소 한 명은 있어야 합니다.")
 		return
 	}
+	var old []member
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		var n int
 		if err := tx.QueryRow(ctx, `select count(*) from users where id = any($1)`, userIDs).Scan(&n); err != nil {
@@ -309,6 +316,11 @@ func (s *server) handleMembersPut(w http.ResponseWriter, r *http.Request, c *req
 		}
 		// one member replacement at a time per project
 		if _, err := tx.Exec(ctx, `select 1 from projects where id=$1 for update`, c.Project.ID); err != nil {
+			return err
+		}
+		rows, _ := tx.Query(ctx, `select principal_kind, principal, role, '' from project_members where project_id=$1`, c.Project.ID)
+		var err error
+		if old, err = pgx.CollectRows(rows, pgx.RowToStructByPos[member]); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `delete from project_members where project_id=$1`, c.Project.ID); err != nil {
@@ -330,8 +342,72 @@ func (s *server) handleMembersPut(w http.ResponseWriter, r *http.Request, c *req
 		writeInternal(w, "members put", err)
 		return
 	}
-	s.audit(ctx, c, "project.members", &c.Project.ID, c.Project.Key, map[string]any{"members": list})
+	s.audit(ctx, c, "project.members", &c.Project.ID, c.Project.Key, s.memberDiff(ctx, old, list))
 	w.WriteHeader(204)
+}
+
+// memberChange is one line of a member change in the audit log: who (by name), their role, and the role before.
+type memberChange struct {
+	Name string `json:"name"`
+	Role string `json:"role"`
+	From string `json:"from,omitempty"`
+}
+
+// memberDiff is the audit entry of a member replacement: who was added, removed or given another role, by display
+// name. Each list holds at most 20 names of at most 100 characters; <list>_more counts the rest.
+func (s *server) memberDiff(ctx context.Context, old, cur []member) map[string]any {
+	key := func(m member) string { return m.PrincipalKind + " " + m.Principal }
+	var ids []int64
+	for _, m := range slices.Concat(old, cur) {
+		if id, err := strconv.ParseInt(m.Principal, 10, 64); err == nil && m.PrincipalKind == "user" {
+			ids = append(ids, id)
+		}
+	}
+	names := map[string]string{} // a failed lookup leaves the ids, which is still a record
+	rows, _ := s.db.Query(ctx, `select id::text, coalesce(nullif(name, ''), username) from users where id = any($1)`, ids)
+	var id, n string
+	pgx.ForEachRow(rows, []any{&id, &n}, func() error { names["user "+id] = n; return nil })
+	name := func(m member) string {
+		if n, ok := names[key(m)]; ok {
+			return clip(n, 100)
+		}
+		return clip(m.Principal, 100)
+	}
+	was := map[string]string{}
+	for _, m := range old {
+		was[key(m)] = m.Role
+	}
+	lists := map[string][]memberChange{}
+	for _, m := range cur {
+		if from, ok := was[key(m)]; !ok {
+			lists["added"] = append(lists["added"], memberChange{Name: name(m), Role: m.Role})
+		} else if from != m.Role {
+			lists["changed"] = append(lists["changed"], memberChange{Name: name(m), Role: m.Role, From: from})
+		}
+		delete(was, key(m))
+	}
+	for _, m := range old {
+		if _, gone := was[key(m)]; gone {
+			lists["removed"] = append(lists["removed"], memberChange{Name: name(m), Role: m.Role})
+		}
+	}
+	d := map[string]any{"member_count": len(cur)}
+	for k, l := range lists {
+		slices.SortFunc(l, func(a, b memberChange) int { return strings.Compare(a.Name, b.Name) })
+		if len(l) > 20 {
+			d[k+"_more"], l = len(l)-20, l[:20]
+		}
+		d[k] = l
+	}
+	return d
+}
+
+// clip cuts s to at most n characters, marking the cut.
+func clip(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return s
 }
 
 var errBadMember = errors.New("unknown user in member list")
@@ -347,6 +423,20 @@ type policy struct {
 }
 
 var policySeverities = []string{"CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"}
+
+// maxPolicyCount is far above any real threshold and far inside the integer column policies.max_count.
+const maxPolicyCount = 1000000
+
+// problem is the Korean message for the first invalid field of a policy sent by a client, "" when it is fine.
+func (p policy) problem() string {
+	if !slices.Contains(policySeverities, p.MinSeverity) {
+		return "심각도 기준은 CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN 중 하나입니다."
+	}
+	if p.MaxCount < 0 || p.MaxCount > maxPolicyCount {
+		return "허용 개수는 0 이상 1,000,000 이하의 정수여야 합니다."
+	}
+	return ""
+}
 
 // projectPolicy is the project's policy row, else the setting default_policy, else enabled/CRITICAL/0.
 func (s *server) projectPolicy(ctx context.Context, projectID int64) (policy, error) {
@@ -382,12 +472,8 @@ func (s *server) handlePolicyPut(w http.ResponseWriter, r *http.Request, c *reqC
 		writeBodyErr(w, err)
 		return
 	}
-	if !slices.Contains(policySeverities, p.MinSeverity) {
-		badRequest(w, "심각도 기준은 CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN 중 하나입니다.")
-		return
-	}
-	if p.MaxCount < 0 {
-		badRequest(w, "허용 개수는 0 이상이어야 합니다.")
+	if msg := p.problem(); msg != "" {
+		badRequest(w, msg)
 		return
 	}
 	_, err = s.db.Exec(ctx, `insert into policies(project_id, enabled, min_severity, max_count, new_only, fixable_only)

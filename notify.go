@@ -22,10 +22,10 @@ import (
 	"net/textproto"
 	"net/url"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -73,7 +73,7 @@ func notifyAfterIngest(ctx context.Context, s *server, r *ingestResult) {
 	var tname string
 	s.db.QueryRow(ctx, `select name from targets where id=$1`, r.TargetID).Scan(&tname)
 	if len(r.New) > 0 {
-		rows, err := s.db.Query(ctx, `select severity, rule_id, title from findings
+		rows, err := s.db.Query(ctx, `select severity, rule_id, pkg_name, title from findings
 			where id = any($1) and severity in ('CRITICAL','HIGH') order by severity, id`, r.New)
 		if err != nil {
 			log.Printf("notify new_critical: %v", err)
@@ -81,8 +81,8 @@ func notifyAfterIngest(ctx context.Context, s *server, r *ingestResult) {
 			var top []string
 			var crit, high int
 			for rows.Next() {
-				var sev, rule, title string
-				if rows.Scan(&sev, &rule, &title) != nil {
+				var sev, rule, pkg, title string
+				if rows.Scan(&sev, &rule, &pkg, &title) != nil {
 					break
 				}
 				if sev == "CRITICAL" {
@@ -91,7 +91,10 @@ func notifyAfterIngest(ctx context.Context, s *server, r *ingestResult) {
 					high++
 				}
 				if len(top) < 5 {
-					top = append(top, sev+" "+rule+" "+title)
+					if pkg != "" {
+						rule += " (" + pkg + ")"
+					}
+					top = append(top, strings.TrimSpace(sev+" "+rule+" "+title))
 				}
 			}
 			rows.Close()
@@ -107,29 +110,66 @@ func notifyAfterIngest(ctx context.Context, s *server, r *ingestResult) {
 
 // --- rendering ---
 
-type notifyMsg struct{ Subject, Text, HTML string }
-
-// scalar renders a payload value as text; lists become comma-joined lines.
-func scalar(v any) string {
-	switch x := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return x
-	case []any:
-		parts := make([]string, len(x))
-		for i, e := range x {
-			parts[i] = scalar(e)
-		}
-		return strings.Join(parts, "\n")
-	case float64:
-		return strconv.FormatFloat(x, 'f', -1, 64)
-	}
-	b, _ := json.Marshal(v)
-	return string(b)
+// notifyMsg is one notification as plain text: a title, a few lines and a link. What a user, a scanner or Keycloak
+// supplied (names, reasons, titles) is in there as it was written; html and mattermostText are the only places
+// that turn it into something a mail client or Mattermost interprets, and they escape all of it.
+type notifyMsg struct {
+	Title string
+	Lines []string
+	Link  string
 }
 
-// renderMsg builds the message for a stored delivery. Every value is escaped for HTML with html.EscapeString.
+func (m notifyMsg) subject() string { return "[JASCA] " + m.Title }
+
+func (m notifyMsg) text() string {
+	out := m.Title + "\n" + strings.Join(m.Lines, "\n")
+	if m.Link != "" {
+		out += "\n\n" + m.Link
+	}
+	return out
+}
+
+func (m notifyMsg) html() string {
+	e := html.EscapeString
+	lines := make([]string, len(m.Lines))
+	for i, l := range m.Lines {
+		lines[i] = e(l)
+	}
+	h := "<h3>" + e(m.Title) + "</h3><p>" + strings.Join(lines, "<br>") + "</p>"
+	if m.Link != "" {
+		h += `<p><a href="` + e(m.Link) + `">` + e(m.Link) + "</a></p>"
+	}
+	return h
+}
+
+// mmEscaper makes text literal in a Mattermost post: Markdown punctuation is backslash-escaped, < and > become
+// entities (an incoming webhook also reads Slack's <url|text> and <!channel>), and @ gets a zero-width space after
+// it so that nothing is a mention. A line break never gets here (clean), so there is no line-start syntax to escape.
+var mmEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "@", "@​",
+	`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "~", `\~`, "[", `\[`, "]", `\]`, "(", `\(`, ")", `\)`, "!", `\!`, "|", `\|`, "#", `\#`)
+
+func (m notifyMsg) mattermostText() string {
+	var b strings.Builder
+	b.WriteString("**" + mmEscaper.Replace(m.Title) + "**\n")
+	for _, l := range m.Lines {
+		b.WriteString(mmEscaper.Replace(l) + "\n")
+	}
+	if m.Link != "" {
+		b.WriteString("\n" + m.Link + "\n")
+	}
+	return b.String()
+}
+
+// clean makes a payload value one line of at most 300 characters: line breaks and control characters become spaces.
+func clean(v string) string {
+	return clip(strings.Join(strings.FieldsFunc(v, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }), " "), 300)
+}
+
+var resolutionLabels = map[string]string{"accepted": "위험 수용", "false_positive": "오탐"}
+
+// renderMsg writes the message of a stored delivery for a person: "[project] what happened", then the few lines
+// they need (who, which vulnerability or target, why, until when; times in JASCA_TZ) and a link when the site
+// address is set. A value the payload lacks (deliveries queued by an older version) leaves its line out.
 func (s *server) renderMsg(ctx context.Context, event string, raw []byte) notifyMsg {
 	var p struct {
 		Key  string         `json:"project_key"`
@@ -137,53 +177,123 @@ func (s *server) renderMsg(ctx context.Context, event string, raw []byte) notify
 		Data map[string]any `json:"data"`
 	}
 	json.Unmarshal(raw, &p)
-	label := eventLabels[event]
-	if label == "" {
-		label = event
-	}
-	base := ""
-	if sso, err := s.ssoConf(ctx); err == nil {
-		base = strings.TrimRight(sso.PublicURL, "/")
-	}
-	link := ""
-	if base != "" && p.Key != "" {
-		link = base + "/projects/" + url.PathEscape(p.Key)
-		if id, ok := p.Data["scan_id"].(float64); ok {
-			link = base + "/scans/" + strconv.FormatInt(int64(id), 10)
+	d := p.Data
+	str := func(k string) string { v, _ := d[k].(string); return clean(v) }
+	num := func(k string) int { v, _ := d[k].(float64); return int(v) }
+	var m notifyMsg
+	add := func(label, v string) {
+		if v = strings.TrimSpace(v); v != "" {
+			m.Lines = append(m.Lines, label+": "+v)
 		}
 	}
-	keys := make([]string, 0, len(p.Data))
-	for k := range p.Data {
-		keys = append(keys, k)
+	what := eventLabels[event]
+	if what == "" {
+		what = event
 	}
-	sort.Strings(keys)
-	head := "[" + p.Name + "] " + label
-	var text, h strings.Builder
-	text.WriteString(head + "\n")
-	h.WriteString("<h3>" + html.EscapeString(head) + "</h3><table>")
-	for _, k := range keys {
-		v := scalar(p.Data[k])
-		text.WriteString("\n" + k + ": " + v)
-		h.WriteString("<tr><th align=\"left\">" + html.EscapeString(k) + "</th><td>" +
-			strings.ReplaceAll(html.EscapeString(v), "\n", "<br>") + "</td></tr>")
+	path := ""
+	if p.Key != "" {
+		path = "/projects/" + url.PathEscape(p.Key)
 	}
-	h.WriteString("</table>")
-	if link != "" {
-		text.WriteString("\n\n" + link)
-		h.WriteString("<p><a href=\"" + html.EscapeString(link) + "\">" + html.EscapeString(link) + "</a></p>")
+	if id := num("scan_id"); id > 0 {
+		path = "/scans/" + strconv.Itoa(id)
 	}
-	return notifyMsg{Subject: "[JASCA] " + head, Text: text.String(), HTML: h.String()}
-}
-
-// mattermostText is the Markdown body; @ is broken so a payload value cannot ping @channel.
-func (m notifyMsg) mattermostText() string {
-	var b strings.Builder
-	lines := strings.Split(m.Text, "\n")
-	b.WriteString("**" + strings.ReplaceAll(lines[0], "*", "\\*") + "**\n")
-	for _, l := range lines[1:] {
-		b.WriteString(strings.NewReplacer("@", "@​", "`", "'").Replace(l) + "\n")
+	switch event {
+	case "new_critical":
+		what = fmt.Sprintf("새 CRITICAL/HIGH 취약점 %d건", num("critical")+num("high"))
+		add("대상", str("target"))
+		var counts []string
+		for _, sev := range []string{"CRITICAL", "HIGH"} {
+			if n := num(strings.ToLower(sev)); n > 0 {
+				counts = append(counts, fmt.Sprintf("%s %d건", sev, n))
+			}
+		}
+		m.Lines = append(m.Lines, strings.Join(counts, ", "))
+		top, _ := d["top"].([]any)
+		for _, t := range top[:min(3, len(top))] { // the most severe three; the scan page has the rest
+			if t, ok := t.(string); ok {
+				m.Lines = append(m.Lines, "- "+clean(t))
+			}
+		}
+	case "policy_failed":
+		add("대상", str("target"))
+		reasons, _ := d["reasons"].([]any)
+		add("사유", clean(strings.Trim(fmt.Sprintln(reasons...), "\n")))
+	case "scan_failed":
+		add("대상", str("target"))
+		add("원인", str("error"))
+	case "exception_requested", "exception_approved", "exception_rejected", "exception_expiring", "exception_expired":
+		path = "/exceptions?id=" + strconv.Itoa(num("exception_id"))
+		vuln := str("vuln_id")
+		switch str("scope") {
+		case "finding":
+			vuln = strings.Join(slices.DeleteFunc([]string{str("finding_rule"), str("finding_pkg"), str("finding_severity")},
+				func(v string) bool { return v == "" }), " · ")
+			if vuln == "" {
+				vuln = fmt.Sprintf("결과 #%d", num("finding_id"))
+			}
+			if t := str("target"); t != "" {
+				vuln += " (대상 " + t + "의 결과 1건)"
+			} else {
+				vuln += " (결과 1건)"
+			}
+		case "project_vuln":
+			vuln += " (프로젝트 전체)"
+		case "global_vuln":
+			vuln += " (전사)"
+		}
+		by, res, exp := str("requested_by"), resolutionLabels[str("resolution")], ""
+		if t, err := time.Parse(time.RFC3339, str("expires_at")); err == nil {
+			exp = t.In(s.cfg.Loc).Format("2006-01-02 15:04")
+		}
+		switch event {
+		case "exception_requested":
+			add("요청", by)
+			add("취약점", vuln)
+			add("처리", res)
+			add("사유", str("reason"))
+			add("만료", exp)
+		case "exception_approved", "exception_rejected":
+			who := str("decided_by")
+			if by != "" {
+				who += " (요청: " + by + ")"
+			}
+			add(strings.TrimPrefix(what, "예외 "), who)
+			add("취약점", vuln)
+			add("처리", res)
+			add("메모", str("note"))
+			if event == "exception_approved" {
+				add("만료", exp)
+			}
+		default:
+			add("취약점", vuln)
+			add("처리", res)
+			if event == "exception_expiring" {
+				add("만료", exp+" (지나면 결과가 다시 열립니다)")
+			} else {
+				add("만료", exp+" (이 예외로 처리되던 결과는 다시 열렸습니다)")
+			}
+			add("요청", by)
+		}
+	case "new_known":
+		what = fmt.Sprintf("새로 알려진 취약점 %d건", num("count"))
+		m.Lines = []string{fmt.Sprintf("취약점 DB가 갱신되어, 이미 스캔한 대상에서 취약점 %d건이 새로 확인되었습니다.", num("count")),
+			`다시 스캔하지 않아도 결과 목록에 "재평가"로 표시됩니다.`}
+		if path != "" {
+			path += "?origin=recheck"
+		}
+	case "test":
+		what = "알림 채널 시험 메시지"
+		add("채널", str("channel"))
+		m.Lines = append(m.Lines, "JASCA가 보낸 시험 메시지입니다. 이 메시지가 보이면 채널 설정이 올바릅니다.")
 	}
-	return b.String()
+	m.Title = what
+	if name := clean(p.Name); name != "" {
+		m.Title = "[" + name + "] " + what
+	}
+	if sso, err := s.ssoConf(ctx); err == nil && sso.PublicURL != "" && path != "" {
+		m.Link = strings.TrimRight(sso.PublicURL, "/") + path
+	}
+	return m
 }
 
 // --- sending ---
@@ -347,10 +457,10 @@ func buildMail(from *mail.Address, to []string, m notifyMsg) []byte {
 	var idb [8]byte
 	rand.Read(idb[:])
 	mw := multipart.NewWriter(&buf)
-	hdr := "From: " + from.String() + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + mime.QEncoding.Encode("utf-8", strings.NewReplacer("\r", " ", "\n", " ").Replace(m.Subject)) +
+	hdr := "From: " + from.String() + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + mime.QEncoding.Encode("utf-8", strings.NewReplacer("\r", " ", "\n", " ").Replace(m.subject())) +
 		"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\nMessage-ID: <" + hex.EncodeToString(idb[:]) + "@jasca>\r\nMIME-Version: 1.0\r\n" +
 		"Content-Type: multipart/alternative; boundary=" + mw.Boundary() + "\r\n\r\n"
-	for _, p := range []struct{ typ, body string }{{"text/plain", m.Text}, {"text/html", m.HTML}} {
+	for _, p := range []struct{ typ, body string }{{"text/plain", m.text()}, {"text/html", m.html()}} {
 		pw, _ := mw.CreatePart(textproto.MIMEHeader{"Content-Type": {p.typ + "; charset=utf-8"}, "Content-Transfer-Encoding": {"quoted-printable"}})
 		qw := quotedprintable.NewWriter(pw)
 		qw.Write([]byte(p.body))
@@ -624,7 +734,7 @@ func (s *server) handleChannelTest(w http.ResponseWriter, r *http.Request, c *re
 		writeInternal(w, "channel test", err)
 		return
 	}
-	raw, _ := json.Marshal(map[string]any{"project_name": "JASCA", "data": map[string]any{"channel": name, "message": "JASCA 알림 채널 시험 메시지입니다."}})
+	raw, _ := json.Marshal(map[string]any{"data": map[string]any{"channel": name}})
 	serr := s.sendChannel(r.Context(), kind, cfg, s.renderMsg(r.Context(), "test", raw))
 	s.audit(r.Context(), c, "channel.test", nil, itoa(id), map[string]any{"ok": serr == nil})
 	if serr != nil {

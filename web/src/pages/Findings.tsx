@@ -2,7 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type Key } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { API_BASE, ApiError, api, qs } from "../api/client";
-import { useApi } from "../api/hooks";
+import { isSecurity, useApi, useMe } from "../api/hooks";
 import type { Finding, FindingPage, Project, Target } from "../api/types";
 import Button from "../components/Button";
 import Empty from "../components/Empty";
@@ -13,7 +13,7 @@ import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
 import Table, { type Column } from "../components/Table";
 import { KIND_LABEL, fmtDate, fmtDaysAgo, fmtNumber } from "../lib/format";
-import FindingDrawer, { ExceptionRequestDialog } from "./FindingDrawer";
+import FindingDrawer, { ExceptionRequestDialog, canAskFor } from "./FindingDrawer";
 import { PkgCell, ProjectTarget } from "./Home";
 
 const LIMIT = 100;
@@ -52,6 +52,11 @@ export function FindingsView({ project, projects, targets }: { project?: string;
   }, { replace: true });
   const [ask, setAsk] = useState(false);
   useEffect(() => setSelected(new Set()), [query]);
+  // rows are chosen only to ask for an exception, so the checkboxes follow who may ask (the drawer's rule)
+  const sec = isSecurity(useMe().data);
+  const roles = useApi<Project[]>("/projects").data;
+  const canAsk = (r: Finding) => canAskFor(r, roles?.find((p) => p.key === r.project_key)?.my_role, sec);
+  const anyAsk = sec || !!roles?.some((p) => (project ? p.key === project : true) && (p.my_role === "member" || p.my_role === "owner"));
   const picked = rows.filter((r) => selected.has(r.id) && r.status === "open"); // only open findings can get an exception
 
   const columns: Column<Finding>[] = [
@@ -92,13 +97,18 @@ export function FindingsView({ project, projects, targets }: { project?: string;
           <Icon name="table" size={14} />CSV 내려받기
         </a>
       </div>
+      {openId && fetched.isError && (
+        <div className="alert alert-warn" role="alert"><Icon name="alert" />
+          {fetched.error.status === 404 ? `이 결과(#${openId})를 찾을 수 없습니다. 삭제되었거나 볼 권한이 없는 프로젝트의 결과입니다.` : fetched.error.message}
+          <Button size="sm" className="alert-action" onClick={() => setOpen(null)}>닫기</Button></div>
+      )}
       {q.isError && (
         <div className="alert alert-danger" role="alert"><Icon name="alert" />{q.error.message}
           <Button size="sm" className="alert-action" onClick={() => q.refetch()}>다시 시도</Button></div>
       )}
       <div className="panel">
         <Table caption="결과 목록" rows={rows} rowKey={(r) => r.id} columns={columns} loading={q.isPending} dense
-          selected={selected} onSelectedChange={setSelected} onRowClick={setOpen}
+          {...(anyAsk ? { selected, onSelectedChange: setSelected, selectableRow: canAsk } : {})} onRowClick={setOpen}
           empty={(
             <Empty compact icon="shieldCheck" title="조건에 맞는 결과가 없습니다"
               description={filters.status === "open" ? "열린 결과만 보고 있습니다. 해결되거나 예외 처리된 결과도 보려면 상태를 '모든 상태'로 바꾸세요." : "필터를 줄이거나 검색어를 바꿔 보세요."} />

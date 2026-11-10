@@ -4,7 +4,7 @@ import Button from "../../components/Button";
 import { useApi } from "../../api/hooks";
 import { api } from "../../api/client";
 import type { DefaultPolicy as P } from "../../api/types";
-import { PolicyFields } from "../ProjectSettings";
+import { PolicyFields, policyCountError } from "../ProjectSettings";
 import { Loading, Panel, useSave } from "./parts";
 
 export default function DefaultPolicy() {
@@ -20,7 +20,7 @@ export default function DefaultPolicy() {
         <Panel title="정책" meta="프로젝트 설정의 정책과 같은 방식입니다">
           <form className="form" onSubmit={(e) => { e.preventDefault(); save.mutate(undefined); }}>
             <PolicyFields p={f} set={(patch) => setF({ ...f, ...patch })} label="기본 정책 사용 (끄면 자체 정책이 없는 프로젝트는 항상 정책 통과)" />
-            <div className="form-actions"><Button type="submit" variant="primary" loading={save.isPending}>저장</Button></div>
+            <div className="form-actions"><Button type="submit" variant="primary" disabled={!!policyCountError(f)} loading={save.isPending}>저장</Button></div>
           </form>
         </Panel>
       )}

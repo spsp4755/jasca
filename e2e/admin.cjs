@@ -43,7 +43,20 @@ L.run(async () => {
     await page.locator(".admin-main h1, main h1").first().waitFor();
     await page.waitForLoadState("networkidle");
   }
-  L.ok(await page.getByRole("table", { name: "감사 로그" }).getByText("메일(SMTP) 설정 변경").count() > 0, "the audit screen names actions in Korean");
+  const auditTable = page.getByRole("table", { name: "감사 로그" });
+  L.ok(await auditTable.getByText("메일(SMTP) 설정 변경").count() > 0, "the audit screen names actions in Korean");
+  const only = async (action, first) => { // filters by action and waits for a row of it
+    await page.getByLabel("동작").selectOption(action);
+    await page.getByRole("button", { name: "조회" }).click();
+    await auditTable.getByText(first).first().waitFor();
+    return auditTable.innerText();
+  };
+  let rows = await only("user.update", "Keycloak 역할 따름: 예");
+  L.ok(/역할: 관리자 → 일반 사용자/.test(rows) && /역할: 관리자(?! →)/.test(rows), "role changes read in words, the plain-user role included");
+  rows = await only("project.members", /추가: /);
+  L.ok(/추가: .*개발본부\/플랫폼팀\(멤버\)/.test(rows) && /e2e-proj/.test(rows) && !/멤버: \d+개/.test(rows), "a member change says who was added with which role, and names the project");
+  rows = await only("exception.request", /처리: 위험 수용/);
+  L.ok(/범위: 결과/.test(rows) && /e2e-exc/.test(rows) && !/accepted|finding:/.test(rows), "exception entries use the screen's words for scope and resolution");
   await page.goto(`${L.BASE}/projects`);
   await page.goto(`${L.BASE}/findings`);
   await page.waitForLoadState("networkidle");

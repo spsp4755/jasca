@@ -49,7 +49,7 @@ export default function ProjectDetail() {
             {p.description && <span className="proj-desc">{p.description}</span>}
           </span>
         )}
-        actions={<Link to={`/scan?project=${encodeURIComponent(key)}`} className="btn btn-primary"><Icon name="scan" />스캔하기</Link>} />
+        actions={p && p.my_role !== "viewer" && <Link to={`/scan?project=${encodeURIComponent(key)}`} className="btn btn-primary"><Icon name="scan" />스캔하기</Link>} />
       {p && <CountsStrip c={p.counts} projectKey={p.key} />}
       <Tabs label="프로젝트 화면" value={tab} onChange={(id) => navigate(`/projects/${encodeURIComponent(key)}${id === "results" ? "" : `/${id}`}`)}
         tabs={[

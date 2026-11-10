@@ -33,5 +33,17 @@ L.run(async () => {
   await page.goto(`${L.BASE}/projects/${key}`);
   await page.getByRole("table", { name: "결과 목록" }).getByText("JASCA-E2E-001").first().waitFor();
   L.ok(true, "the project results screen shows it");
+
+  // the vulnerability page says it is an internal advisory and links to it
+  await page.goto(`${L.BASE}/vulns/JASCA-E2E-001`);
+  await page.getByRole("link", { name: "사내 Advisory" }).first().waitFor();
+  L.ok(!(await page.locator(".detail-side").innerText()).includes("공개일"), "an internal advisory's page is tagged 사내 Advisory instead of showing an empty 공개일");
+  // switched off, the preview says what saving does: the finding is resolved, nothing new is created
+  await page.goto(`${L.BASE}/advisories/JASCA-E2E-001`);
+  await page.getByLabel(/사용 중/).uncheck();
+  await page.getByRole("button", { name: "영향 미리보기" }).click();
+  await dlg.getByText(/저장하면 이 Advisory로 생긴 결과 \d+건이 해결됨으로 바뀌고/).waitFor();
+  L.ok(true, "with 사용 중 off the preview says the finding will be resolved");
+  await dlg.getByRole("button", { name: "계속 수정" }).click(); // not saved: the a11y suite still finds the advisory in use
   await browser.close();
 });

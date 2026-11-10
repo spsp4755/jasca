@@ -84,6 +84,7 @@ type vulnView struct {
 	LastModifiedAt *time.Time     `json:"last_modified_at"`
 	AIGuide        string         `json:"ai_guide"`
 	AIGuideAt      *time.Time     `json:"ai_guide_at"`
+	Advisory       bool           `json:"advisory"` // the id is an internal advisory (GET /advisories/{id}), not a public CVE
 	Affected       []vulnAffected `json:"affected"`
 }
 
@@ -92,9 +93,9 @@ func (s *server) handleVulnGet(w http.ResponseWriter, r *http.Request, c *reqCtx
 	ctx := r.Context()
 	var v vulnView
 	err := s.db.QueryRow(ctx, `select id, title, description, cvss_score::float8, cvss_vector, refs, cwe_ids, published_at,
-			last_modified_at, ai_guide, ai_guide_at from vulns where id = $1`, r.PathValue("id")).
+			last_modified_at, ai_guide, ai_guide_at, exists (select 1 from advisories a where a.id = vulns.id) from vulns where id = $1`, r.PathValue("id")).
 		Scan(&v.ID, &v.Title, &v.Description, &v.CVSSScore, &v.CVSSVector, &v.Refs, &v.CWEIDs, &v.PublishedAt,
-			&v.LastModifiedAt, &v.AIGuide, &v.AIGuideAt)
+			&v.LastModifiedAt, &v.AIGuide, &v.AIGuideAt, &v.Advisory)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeErr(w, 404, "not_found", "취약점 정보를 찾을 수 없습니다.")
 		return

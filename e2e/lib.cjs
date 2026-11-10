@@ -22,6 +22,8 @@ const CONSOLE_ALLOW = [
   // login.cjs, a11y.cjs and trivydb.cjs do things the server answers with a 4xx on purpose; Chrome logs every failed resource load.
   { suites: /^(login|a11y)$/, text: /status of 401/, url: /\/api\/v1\/auth\/local$/ },
   { suites: /^trivydb$/, text: /status of 400/, url: /\/api\/v1\/admin\/trivy(\/db)?$/ }, // bad bundle, bad option
+  // exceptions.cjs opens a report and a finding as someone without access; the 404s are the point.
+  { suites: /^exceptions$/, text: /status of 404/, url: /\/api\/v1\/(projects\/e2e-exc\/report|findings\/\d+)$/ },
 ];
 
 const hooks = (ctx, who) => {
