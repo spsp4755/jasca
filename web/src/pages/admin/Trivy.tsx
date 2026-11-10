@@ -181,7 +181,7 @@ function ScanOptions({ current, defaultTimeout }: { current: TrivyOptions; defau
             </div>
             <p id="opt-sev-hint" className="field-hint">체크한 심각도만 결과에 넣습니다. 예: LOW와 UNKNOWN을 끄면 조치가 급한 항목만 남습니다. 취약점·비밀값·설정 오류 모두에 적용됩니다.</p>
           </fieldset>
-          <Choice label="수정 버전이 없는 취약점 제외" checked={f.ignore_unfixed} onChange={(v) => set({ ignore_unfixed: v })}
+          <Choice label="조치 버전이 없는 취약점 제외" checked={f.ignore_unfixed} onChange={(v) => set({ ignore_unfixed: v })}
             hint="패치가 아직 나오지 않아 버전을 올려도 해결되지 않는 취약점을 뺍니다. 지금 조치할 수 있는 것만 보고 싶을 때 켭니다." />
           <div className="opt-cols">
             <Field label="건너뛸 디렉터리" hint="서버 스캔(압축 파일·이미지)에서 이 경로 아래는 읽지 않습니다. 한 줄에 하나씩, 최대 50개. 예: node_modules, **/testdata">

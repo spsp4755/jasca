@@ -1,4 +1,4 @@
-# JASCA v1.0.0 — 폐쇄망 배포 / 데이터 보존
+# JASCA v1.0.1 — 폐쇄망 배포 / 데이터 보존
 
 ## 가장 중요한 점
 
@@ -17,7 +17,7 @@
 
 | 파일 | 용도 |
 |---|---|
-| jasca-v1.0.0.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.0.0`만 포함(Trivy 0.76.1 실행 파일 포함) |
+| jasca-v1.0.1.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.0.1`만 포함(Trivy 0.76.1 실행 파일 포함) |
 | postgres-v17.11-jasca1.tar.gz | 별도 선택 이미지 `postgres:v17.11-jasca1` (공식 17.11-bookworm 기반, 쓰지 않는 gosu·snakeoil 키 제거, root로 실행 불가) |
 | jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress |
 | postgres.yaml | 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
@@ -33,16 +33,16 @@
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS # 이번에 반입한 파일 검증
-podman load -i jasca-v1.0.0.tar.gz
+podman load -i jasca-v1.0.1.tar.gz
 podman load -i postgres-v17.11-jasca1.tar.gz
-podman image inspect jasca:v1.0.0 --format '{{.Os}}/{{.Architecture}}'
+podman image inspect jasca:v1.0.1 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 **Podman load만으로 Kubernetes containerd에 이미지가 등록되지는 않습니다.** 실행 가능한 모든 워커의 실제 CRI에 반입하세요.
 
 ```sh
 # 일반 containerd
-sudo ctr -n k8s.io images import jasca-v1.0.0.tar.gz
+sudo ctr -n k8s.io images import jasca-v1.0.1.tar.gz
 sudo ctr -n k8s.io images import postgres-v17.11-jasca1.tar.gz
 # k3s는 sudo k3s ctr images import, RKE2는 해당 런타임의 socket/ctr 사용.
 ```

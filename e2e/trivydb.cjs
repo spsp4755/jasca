@@ -69,7 +69,7 @@ L.run(async () => {
   // scan options
   const saveBtn = page.getByRole("button", { name: "저장" });
   L.ok(await saveBtn.isDisabled(), "저장 is disabled until something changes");
-  await page.getByLabel(/^수정 버전이 없는 취약점 제외/).check();
+  await page.getByLabel(/^조치 버전이 없는 취약점 제외/).check();
   await page.getByRole("group", { name: "결과에 넣을 심각도" }).getByLabel("LOW", { exact: true }).uncheck();
   await page.getByLabel("건너뛸 디렉터리").fill("node_modules\n\n  **/testdata  \n");
   await saveBtn.click();
