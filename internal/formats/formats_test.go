@@ -291,3 +291,27 @@ func TestTrivySamePackageTwoPaths(t *testing.T) {
 		t.Fatalf("packages %+v", rep.Packages)
 	}
 }
+
+// A server scan of source runs Trivy twice (lock files, then Java archives); the two reports become one.
+func TestMerge(t *testing.T) {
+	parse := func(doc string) *Report {
+		r, err := trivyParser{}.Parse(strings.NewReader(doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	vuln := `{"VulnerabilityID":"CVE-2021-44228","PkgName":"org.apache.logging.log4j:log4j-core","InstalledVersion":"2.14.1","Severity":"CRITICAL","PkgPath":"lib/log4j-core-2.14.1.jar"}`
+	jar := `{"SchemaVersion":2,"ArtifactName":"jars","Results":[{"Target":"Java","Class":"lang-pkgs","Type":"jar",
+		"Packages":[{"Name":"org.apache.logging.log4j:log4j-core","Version":"2.14.1","FilePath":"lib/log4j-core-2.14.1.jar"}],"Vulnerabilities":[` + vuln + `]}]}`
+	r := parse(`{"SchemaVersion":2,"ArtifactName":"src","Results":[{"Target":".env","Class":"secret","Secrets":[{"RuleID":"aws-access-key-id","Match":"x"}]}]}`)
+	r.Merge(parse(jar))
+	if len(r.Packages) != 1 || r.Packages[0].Path != "lib/log4j-core-2.14.1.jar" || r.Packages[0].Ecosystem != "maven" || len(r.Findings) != 2 ||
+		!r.Complete["secret:trivy"] || !r.Complete["vuln:trivy"] {
+		t.Fatalf("%+v", r)
+	}
+	r.Merge(parse(jar)) // the same finding again is one finding
+	if len(r.Findings) != 2 {
+		t.Fatalf("findings after a repeated merge: %d", len(r.Findings))
+	}
+}

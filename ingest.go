@@ -23,7 +23,9 @@ type ingestInput struct {
 	Report                              *formats.Report
 	Raw                                 []byte // the decoded upload; nil = nothing to keep and no duplicate check
 	UserID, TokenID                     *int64
-	ScanID                              *int64 // pre-created queued scan for server/harbor jobs: finished instead of inserted
+	ScanID                              *int64   // pre-created queued scan for server/harbor jobs: finished instead of inserted
+	Warnings                            []string // what the scan could not examine, in Korean (summary.warnings)
+	NotJudged                           string   // set: the policy fails with this reason whatever the counts are
 }
 
 type ingestResult struct {
@@ -47,7 +49,7 @@ var afterIngest []func(ctx context.Context, s *server, r *ingestResult)
 func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, error) {
 	rep := in.Report
 	res := &ingestResult{ProjectID: in.ProjectID}
-	var notEvaluated string
+	notEvaluated := in.NotJudged
 	if rep.Format == "cyclonedx" { // an SBOM has packages only: evaluate it now, before the transaction
 		notEvaluated = s.evalSBOM(ctx, rep)
 	}
@@ -64,7 +66,7 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 			return err
 		}
 		if sum != nil && in.ScanID == nil {
-			err := tx.QueryRow(ctx, `select id, summary - 'os' from scans where target_id = $1 and report_sha256 = $2
+			err := tx.QueryRow(ctx, `select id, summary - '{os,packages,warnings}'::text[] from scans where target_id = $1 and report_sha256 = $2
 				and status = 'done' and created_at > now() - interval '10 minutes' order by id desc limit 1`,
 				res.TargetID, sum).Scan(&res.ScanID, &res.Summary)
 			if err == nil {
@@ -147,6 +149,10 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 		stored := map[string]any{}
 		for k, v := range res.Summary {
 			stored[k] = v
+		}
+		stored["packages"] = len(rep.Packages) // how much was examined: a clean result of 0 packages is no result
+		if len(in.Warnings) > 0 {
+			stored["warnings"] = in.Warnings
 		}
 		if rep.OS != nil { // the recheck task rebuilds the OS component from this
 			stored["os"] = map[string]string{"family": rep.OS.Family, "name": rep.OS.Name}

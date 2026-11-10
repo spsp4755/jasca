@@ -18,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/spsp4755/jasca/internal/formats"
 )
 
 func init() {
@@ -110,6 +112,7 @@ func postScanJob(t *testing.T, s *server, ck *http.Cookie, key string, fields ma
 
 func mustScanJob(t *testing.T, s *server, ck *http.Cookie, target, kind string, file []byte) int64 {
 	t.Helper()
+	fakeTrivyDB(t, s) // without one the upload is refused (TestScanNeedsTrivyDB)
 	rec := postScanJob(t, s, ck, "web", map[string]string{"target": target, "kind": kind}, file)
 	if rec.Code != 201 {
 		t.Fatalf("scan job: %d %s", rec.Code, rec.Body.String())
@@ -201,19 +204,9 @@ func TestScanJobWithFakeTrivy(t *testing.T) {
 	if calls := readLog(logPath); len(calls) != 2 || calls[1] != "image|"+work+"/upload" {
 		t.Fatalf("trivy calls: %v", calls)
 	}
-	// no Java DB installed: Java archives are skipped, or real Trivy fails the whole scan at the first JAR
-	if args, _ := os.ReadFile(argsPath); !strings.Contains(string(args), "--skip-files=**/*.jar") {
-		t.Fatalf("no java db, args:\n%s", args)
-	}
-	fakeTrivyDB(t, s)
-	os.MkdirAll(filepath.Join(s.trivyCacheDir(), "java-db"), 0o755)
-	os.WriteFile(filepath.Join(s.trivyCacheDir(), "java-db", "metadata.json"), []byte(`{"Version":1,"UpdatedAt":"2026-11-01T00:00:00Z"}`), 0o644)
-	mustScanJob(t, s, ck, "app", "image", mkTarGz(t, false, arEnt{name: "manifest.json", body: "[1]"}))
-	if ran, err := s.runNextJob(ctx); !ran || err != nil {
-		t.Fatal(ran, err)
-	}
+	// Java archives are skipped only after Trivy failed at one (TestImageWithJarsWithoutJavaDB), never up front
 	if args, _ := os.ReadFile(argsPath); strings.Contains(string(args), "--skip-files") {
-		t.Fatalf("java db installed, args:\n%s", args)
+		t.Fatalf("image scan args:\n%s", args)
 	}
 	var kind string
 	s.db.QueryRow(ctx, `select t.kind from scans s join targets t on t.id=s.target_id where s.id=$1`, id).Scan(&kind)
@@ -227,6 +220,7 @@ func TestScanJobUploadRules(t *testing.T) {
 	_, ck := memberSession(t, s)
 	s.cfg.MaxScanUploadMB = 1
 	zip := mkZip(t, arEnt{name: "a", body: "x"})
+	fakeTrivyDB(t, s)
 	for name, c := range map[string]struct {
 		fields map[string]string
 		file   []byte
@@ -241,6 +235,9 @@ func TestScanJobUploadRules(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rec := postScanJob(t, s, ck, "web", c.fields, c.file)
 			wantCode(t, rec, c.code, name)
+			if empty := strings.Contains(rec.Body.String(), "빈 파일"); empty != (name == "empty file") {
+				t.Errorf("%s: %s", name, rec.Body.String())
+			}
 		})
 	}
 	if n := qInt(t, s, `select count(*) from scans`) + qInt(t, s, `select count(*) from jobs`); n != 0 {
@@ -273,15 +270,23 @@ func TestExtractCleansUp(t *testing.T) {
 	if len(readLog(logPath)) != 0 {
 		t.Fatal("trivy ran on a rejected archive")
 	}
-	// a trivy failure also fails the scan with a Korean message and cleans up
-	t.Setenv("FAKETRIVY_FAIL", "1")
+	// a trivy failure also fails the scan with a Korean message and cleans up. The message does not blame the file:
+	// the cause is in the server log, and most causes are not the file
+	t.Setenv("FAKETRIVY_FAIL", "FATAL init error: DB error: --skip-db-update cannot be specified on the first run")
 	id = mustScanJob(t, s, ck, "ok", "fs", mkZip(t, arEnt{name: "a.txt", body: "x"}))
 	s.runNextJob(ctx)
-	if st, msg := scanStatus(t, s, id); st != "failed" || !strings.Contains(msg, "Trivy") {
+	if st, msg := scanStatus(t, s, id); st != "failed" || !strings.Contains(msg, "Trivy") || strings.Contains(msg, "압축 파일") || strings.Contains(msg, "이미지") {
 		t.Fatalf("trivy failure: %s %q", st, msg)
 	}
 	if !gone(filepath.Join(s.cfg.DataDir, "work", itoa(id))) {
 		t.Fatal("work dir left after trivy failure")
+	}
+	// only when Trivy said it could not read the file as an image does the message say so
+	t.Setenv("FAKETRIVY_FAIL", "FATAL unable to initialize artifact: unable to initialize archive image: 2 errors occurred")
+	id = mustScanJob(t, s, ck, "notimage", "image", []byte("not an image"))
+	s.runNextJob(ctx)
+	if st, msg := scanStatus(t, s, id); st != "failed" || !strings.Contains(msg, "컨테이너 이미지로 읽지 못했습니다") {
+		t.Fatalf("not an image: %s %q", st, msg)
 	}
 }
 
@@ -583,7 +588,7 @@ func TestTrivyOptionsReachEveryRun(t *testing.T) {
 	t.Setenv("FAKETRIVY_ARGS", argsPath)
 	wantCode(t, do(t, s, "PUT", "/api/v1/admin/trivy", fullTrivyOptions(), loginAs(t, s, mkUser(t, s, "adm", "admin"))), 200, "put options")
 	everywhere := []string{"--ignore-unfixed", "--severity=CRITICAL,HIGH", "--pkg-types=library", "--detection-priority=comprehensive", "--timeout=31m0s"}
-	files := []string{"--skip-dirs=-rf", "--skip-dirs=node_modules", "--skip-files=**/*.min.js", "--skip-files=**/*.jar"}
+	files := []string{"--skip-dirs=-rf", "--skip-dirs=node_modules", "--skip-files=**/*.min.js"}
 	check := func(what, kind string, want, not []string) {
 		t.Helper()
 		b, _ := os.ReadFile(argsPath)
@@ -632,7 +637,7 @@ func TestTrivyOptionsReachEveryRun(t *testing.T) {
 	}
 	mustScanJob(t, s, ck, "web-src", "fs", mkZip(t, arEnt{name: "package-lock.json", body: "{ }"}))
 	run()
-	check("defaults", "fs", []string{"--timeout=16m0s", "--skip-files=**/*.jar"}, []string{"--ignore-unfixed", "--severity", "--pkg-types", "--detection-priority", "--skip-dirs", "--skip-files=**/*.min.js", "--include-dev-deps"})
+	check("defaults", "fs", []string{"--timeout=16m0s"}, []string{"--ignore-unfixed", "--severity", "--pkg-types", "--detection-priority", "--skip-dirs", "--skip-files", "--include-dev-deps"})
 }
 
 func TestWorkDirCleanup(t *testing.T) {
@@ -681,4 +686,356 @@ func TestCrashingScanIsNotRequeuedForever(t *testing.T) {
 	if st, msg := scanStatus(t, s, id); st != "failed" || msg == "" {
 		t.Fatalf("scan %s %q", st, msg)
 	}
+}
+
+// fakeJavaDB makes s look like it has an installed Java DB.
+func fakeJavaDB(t *testing.T, s *server) {
+	t.Helper()
+	dir := filepath.Join(s.trivyCacheDir(), "java-db")
+	os.MkdirAll(dir, 0o755)
+	if err := os.WriteFile(filepath.Join(dir, "metadata.json"), []byte(`{"Version":1,"UpdatedAt":"2026-11-01T00:00:00Z"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type scanOut struct {
+	Status  string `json:"status"`
+	Error   string `json:"error"`
+	Summary struct {
+		Open     int      `json:"open"`
+		Packages *int     `json:"packages"`
+		Warnings []string `json:"warnings"`
+	} `json:"summary"`
+	Policy *policyResult `json:"policy"`
+}
+
+// runScan uploads file as a server scan, runs its job and returns the scan as the API shows it.
+func runScan(t *testing.T, s *server, ck *http.Cookie, target, kind string, file []byte) (int64, scanOut) {
+	t.Helper()
+	id := mustScanJob(t, s, ck, target, kind, file)
+	if ran, _ := s.runNextJob(context.Background()); !ran {
+		t.Fatal("no job ran")
+	}
+	rec := do(t, s, "GET", "/api/v1/scans/"+itoa(id), nil, ck)
+	wantCode(t, rec, 200, "scan")
+	return id, decode[scanOut](t, rec)
+}
+
+const (
+	npmDoc = `{"SchemaVersion":2,"ArtifactName":"/data/work/1/src","ArtifactType":"filesystem","Results":[{"Target":"package-lock.json","Class":"lang-pkgs","Type":"npm",
+		"Packages":[{"Name":"lodash","Version":"4.17.15","Identifier":{"PURL":"pkg:npm/lodash@4.17.15"}}],
+		"Vulnerabilities":[{"VulnerabilityID":"CVE-2021-23337","PkgName":"lodash","InstalledVersion":"4.17.15","Severity":"HIGH"}]}]}`
+	jarDoc = `{"SchemaVersion":2,"ArtifactName":"/data/work/1/jars","ArtifactType":"filesystem","Results":[{"Target":"Java","Class":"lang-pkgs","Type":"jar",
+		"Packages":[{"Name":"org.apache.logging.log4j:log4j-core","Version":"2.14.1","FilePath":"lib/a.jar"}],
+		"Vulnerabilities":[{"VulnerabilityID":"CVE-2021-44228","PkgName":"org.apache.logging.log4j:log4j-core","InstalledVersion":"2.14.1","Severity":"CRITICAL","PkgPath":"lib/a.jar"}]}]}`
+	emptyDoc = `{"SchemaVersion":2,"ArtifactName":"/data/work/1/src","ArtifactType":"filesystem"}`
+)
+
+// Without a vulnerability DB a scan cannot run: the upload is refused before it is read (not accepted, queued and
+// then failed with a message about the file), and the web knows up front.
+func TestScanNeedsTrivyDB(t *testing.T) {
+	s := testServer(t)
+	_, ck := memberSession(t, s)
+	ready := func() any {
+		t.Helper()
+		return decode[map[string]any](t, do(t, s, "GET", "/api/v1/auth/config", nil, ck))["trivy_db_ready"]
+	}
+	if ready() != false {
+		t.Fatalf("trivy_db_ready without a DB: %v", ready())
+	}
+	if out := decode[map[string]any](t, do(t, s, "GET", "/api/v1/auth/config", nil)); out["trivy_db_ready"] != nil {
+		t.Fatalf("a signed-out caller learns about the DB: %v", out)
+	}
+	fields := map[string]string{"target": "t", "kind": "fs"}
+	rec := postScanJob(t, s, ck, "web", fields, mkZip(t, arEnt{name: "a", body: "x"}))
+	if rec.Code != 409 || errCode(t, rec) != "no_trivy_db" || !strings.Contains(rec.Body.String(), "db.tar.gz") {
+		t.Fatalf("no DB: %d %s", rec.Code, rec.Body.String())
+	}
+	if n := qInt(t, s, `select count(*) from scans`) + qInt(t, s, `select count(*) from jobs`); n != 0 {
+		t.Fatalf("rows left behind: %d", n)
+	}
+	if es, _ := os.ReadDir(filepath.Join(s.cfg.DataDir, "work")); len(es) != 0 {
+		t.Fatalf("the upload was read: %v", es)
+	}
+	fakeJavaDB(t, s) // a Java DB alone is not enough
+	wantCode(t, postScanJob(t, s, ck, "web", fields, mkZip(t, arEnt{name: "a", body: "x"})), 409, "java db only")
+	fakeTrivyDB(t, s)
+	if ready() != true {
+		t.Fatalf("trivy_db_ready with a DB: %v", ready())
+	}
+	wantCode(t, postScanJob(t, s, ck, "web", fields, mkZip(t, arEnt{name: "a", body: "x"})), 201, "with a DB")
+}
+
+// trivy fs never opens a JAR, so a source scan runs a second pass (trivy rootfs) over the Java archives alone and
+// stores both as one report. Without a Java DB that pass cannot run: the scan succeeds and says what it left out.
+func TestScanJobJavaArchives(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	_, ck := memberSession(t, s)
+	logPath := useFakeTrivy(t, s, []byte(npmDoc))
+	jarOut, argsPath := filepath.Join(t.TempDir(), "jar.json"), filepath.Join(t.TempDir(), "args")
+	os.WriteFile(jarOut, []byte(jarDoc), 0o644)
+	t.Setenv("FAKETRIVY_OUT_ROOTFS", jarOut)
+	t.Setenv("FAKETRIVY_ARGS", argsPath)
+	if err := s.putSetting(ctx, "trivy", map[string]any{"scanners": []string{"vuln", "secret"}, "severities": []string{"CRITICAL", "HIGH"}, "skip_dirs": []string{"vendor"}}); err != nil {
+		t.Fatal(err)
+	}
+	src := mkZip(t, arEnt{name: "package-lock.json", body: "{}"}, arEnt{name: "lib/a.jar", body: "PK"}, arEnt{name: "sub/dir/B.WAR", body: "PK"}, arEnt{name: "readme.txt", body: "x"})
+
+	_, sc := runScan(t, s, ck, "app", "fs", src)
+	if sc.Status != "done" || sc.Summary.Packages == nil || *sc.Summary.Packages != 1 || len(sc.Summary.Warnings) != 1 ||
+		!strings.Contains(sc.Summary.Warnings[0], "Java DB") || !strings.Contains(sc.Summary.Warnings[0], "2개") {
+		t.Fatalf("no Java DB: %+v", sc)
+	}
+	if sc.Policy == nil || !sc.Policy.Passed {
+		t.Fatalf("no Java DB: the rest was examined, so the policy is judged as usual: %+v", sc.Policy)
+	}
+	if calls := readLog(logPath); len(calls) != 1 || !strings.HasPrefix(calls[0], "fs|") {
+		t.Fatalf("no Java DB: trivy calls %v", calls)
+	}
+
+	fakeJavaDB(t, s)
+	id, sc := runScan(t, s, ck, "app", "fs", src)
+	if sc.Status != "done" || sc.Summary.Packages == nil || *sc.Summary.Packages != 2 || len(sc.Summary.Warnings) != 0 {
+		t.Fatalf("with a Java DB: %+v", sc)
+	}
+	work := filepath.Join(s.cfg.DataDir, "work", itoa(id))
+	calls := readLog(logPath)
+	if len(calls) != 3 || !strings.HasPrefix(calls[1], "fs|"+work+"/src|") || calls[2] != "rootfs|"+work+"/jars|files=lib/a.jar,sub/dir/B.WAR" {
+		t.Fatalf("trivy calls: %v", calls)
+	}
+	// the Java pass looks for vulnerabilities only (secrets were the first pass's job) under the admin's options
+	args, _ := os.ReadFile(argsPath)
+	a := strings.Split(string(args), "\n")
+	if a[0] != "rootfs" || a[slices.Index(a, "--scanners")+1] != "vuln" || !slices.Contains(a, "--severity=CRITICAL,HIGH") || !slices.Contains(a, "--skip-dirs=vendor") {
+		t.Fatalf("Java pass args: %v", a)
+	}
+	for rule, path := range map[string]string{"CVE-2021-23337": "package-lock.json", "CVE-2021-44228": "lib/a.jar"} {
+		if n := qInt(t, s, `select count(*) from findings f join scan_findings sf on sf.finding_id=f.id where sf.scan_id=$1 and f.rule_id=$2 and f.pkg_path=$3`, id, rule, path); n != 1 {
+			t.Errorf("%s at %s: %d findings", rule, path, n)
+		}
+	}
+	if n := qInt(t, s, `select count(*) from packages where scan_id=$1 and path in ('package-lock.json', 'lib/a.jar')`, id); n != 2 {
+		t.Fatalf("stored packages: %d (the recheck evaluates this list)", n)
+	}
+	// one raw report with both passes, named after the target and not the server's work directory
+	rec := do(t, s, "GET", "/api/v1/scans/"+itoa(id)+"/raw", nil, ck)
+	raw := rec.Body.Bytes()
+	rep := parseReport(t, "trivy", raw)
+	if _, ok := formats.Detect(raw[:min(len(raw), 8192)]); !ok || rep.TargetName != "app" || len(rep.Packages) != 2 || len(rep.Findings) != 2 || bytes.Contains(raw, []byte("work/")) {
+		t.Fatalf("raw report: detect=%v %+v\n%s", ok, rep, raw)
+	}
+
+	// the vulnerability scanner switched off: no Java pass, and nothing to warn about
+	if err := s.putSetting(ctx, "trivy", map[string]any{"scanners": []string{"secret"}}); err != nil {
+		t.Fatal(err)
+	}
+	os.RemoveAll(filepath.Join(s.trivyCacheDir(), "java-db"))
+	if _, sc := runScan(t, s, ck, "app", "fs", src); sc.Status != "done" || len(sc.Summary.Warnings) != 0 || len(readLog(logPath)) != 4 {
+		t.Fatalf("vuln scanner off: %+v, calls %v", sc, readLog(logPath))
+	}
+}
+
+// An image with a JAR and no Java DB: Trivy fails there, so the scan runs again without the Java archives and says so.
+func TestImageWithJarsWithoutJavaDB(t *testing.T) {
+	s := testServer(t)
+	_, ck := memberSession(t, s)
+	logPath := useFakeTrivy(t, s, trivyDoc("x", []tv{{ID: "CVE-2024-1111"}}, nil))
+	t.Setenv("FAKETRIVY_NEED_JAVA", "1")
+	id, sc := runScan(t, s, ck, "app", "image", mkTarGz(t, false, arEnt{name: "manifest.json", body: "[]"}))
+	if sc.Status != "done" || len(sc.Summary.Warnings) != 1 || !strings.Contains(sc.Summary.Warnings[0], "Java DB") {
+		t.Fatalf("%+v", sc)
+	}
+	if calls := readLog(logPath); len(calls) != 2 || calls[0] != calls[1] {
+		t.Fatalf("trivy calls: %v", calls)
+	}
+	rec := do(t, s, "GET", "/api/v1/scans/"+itoa(id)+"/raw", nil, ck)
+	if rep := parseReport(t, "trivy", rec.Body.Bytes()); rep.TargetName != "app" || len(rep.Findings) != 1 {
+		t.Fatalf("raw report holds the failed run's output too: %s", rec.Body.String())
+	}
+}
+
+// A scan that found nothing it could examine is not a clean scan: it says so, and its policy does not pass.
+func TestScanNothingExamined(t *testing.T) {
+	s := testServer(t)
+	_, ck := memberSession(t, s)
+	useFakeTrivy(t, s, []byte(emptyDoc))
+	_, sc := runScan(t, s, ck, "notes", "fs", mkZip(t, arEnt{name: "notes.txt", body: "hello"}))
+	if sc.Status != "done" || sc.Summary.Packages == nil || *sc.Summary.Packages != 0 || len(sc.Summary.Warnings) != 1 || !strings.Contains(sc.Summary.Warnings[0], "찾지 못했습니다") {
+		t.Fatalf("nothing examined: %+v", sc)
+	}
+	if sc.Policy == nil || sc.Policy.Passed || len(sc.Policy.Reasons) != 1 {
+		t.Fatalf("nothing examined must not pass the policy: %+v", sc.Policy)
+	}
+	// only Java archives and no Java DB: both warnings
+	if _, sc := runScan(t, s, ck, "war", "fs", mkZip(t, arEnt{name: "build/app.war", body: "PK"})); len(sc.Summary.Warnings) != 2 || sc.Policy.Passed {
+		t.Fatalf("war only, no Java DB: %+v", sc)
+	}
+	// a clean scan that did examine something says how much, warns about nothing and passes
+	useFakeTrivy(t, s, []byte(`{"SchemaVersion":2,"ArtifactName":"x","Results":[{"Target":"go.mod","Class":"lang-pkgs","Type":"gomod","Packages":[{"Name":"a","Version":"1"},{"Name":"b","Version":"1"}]}]}`))
+	if _, sc := runScan(t, s, ck, "clean", "fs", mkZip(t, arEnt{name: "go.mod", body: "x"})); *sc.Summary.Packages != 2 || len(sc.Summary.Warnings) != 0 || !sc.Policy.Passed {
+		t.Fatalf("clean scan: %+v", sc)
+	}
+	// a config file that passed every check was examined too
+	useFakeTrivy(t, s, []byte(`{"SchemaVersion":2,"ArtifactName":"x","Results":[{"Target":"Dockerfile","Class":"config","Type":"dockerfile"}]}`))
+	if _, sc := runScan(t, s, ck, "conf", "fs", mkZip(t, arEnt{name: "Dockerfile", body: "x"})); len(sc.Summary.Warnings) != 0 || !sc.Policy.Passed {
+		t.Fatalf("clean config scan: %+v", sc)
+	}
+	// a report uploaded from CI is judged as before (its pipeline decides what an empty report means), and a
+	// repeated upload still answers with the first one's counts
+	for range 2 {
+		if res := decode[uploadResp](t, upload(t, s, "web", "target=ci&kind=fs", []byte(emptyDoc), ck)); !res.Policy.Passed || res.Summary["open"] != 0 {
+			t.Fatalf("CI upload of an empty report: %+v", res)
+		}
+	}
+}
+
+// A container image uploaded as source would be unpacked into blobs Trivy finds nothing in: refuse it and say what
+// to do. A source tree that merely has a manifest.json or index.json is still source.
+func TestImageUploadedAsSource(t *testing.T) {
+	s := testServer(t)
+	_, ck := memberSession(t, s)
+	logPath := useFakeTrivy(t, s, []byte(npmDoc))
+	oci := []arEnt{{name: "blobs/sha256/1b7c", body: "layer"}, {name: "index.json", body: `{"schemaVersion":2,"manifests":[]}`},
+		{name: "manifest.json", body: `[{"Config":"blobs/sha256/24c8","RepoTags":["alpine:3.12"],"Layers":["blobs/sha256/1b7c"]}]`}, {name: "oci-layout", body: `{"imageLayoutVersion":"1.0.0"}`}}
+	legacy := []arEnt{{name: "./abc/layer.tar", body: "layer"}, {name: "./abc.json", body: "{}"}, {name: "./manifest.json", body: `[{"Config":"abc.json","RepoTags":null,"Layers":["abc/layer.tar"]}]`}}
+	for name, c := range map[string]struct {
+		file []byte
+		want string // part of the error; "" = scanned as source
+	}{
+		"OCI layout tar":           {mkTarGz(t, false, oci...), "'컨테이너 이미지'로 골라"},
+		"docker save tar.gz":       {mkTarGz(t, true, legacy...), "'컨테이너 이미지'로 골라"},
+		"OCI layout without tags":  {mkTarGz(t, false, oci[0], oci[1], oci[3]), "'컨테이너 이미지'로 골라"},
+		"image tar in a zip":       {mkZip(t, arEnt{name: "java-image.tar", body: string(mkTarGz(t, false, oci...))}), "tar 파일을 그대로"},
+		"image tar.gz in a folder": {mkZip(t, arEnt{name: "out/img.tar.gz", body: string(mkTarGz(t, true, legacy...))}), "tar 파일을 그대로"},
+		"web app with manifests":   {mkTarGz(t, true, arEnt{name: "index.json", body: `{"name":"pwa"}`}, arEnt{name: "manifest.json", body: `{"name":"pwa","icons":[]}`}, arEnt{name: "package-lock.json", body: "{}"}), ""},
+		"manifest.json is a list":  {mkZip(t, arEnt{name: "manifest.json", body: `[{"name":"a"}]`}, arEnt{name: "package-lock.json", body: "{}"}), ""},
+		"image tar among sources":  {mkZip(t, arEnt{name: "fixtures/img.tar", body: string(mkTarGz(t, false, oci...))}, arEnt{name: "package-lock.json", body: "{}"}), ""},
+		"one ordinary tar inside":  {mkZip(t, arEnt{name: "src.tar", body: string(mkTarGz(t, false, arEnt{name: "package-lock.json", body: "{}"}))}), ""},
+	} {
+		os.Remove(logPath)
+		_, sc := runScan(t, s, ck, name, "fs", c.file)
+		calls := readLog(logPath)
+		if c.want == "" {
+			if sc.Status != "done" || len(calls) != 1 {
+				t.Errorf("%s: %s %q, trivy calls %v", name, sc.Status, sc.Error, calls)
+			}
+		} else if sc.Status != "failed" || !strings.Contains(sc.Error, c.want) || len(calls) != 0 {
+			t.Errorf("%s: %s %q, trivy calls %v", name, sc.Status, sc.Error, calls)
+		}
+	}
+}
+
+// realTrivy points s at the real Trivy with a cache of its own: the vulnerability DB of JASCA_TRIVY_CACHE, and its
+// Java DB when javaDB is set (without one in the cache the test is skipped).
+func realTrivy(t *testing.T, s *server, javaDB bool) {
+	t.Helper()
+	if os.Getenv("JASCA_TEST_TRIVY") != "1" {
+		t.Skip("set JASCA_TEST_TRIVY=1, JASCA_TRIVY_BIN and JASCA_TRIVY_CACHE")
+	}
+	cache := os.Getenv("JASCA_TRIVY_CACHE")
+	s.cfg.TrivyBin = os.Getenv("JASCA_TRIVY_BIN")
+	os.RemoveAll(s.trivyCacheDir())
+	os.MkdirAll(s.trivyCacheDir(), 0o755)
+	dbs := []string{"db"}
+	if javaDB {
+		if _, err := os.Stat(filepath.Join(cache, "java-db", "metadata.json")); err != nil {
+			t.Skip("no java-db in JASCA_TRIVY_CACHE")
+		}
+		dbs = append(dbs, "java-db")
+	}
+	for _, d := range dbs {
+		if err := os.Symlink(filepath.Join(cache, d), filepath.Join(s.trivyCacheDir(), d)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// log4jJar is a JAR that Trivy names from its pom.properties: log4j-core 2.14.1 (Log4Shell, CVE-2021-44228).
+func log4jJar(t *testing.T) string {
+	t.Helper()
+	return string(mkZip(t, arEnt{name: "META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties",
+		body: "groupId=org.apache.logging.log4j\nartifactId=log4j-core\nversion=2.14.1\n"}))
+}
+
+// The promise of the Trivy DB page, with the real binary: a JAR in a source archive is examined when the Java DB is
+// installed, next to the lock files and without counting anything twice; without the Java DB the scan still
+// succeeds and says which files it left out.
+func TestServerScanJavaRealTrivy(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	_, ck := memberSession(t, s)
+	lock, err := os.ReadFile("internal/trivy/testdata/fs/package-lock.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jarOnly := mkZip(t, arEnt{name: "app/lib/log4j-core-2.14.1.jar", body: log4jJar(t)})
+	// node_modules is what trivy rootfs would report a second time if the Java pass were given the whole tree
+	mixed := mkZip(t, arEnt{name: "app/package-lock.json", body: string(lock)}, arEnt{name: "app/node_modules/lodash/package.json", body: `{"name":"lodash","version":"4.17.15"}`},
+		arEnt{name: "app/lib/log4j-core-2.14.1.jar", body: log4jJar(t)}, arEnt{name: "app/build/app.war", body: log4jJar(t)})
+	count := func(q string, args ...any) int { t.Helper(); return qInt(t, s, q, args...) }
+	const linked = `select count(*) from findings f join scan_findings sf on sf.finding_id=f.id where sf.scan_id=$1 and `
+
+	realTrivy(t, s, false)
+	id, sc := runScan(t, s, ck, "mixed", "fs", mixed)
+	if sc.Status != "done" || len(sc.Summary.Warnings) != 1 || !strings.Contains(sc.Summary.Warnings[0], "2개") {
+		t.Fatalf("no Java DB: %+v", sc)
+	}
+	if count(linked+`f.pkg_name='lodash'`, id) == 0 || count(linked+`f.pkg_name like '%log4j%'`, id) != 0 {
+		t.Fatal("no Java DB: lodash must be found, log4j cannot be")
+	}
+	t.Logf("no Java DB: done, %d packages, warning %q", *sc.Summary.Packages, sc.Summary.Warnings[0])
+	if _, sc := runScan(t, s, ck, "war", "fs", mkZip(t, arEnt{name: "build/app.war", body: log4jJar(t)})); sc.Status != "done" || len(sc.Summary.Warnings) != 2 || sc.Policy.Passed {
+		t.Fatalf("war only, no Java DB: %+v %+v", sc, sc.Policy)
+	}
+	if _, sc := runScan(t, s, ck, "notes", "fs", mkZip(t, arEnt{name: "notes.txt", body: "hello"})); sc.Status != "done" || len(sc.Summary.Warnings) != 1 || sc.Policy.Passed {
+		t.Fatalf("notes only: %+v %+v", sc, sc.Policy)
+	}
+
+	realTrivy(t, s, true)
+	id, sc = runScan(t, s, ck, "java-app", "fs", jarOnly)
+	if sc.Status != "done" || len(sc.Summary.Warnings) != 0 || *sc.Summary.Packages != 1 || sc.Policy.Passed {
+		t.Fatalf("jar only: %+v %+v", sc, sc.Policy)
+	}
+	if n := count(linked+`f.rule_id='CVE-2021-44228' and f.pkg_path='app/lib/log4j-core-2.14.1.jar' and f.severity='CRITICAL'`, id); n != 1 {
+		t.Fatalf("Log4Shell in the JAR: %d findings", n)
+	}
+	id, sc = runScan(t, s, ck, "mixed", "fs", mixed)
+	if sc.Status != "done" || len(sc.Summary.Warnings) != 0 {
+		t.Fatalf("lock file and JARs: %+v", sc)
+	}
+	for what, n := range map[string]int{
+		"Log4Shell in the JAR":                            count(linked+`f.rule_id='CVE-2021-44228' and f.pkg_path='app/lib/log4j-core-2.14.1.jar'`, id),
+		"Log4Shell in the WAR":                            count(linked+`f.rule_id='CVE-2021-44228' and f.pkg_path='app/build/app.war'`, id),
+		"lodash CVE-2021-23337, once, from the lock file": count(linked+`f.rule_id='CVE-2021-23337' and f.pkg_name='lodash'`, id),
+		"lodash package, once":                            count(`select count(*) from packages where scan_id=$1 and name='lodash'`, id),
+		"log4j packages, one per archive":                 count(`select count(*) from packages where scan_id=$1 and name like '%log4j-core'`, id) - 1,
+	} {
+		if n != 1 {
+			t.Errorf("%s: %d", what, n)
+		}
+	}
+	if n := count(`select count(*) from packages where scan_id=$1 and path like '%node_modules%'`, id); n != 0 {
+		t.Errorf("node_modules was read by the Java pass: %d packages", n)
+	}
+	// the stored raw report is the one that was ingested
+	raw := do(t, s, "GET", "/api/v1/scans/"+itoa(id)+"/raw", nil, ck).Body.Bytes()
+	rep := parseReport(t, "trivy", raw)
+	if rep.TargetName != "mixed" || len(rep.Packages) != count(`select count(*) from packages where scan_id=$1`, id) ||
+		len(rep.Findings) != count(`select count(*) from scan_findings where scan_id=$1`, id) || bytes.Contains(raw, []byte(s.cfg.DataDir)) {
+		t.Fatalf("raw report: %s, %d packages, %d findings", rep.TargetName, len(rep.Packages), len(rep.Findings))
+	}
+	// the recheck evaluates the stored package list: the Java packages match the findings the scan made (same
+	// name, version and file), so it adds nothing
+	open := count(`select count(*) from findings`)
+	if _, err := s.startRecheck(ctx, "manual"); err != nil {
+		t.Fatal(err)
+	}
+	if ran, err := s.runNextJob(ctx); !ran || err != nil {
+		t.Fatal(ran, err)
+	}
+	if n := count(`select count(*) from recheck_runs where state='done' and error='' and new_findings=0`); n != 1 || count(`select count(*) from findings`) != open {
+		t.Fatalf("recheck after a scan with JARs added findings: %d → %d", open, count(`select count(*) from findings`))
+	}
+	t.Logf("with a Java DB: %d packages, %d findings, recheck added none", len(rep.Packages), len(rep.Findings))
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"strings"
 	"time"
 )
@@ -42,6 +43,15 @@ func (r *Report) add(f Finding) {
 	}
 	r.fpIndex[string(f.Fingerprint)] = len(r.Findings)
 	r.Findings = append(r.Findings, f)
+}
+
+// Merge adds the packages and findings of o, a second report on the same target.
+func (r *Report) Merge(o *Report) {
+	r.Packages = append(r.Packages, o.Packages...)
+	for _, f := range o.Findings {
+		r.add(f)
+	}
+	maps.Copy(r.Complete, o.Complete)
 }
 
 // Package is one installed package. SrcName/SrcVersion are the OS source package (Debian/Ubuntu advisories are

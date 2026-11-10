@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../components/PageHeader";
 import Tabs from "../components/Tabs";
@@ -8,7 +8,7 @@ import Button from "../components/Button";
 import Icon from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { API_BASE, ApiError, api, loginUrl } from "../api/client";
-import { isAdmin, useApi, useAuthConfig, useMe } from "../api/hooks";
+import { isAdmin, useApi, useAuthConfig, useMe, useUnloadGuard } from "../api/hooks";
 import { SEVERITIES, type Counts, type Project, type ScanDetail, type ScanJobCreated, type Target } from "../api/types";
 import { SEVERITY_LABEL, fmtNumber } from "../lib/format";
 import { Panel } from "./admin/parts";
@@ -45,8 +45,9 @@ function uploadJob(key: string, form: FormData, onProgress: (pct: number) => voi
   });
 }
 
-// The first tar entry of a docker/podman save or OCI layout archive.
-const IMAGE_ENTRY = /^(\.\/)?(blobs\/|oci-layout$|index\.json$|manifest\.json$|repositories$|[0-9a-f]{64}(\/|\.json$|\.tar$))/;
+// A first tar entry that only a docker/podman save or OCI layout archive has. index.json and manifest.json are not
+// among them: web apps have those too. A wrong guess either way is caught by the server, which says what to pick.
+const IMAGE_ENTRY = /^(\.\/)?(blobs\/|oci-layout$|repositories$|[0-9a-f]{64}(\/|\.json$|\.tar$))/;
 
 /** Guesses what the file is from its first tar header, so the user does not have to know "fs" from "image". */
 async function sniffKind(file: File): Promise<Kind> {
@@ -69,7 +70,7 @@ async function sniffKind(file: File): Promise<Kind> {
 const baseName = (file: string) => file.replace(/\.(tar\.gz|tgz|tar|zip)$/i, "").slice(0, 200);
 /** JASCA_MAX_SCAN_UPLOAD_MB as people say it: 2048 → "2GB", 500 → "500MB". */
 const fmtLimit = (mb: number) => (mb >= 1024 ? `${+(mb / 1024).toFixed(1)}GB` : `${mb}MB`);
-const fmtSize = (n: number) => (n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)} GB` : `${Math.max(0.1, n / (1 << 20)).toFixed(1)} MB`);
+const fmtSize = (n: number) => (n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)} GB` : n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
 const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 
 /** Seconds since `since` while `on`. */
@@ -79,6 +80,7 @@ function useElapsed(on: boolean, since: number) {
   return Math.max(0, Math.floor((Date.now() - since) / 1000));
 }
 
+/** startedAt: when the upload finished and the wait for the server began (the upload has its own percentage). */
 type Run = { file: string; target: string; projectKey: string; projectName: string; pct: number; scanId: number | null; startedAt: number; error?: string };
 
 /** Upload → scan → result, in place of the form while a run is going. */
@@ -96,7 +98,13 @@ function ScanRun({ run, onCancelUpload, onAgain, onEdit }: { run: Run; onCancelU
   const finished = !!s && DONE.includes(s.status);
   const elapsed = useElapsed(!finished && !run.error, run.startedAt);
   useEffect(() => { if (s?.status === "done") qc.invalidateQueries({ queryKey: ["/projects"] }); }, [s?.status, qc]);
-  const failed = run.error || (s?.status === "failed" ? s.error || "스캔에 실패했습니다." : s?.status === "canceled" ? "스캔을 취소했습니다." : q.error?.message);
+  const canceled = s?.status === "canceled"; // the user's own choice, not a failure
+  const failed = run.error || (s?.status === "failed" ? s.error || "스캔에 실패했습니다." : q.error?.message);
+  const warnings = s?.summary.warnings ?? [];
+  // the result replaces the progress steps: keyboard and screen reader users land on it
+  const head = useRef<HTMLHeadingElement>(null);
+  const settled = finished || !!failed;
+  useEffect(() => { if (settled) head.current?.focus(); }, [settled]);
   const step = uploading ? 0 : finished ? 2 : 1;
   const steps: [string, string][] = [
     ["파일 올리기", uploading ? `${run.pct}%` : run.error ? "" : "완료"],
@@ -107,11 +115,11 @@ function ScanRun({ run, onCancelUpload, onAgain, onEdit }: { run: Run; onCancelU
   return (
     <section className="panel scan-run" aria-labelledby="h-run">
       <div className="panel-head">
-        <h2 id="h-run">{run.target}</h2>
+        <h2 id="h-run" ref={head} tabIndex={-1}>{run.target}</h2>
         <span className="panel-meta">{run.file} · {run.projectName} 프로젝트에 저장</span>
       </div>
       <div className="panel-body stack">
-        {!failed && s?.status !== "done" && (
+        {!failed && !canceled && s?.status !== "done" && (
           <>
             <ol className="scan-steps" role="status" aria-label="스캔 진행 상황">
               {steps.map(([label, note], i) => (
@@ -136,13 +144,22 @@ function ScanRun({ run, onCancelUpload, onAgain, onEdit }: { run: Run; onCancelU
             <div className="row-gap"><Button variant="primary" onClick={onEdit}>고쳐서 다시 시도</Button>{run.scanId && <Link className="btn btn-secondary" to={`/scans/${run.scanId}`}>스캔 기록 보기</Link>}</div>
           </>
         )}
+        {canceled && (
+          <>
+            <div className="alert alert-info" role="status" style={{ margin: 0 }}><Icon name="info" /><span>스캔을 취소했습니다. 저장된 결과는 없습니다.</span></div>
+            <div className="row-gap"><Button variant="primary" onClick={onEdit}>다시 스캔</Button><Link className="btn btn-secondary" to={`/scans/${run.scanId}`}>스캔 기록 보기</Link></div>
+          </>
+        )}
         {s?.status === "done" && (
           <div role="status" className="stack">
             <p className="scan-verdict">
-              <Icon name={total ? "alert" : "shieldCheck"} size={20} />
-              <span><b>검사를 마쳤습니다.</b> {total ? <>열린 결과가 <b className="num">{fmtNumber(total)}</b>건 있습니다.</> : "발견된 결과가 없습니다."}
+              <Icon name={total || warnings.length ? "alert" : "shieldCheck"} size={20} />
+              <span><b>검사를 마쳤습니다.</b> {total ? <>열린 결과가 <b className="num">{fmtNumber(total)}</b>건 있습니다.</>
+                : warnings.length ? "검사하지 못한 것이 있어 '결과 없음'으로 볼 수 없습니다." : "발견된 결과가 없습니다."}
+                {!!s.summary.packages && <> 패키지 <b className="num">{fmtNumber(s.summary.packages)}</b>개를 검사했습니다.</>}
                 {s.diff.previous_scan_id != null && <> 이전 스캔보다 새로 발견 <b className="num">{fmtNumber(s.diff.new)}</b>건, 사라짐 <b className="num">{fmtNumber(s.diff.fixed)}</b>건입니다.</>}</span>
             </p>
+            {warnings.map((w) => <div key={w} className="alert alert-warn" style={{ margin: 0 }}><Icon name="alert" /><span>{w}</span></div>)}
             <ul className="sev-tiles scan-tiles">
               {SEVERITIES.map((sev) => {
                 const n = s.summary[sev.toLowerCase() as keyof Counts] ?? 0;
@@ -187,8 +204,20 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   const [editing, setEditing] = useState(true);
   const xhr = useRef<XMLHttpRequest | null>(null);
   const input = useRef<HTMLInputElement>(null);
-  const maxMB = useAuthConfig().data?.max_scan_upload_mb;
+  const [fileErr, setFileErr] = useState("");
+  const cfg = useAuthConfig();
+  const maxMB = cfg.data?.max_scan_upload_mb;
+  const noDb = cfg.data?.trivy_db_ready === false;
+  useEffect(() => { if (noDb) void cfg.refetch(); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- cached for the session: the admin may have uploaded the DB since
   useEffect(() => () => xhr.current?.abort(), []);
+  // leaving now would throw the upload away: the browser asks on reload/close, the router on a move inside the app
+  const uploading = !!run && !editing && run.scanId === null && !run.error;
+  useUnloadGuard(uploading);
+  const blocker = useBlocker(uploading);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    if (confirm("파일을 올리는 중입니다. 이 화면을 떠나면 업로드가 취소됩니다. 떠날까요?")) blocker.proceed(); else blocker.reset();
+  }, [blocker]);
 
   // First choice once the list is in: ?project=, then the last one used, then the only one; none at all starts a new project.
   useEffect(() => {
@@ -207,6 +236,11 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
 
   const pick = async (f?: File | null) => {
     if (!f) return;
+    // refused here, not after the whole file went up
+    const bad = f.size === 0 ? "빈 파일입니다. 내용이 있는 파일을 고르세요."
+      : maxMB && f.size > maxMB * 2 ** 20 ? `파일이 너무 큽니다(${fmtSize(f.size)}). 이 서버는 ${fmtLimit(maxMB)}까지 받습니다.` : "";
+    setFileErr(bad);
+    if (bad) { setFile(null); if (input.current) input.current.value = ""; return; }
     setFile(f);
     if (!targetEdited) setTarget(baseName(f.name));
     setKind(await sniffKind(f));
@@ -241,28 +275,28 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
     setEditing(false); setRun(cur);
     try {
       const { scan_id } = await uploadJob(projectKey, fd, (pct) => setRun((r) => r && { ...r, pct }), xhr);
-      setRun((r) => r && { ...r, pct: 100, scanId: scan_id });
+      setRun((r) => r && { ...r, pct: 100, scanId: scan_id, startedAt: Date.now() });
     } catch (e) {
       if ((e as ApiError).code === "aborted") { setEditing(true); setRun(null); } else setRun((r) => r && { ...r, error: (e as ApiError).message });
     } finally { xhr.current = null; }
   };
-  const again = () => { setRun(null); setEditing(true); setFile(null); setTarget(""); setTargetEdited(false); setTried(false); if (input.current) input.current.value = ""; };
+  const again = () => { setRun(null); setEditing(true); setFile(null); setFileErr(""); setTarget(""); setTargetEdited(false); setTried(false); if (input.current) input.current.value = ""; };
 
   if (run && !editing) return <ScanRun run={run} onCancelUpload={() => xhr.current?.abort()} onAgain={again} onEdit={() => setEditing(true)} />;
 
   return (
-    <form className="panel scan-form" noValidate onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+    <form className="panel scan-form" noValidate onSubmit={(e) => { e.preventDefault(); if (!noDb) void submit(); }}>
       <section className="scan-part" aria-labelledby="h-file">
         <h2 id="h-file"><span className="scan-part-n" aria-hidden="true">1</span>검사할 파일</h2>
         <div className={`dropzone${over ? " over" : ""}${file ? " has-file" : ""}`} role="button" tabIndex={0} aria-label={file ? `고른 파일 ${file.name}. 눌러서 바꾸기` : "검사할 파일 선택"}
-          aria-describedby={tried && errs.file ? "scan-file-err" : undefined}
+          aria-describedby={fileErr || (tried && errs.file) ? "scan-file-err" : undefined}
           onClick={() => input.current?.click()} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), input.current?.click())}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={drop}>
           {file ? <><Icon name="fileText" size={20} /><span><strong>{file.name}</strong> <span className="muted num">{fmtSize(file.size)}</span></span><span className="dropzone-change">바꾸기</span></>
             : <><strong>파일을 여기에 끌어다 놓거나 눌러서 고르세요</strong><span className="muted">프로젝트 폴더를 압축한 zip·tar·tar.gz 또는 docker save로 만든 이미지 tar{maxMB ? ` · 최대 ${fmtLimit(maxMB)}` : ""}</span></>}
           <input ref={input} type="file" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => void pick(e.target.files?.[0])} />
         </div>
-        {tried && errs.file && <p id="scan-file-err" className="field-err" role="alert">{errs.file}</p>}
+        {(fileErr || (tried && errs.file)) && <p id="scan-file-err" className="field-err" role="alert">{fileErr || errs.file}</p>}
         {file && (
           <fieldset className="seg" aria-describedby="scan-kind-hint">
             <legend>파일 종류</legend>
@@ -308,7 +342,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
       </section>
 
       <div className="scan-submit">
-        <Button type="submit" variant="primary" icon="scan">스캔 시작</Button>
+        <Button type="submit" variant="primary" icon="scan" disabled={noDb}>스캔 시작</Button>
         {run?.error && <span className="muted">이전 시도: {run.error}</span>}
       </div>
     </form>
@@ -338,6 +372,8 @@ export default function ScanNew() {
   const tab = sp.get("tab") === "harbor" ? "harbor" : "upload";
   const projects = useApi<Project[]>("/projects");
   const list = projects.data ?? [];
+  const { data: me } = useMe();
+  const noDb = useAuthConfig().data?.trivy_db_ready === false; // no scan can run: say so before anyone picks a 2GB file
   return (
     <>
       <PageHeader title="스캔하기" description="파일을 올리면 서버가 바로 검사합니다. Harbor를 쓰면 이미지를 푸시할 때 자동으로 등록할 수도 있습니다." />
@@ -345,6 +381,12 @@ export default function ScanNew() {
         <Tabs label="스캔 방법" value={tab} onChange={(t) => setSp({ tab: t }, { replace: true })}
           tabs={[{ id: "upload", label: "파일 올려서 검사" }, { id: "harbor", label: "Harbor에서 자동으로" }]} />
         {projects.error && <div className="alert alert-danger" role="alert">{projects.error.message}</div>}
+        {noDb && tab === "upload" && (
+          <div className="alert alert-warn" role="alert">
+            <Icon name="alert" />
+            <span><b>취약점 DB가 아직 설치되지 않아 스캔할 수 없습니다.</b> {isAdmin(me) ? <><Link to="/admin/trivy">관리 → Trivy DB</Link>에서 db.tar.gz를 올리세요.</> : "관리자에게 요청하세요."}</span>
+          </div>
+        )}
         <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
           {tab === "harbor" ? <HarborTab /> : <UploadTab projects={list} loaded={projects.isSuccess} />}
         </div>

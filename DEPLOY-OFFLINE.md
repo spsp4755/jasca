@@ -151,7 +151,7 @@ Trivy 취약점 DB는 인터넷 PC에서 받아 관리자 화면으로 올립니
 
 ```sh
 oras pull ghcr.io/aquasecurity/trivy-db:2          # db.tar.gz (trivy.db, metadata.json)
-oras pull ghcr.io/aquasecurity/trivy-java-db:1     # javadb.tar.gz (자바 JAR 스캔용, 선택: 없으면 서버 스캔이 JAR/WAR/EAR을 건너뜀)
+oras pull ghcr.io/aquasecurity/trivy-java-db:1     # javadb.tar.gz (자바 JAR 스캔용, 선택: 없으면 서버 스캔이 JAR/WAR/EAR을 건너뛰고 결과에 경고로 표시)
 sha256sum db.tar.gz javadb.tar.gz > trivy-db.sha256
 ```
 
@@ -160,7 +160,7 @@ sha256sum db.tar.gz javadb.tar.gz > trivy-db.sha256
 - 올린 파일은 검사한 뒤 한 번에 교체합니다. 올바른 번들이 아니면 거부하고 기존 DB를 그대로 씁니다. 파일 크기는 `JASCA_MAX_SCAN_UPLOAD_MB`(Ingress `proxy-body-size` 포함), 풀었을 때 크기는 `JASCA_MAX_EXTRACT_MB`가 상한입니다.
 - 취약점 DB 교체가 끝나면 **재평가가 자동으로 시작**됩니다(Java DB는 다음 서버 스캔부터 쓰이며 재평가를 시작하지 않습니다). 저장된 모든 대상(Harbor 보고서 대상 제외)의 최신 패키지 목록을 새 DB로 다시 평가하고, 새로 걸린 취약점은 "재평가"로 표시되며 알림이 갑니다. 진행 상황은 **관리 → 재평가**에서 봅니다. 스캔을 다시 돌릴 필요가 없습니다.
 - 두 DB의 설치 여부와 생성 시각, 취약점 DB의 다음 갱신 예정 시각이 **관리 → Trivy DB**의 각 칸에 보입니다. 갱신 예정에서 7일 넘게 지나면 경고가 보이니(DB의 갱신 예정은 생성 하루 뒤라 폐쇄망에서는 늘 조금 지나 있습니다) 주기적으로(예: 매주) 같은 절차를 반복하세요. DB가 오래되면 새 취약점이 탐지되지 않습니다.
-- 설치 직후 DB를 올리기 전에는 서버 스캔이 동작하지 않고, 재평가도 걸러낼 DB가 없습니다.
+- 설치 직후 취약점 DB를 올리기 전에는 서버 스캔을 받지 않고(스캔 화면에 안내가 나오고 업로드는 409로 거부), 재평가도 걸러낼 DB가 없습니다.
 
 ## 업그레이드
 
@@ -233,7 +233,7 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 | 역할이 반영되지 않음 | 관리 → SSO의 역할 이름이 Keycloak 역할 이름과 같은지, 토큰에 역할이 실리는지(Client scopes → Evaluate)를 봅니다. 역할은 다음 로그인 때 반영됩니다. |
 | 부서가 비어 있음 | 위 "첫 로그인에서 부서가 비어 있을 때"를 보세요. |
 | 동기화 실패(관리 → Keycloak 동기화의 마지막 오류) | 서비스 계정 Secret, `view-users` 역할, Issuer URL에 `/realms/`가 있는지 확인하고 **지금 동기화**를 눌러 오류 문구를 봅니다. |
-| 서버 스캔이 "실패"로 끝남 | Trivy DB를 올렸는지, 제한 시간(**관리 → Trivy DB → 스캔 옵션**에서 정하고, 비워 두면 `JASCA_SCAN_TIMEOUT_MIN`, 기본 15분), 메모리 한도(OOMKilled), 압축 파일 형식(zip, tar, tar.gz만)을 봅니다. 스캔 상세에 원인 문구가 보입니다. |
+| 서버 스캔이 "실패"로 끝남 | 스캔 상세의 원인 문구를 먼저 봅니다. "Trivy 실행에 실패했습니다"는 원인이 서버 로그(`server scan <번호>:` 줄)에 있습니다. 제한 시간(**관리 → Trivy DB → 스캔 옵션**에서 정하고, 비워 두면 `JASCA_SCAN_TIMEOUT_MIN`, 기본 15분), 메모리 한도(OOMKilled), 압축 파일 형식(zip, tar, tar.gz만)도 봅니다. |
 | 업로드가 413 | 보고서는 `JASCA_MAX_REPORT_MB`(기본 50), 스캔 파일은 `JASCA_MAX_SCAN_UPLOAD_MB`(기본 2048)가 상한입니다. Ingress `proxy-body-size`도 함께 봅니다. |
 | CI 업로드가 401 | 토큰이 만료·폐기됐거나, 다른 프로젝트의 토큰이거나, 권한 범위에 `upload`가 없습니다. 토큰은 해당 프로젝트 키의 경로에서만 쓸 수 있습니다. |
 | MCP 클라이언트가 `/mcp`에서 401·403 | 401은 토큰이 틀렸거나 만료·폐기된 것이고(클라이언트에 따라 OAuth 등록 오류로 보입니다), 403은 권한 범위에 `read`가 없거나 프록시가 다른 사이트의 `Origin` 헤더를 붙이는 경우입니다. |

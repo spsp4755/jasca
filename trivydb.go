@@ -150,6 +150,12 @@ func (st trivySettings) asMap() map[string]any {
 
 func (s *server) trivyCacheDir() string { return filepath.Join(s.cfg.DataDir, "trivy") }
 
+// trivyDBReady: a vulnerability DB is installed, so Trivy can run (it refuses a first run with --skip-db-update).
+func (s *server) trivyDBReady() bool {
+	_, err := trivy.Status(s.trivyCacheDir())
+	return err == nil
+}
+
 func (s *server) trivyRoutes() {
 	s.handle("GET /api/v1/admin/trivy", permAdmin, s.handleTrivyGet)
 	s.handle("PUT /api/v1/admin/trivy", permAdmin, s.handleTrivyPut)

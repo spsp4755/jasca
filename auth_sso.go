@@ -71,6 +71,7 @@ func (s *server) ssoRoutes() {
 				return
 			}
 			out["ai_enabled"], out["max_scan_upload_mb"] = ai.on(), s.cfg.MaxScanUploadMB
+			out["trivy_db_ready"] = s.trivyDBReady() // without a vulnerability DB the scan page says so instead of taking a file
 		}
 		writeJSON(w, 200, out)
 	})

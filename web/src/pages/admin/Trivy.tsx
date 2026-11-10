@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/PageHeader";
 import Button from "../../components/Button";
 import Field from "../../components/Field";
-import { useApi } from "../../api/hooks";
+import { useApi, useUnloadGuard } from "../../api/hooks";
 import { API_BASE, ApiError, api } from "../../api/client";
 import { daysUntil, fmtDate, fmtDateTime, fmtRelative } from "../../lib/format";
 import { useToast } from "../../components/Toast";
@@ -48,6 +48,7 @@ function DbBlock({ kind, installed, applied, flash, onApplied, children }: {
   const hid = useId();
   const input = useRef<HTMLInputElement>(null);
   const [pct, setPct] = useState<number | null>(null);
+  useUnloadGuard(pct !== null); // a reload would throw away an upload of up to 1GB
   const { title, file } = DB[kind];
 
   async function pick(f?: File) {
@@ -169,7 +170,7 @@ function ScanOptions({ current, defaultTimeout }: { current: TrivyOptions; defau
 
         <div className="opt-group">
           <h3>결과에서 제외할 것</h3>
-          <p className="field-hint">제외한 항목은 다음 스캔부터 결과에 들어오지 않고, 이미 열려 있던 항목은 그 스캔에서 '해결됨'으로 바뀝니다. 옵션을 되돌리면 다음 스캔에서 다시 열립니다.</p>
+          <p className="field-hint">여기서 제외한 항목(심각도, 조치 버전 없음, 건너뛴 경로)은 다음 스캔부터 결과에 들어오지 않고, 이미 열려 있던 항목은 그 스캔에서 '해결됨'으로 바뀝니다. 옵션을 되돌리면 다음 스캔에서 다시 열립니다. 위에서 패키지 종류를 끈 경우도 같습니다. 스캐너를 끈 경우는 다릅니다. 그 종류는 아예 검사하지 않으므로, 이미 열려 있던 결과는 '해결됨'으로 바뀌지 않고 열린 채 남습니다.</p>
           <fieldset className="opt-set" aria-describedby="opt-sev-hint">
             <legend className="field-label">결과에 넣을 심각도</legend>
             <div className="opt-sevs">
@@ -244,6 +245,7 @@ export default function Trivy() {
     setFlash(r.kind);
     qc.setQueryData(["/admin/trivy"], r);
     qc.invalidateQueries({ queryKey: ["/admin/recheck"] });
+    qc.invalidateQueries({ queryKey: ["/auth/config"] }); // trivy_db_ready: the scan page stops saying there is no DB
   }
 
   return (
@@ -270,7 +272,7 @@ export default function Trivy() {
             </p>
           </DbBlock>
           <DbBlock kind="java-db" installed={!!s.java_db} applied={applied.includes("java-db")} flash={flash === "java-db"} onApplied={onApplied}>
-            <p>JAR/WAR/EAR 파일 안의 Java 라이브러리를 알아내는 데 필요합니다. 없으면 서버 스캔이 그 파일을 건너뜁니다.</p>
+            <p>JAR/WAR/EAR 파일 안의 Java 라이브러리를 알아내는 데 필요합니다. 서버 스캔이 압축 파일(소스 코드·패키지)과 컨테이너 이미지 양쪽에서 이 파일들을 검사할 때 씁니다. 없으면 그 파일만 건너뛰고 나머지를 검사하며, 스캔 결과에 검사하지 못한 Java 파일이 있다고 표시합니다. pom.xml 같은 잠금 파일은 Java DB 없이도 검사합니다.</p>
             {s.java_db ? (
               <dl className="kv">
                 <div className="kv-row"><dt>생성 시각</dt><dd>{fmtDateTime(s.java_db.updated_at)} <span className="muted">· {fmtRelative(s.java_db.updated_at)}</span></dd></div>

@@ -86,6 +86,7 @@ export default function Scan() {
         )} />
 
       {s && <PolicyBanner s={s} />}
+      {s?.summary.warnings?.map((w) => <div key={w} className="alert alert-warn" role="status"><Icon name="alert" /><span>{w}</span></div>)}
 
       <div className="detail-grid">
         <div className="detail-main">
@@ -146,6 +147,7 @@ export default function Scan() {
                   <div className="kv-row"><dt>방식</dt><dd>{SOURCE_LABEL[s.source] ?? s.source}</dd></div>
                   <div className="kv-row"><dt>형식</dt><dd className="mono">{s.format}</dd></div>
                   {s.summary.os?.name && <div className="kv-row"><dt>OS</dt><dd>{s.summary.os.family} {s.summary.os.name}</dd></div>}
+                  {done && !!s.summary.packages && <div className="kv-row"><dt>검사한 패키지</dt><dd className="num">{fmtNumber(s.summary.packages)}개</dd></div>}
                   <div className="kv-row"><dt>올린 주체</dt><dd>{s.created_by || "시스템"}</dd></div>
                   <div className="kv-row"><dt>시작</dt><dd>{fmtDateTime(s.created_at)}</dd></div>
                   <div className="kv-row"><dt>완료</dt><dd>{fmtDateTime(s.finished_at)}</dd></div>
