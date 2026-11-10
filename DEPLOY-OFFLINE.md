@@ -21,6 +21,7 @@
 | postgres-v17.11-jasca1.tar.gz | 별도 선택 이미지 `postgres:v17.11-jasca1` (공식 17.11-bookworm 기반, 쓰지 않는 gosu·snakeoil 키 제거, root로 실행 불가) |
 | jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress |
 | postgres.yaml | 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
+| db.tar.gz, javadb.tar.gz | 릴리스 날짜 기준 Trivy 취약점 DB와 Java DB. 설치 뒤 **관리 → Trivy DB**에서 올립니다(아래 "Trivy DB 오프라인 갱신"). 시간이 지났으면 새로 받으세요 |
 | DEPLOY-OFFLINE.md | 이 문서 |
 | RELEASE-NOTES.md | 이번 버전의 변경 사항 |
 | SHA256SUMS | 반입 파일 무결성 검사 |
