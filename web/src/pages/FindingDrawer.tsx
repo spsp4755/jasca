@@ -11,7 +11,8 @@ import Icon from "../components/Icon";
 import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
 import { useToast } from "../components/Toast";
-import { KIND_LABEL, ORIGIN_LABEL, RESOLUTION_LABEL, TARGET_KIND_LABEL, dateInput, endOfDayISO, fmtDateTime, fmtDaysAgo } from "../lib/format";
+import { KIND_LABEL, ORIGIN_LABEL, RESOLUTION_LABEL, TARGET_KIND_LABEL, dateInput, endOfDayISO, fmtDateTime, fmtDaysAgo, fmtDue } from "../lib/format";
+import { Triage, canTriage } from "./FindingTriage";
 
 const DETAIL_LABEL: Record<string, string> = {
   message: "메시지", description: "설명", resolution: "조치 방법", resource: "리소스", namespace: "네임스페이스",
@@ -65,8 +66,12 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
   const me = useMe();
   const role = useApi<Project[]>("/projects").data?.find((p) => p.key === f?.project_key)?.my_role;
   const canAsk = !!f && canAskFor(f, role, isSecurity(me.data)); // viewers would only get a 403
-  // a request already waiting for a decision; asked again on every open, since the row may be older than a request just sent
-  const pending = useApi<Finding>(f ? `/findings/${f.id}` : null, { staleTime: 0 }).data?.pending_exception_id;
+  // asked again on every open, since the row may be older than a request just sent or an assignment just made:
+  // a request already waiting for a decision, the assignee and the deadline with the policy days behind it
+  const detail = useApi<Finding>(f ? `/findings/${f.id}` : null, { staleTime: 0 }).data;
+  const pending = detail?.pending_exception_id;
+  const now = f && detail?.id === f.id ? detail : f;
+  const late = now?.status === "open" && now.due_at ? fmtDue(now.due_at) : null;
   const waiting = f?.status === "open" && pending ? <Link to={`/exceptions?id=${pending}`}>예외 승인 대기 중</Link> : null;
   // start/end lines are part of 위치 when there is a file to attach them to
   const all = f ? Object.entries(f.details ?? {}).filter(([k, v]) => !HIDDEN.has(k) && v !== "" && v !== null && v !== 0
@@ -87,7 +92,9 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
         )}>
         {f && (
           <>
-            {f.status === "open" && <p className="drawer-todo"><Icon name="arrowRight" size={15} /><span><b>할 일</b> {todo(f)}</span></p>}
+            {f.status === "open" && <p className="drawer-todo"><Icon name="arrowRight" size={15} /><span><b>할 일</b> {todo(f)}
+              {late?.over && <b className="todo-late"> 조치 기한이 {late.days < 0 ? `${-late.days}일` : "오늘"} 지났습니다.</b>}</span></p>}
+            {now && <Triage f={now} canEdit={canTriage(role, isSecurity(me.data))} />}
             <dl className="kv">
               <Row label="상태"><StatusBadge status={f.status} />{waiting && <> · {waiting}</>}{f.reopened_count > 0 && <span className="muted"> · 다시 열림 {f.reopened_count}회</span>}</Row>
               {f.exception_id && <Row label="예외"><Link to={`/exceptions?id=${f.exception_id}`}>예외 #{f.exception_id}</Link></Row>}

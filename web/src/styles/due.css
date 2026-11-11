@@ -1,0 +1,57 @@
+/* 조치 기한과 담당자: deadline and assignee cells, the drawer block, the home row. Builds on tokens.css. */
+
+.deadline { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-2); }
+.deadline-soon { color: var(--warn); }
+.deadline-over { color: var(--danger); }
+.assignee { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.assignee-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assignee .tag { flex: none; }
+/* in a table the name is cut at 7 characters (the title has all of it) and 비활성 goes under it, so the column stays narrow */
+.table .assignee { flex-direction: column; align-items: flex-start; gap: 2px; }
+.table .assignee-name { max-width: 7em; }
+.table .assignee .tag { height: 18px; font-size: 11px; }
+@media (max-width: 1180px) { .col-wide { display: none; } } /* the column that gives way: its value is in the drawer too */
+
+/* ---- drawer block ---- */
+.triage { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; }
+.triage-row { display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 12px; padding: 10px 12px; font-size: 13.5px; }
+.triage-row + .triage-row { border-top: 1px solid var(--line); }
+.triage-label { color: var(--muted); font-size: 12.5px; padding-top: 2px; }
+.triage-val, .triage-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.triage-edit { flex-basis: 100%; }
+.triage-val > .muted { font-size: 12.5px; }
+.picker.assignee-picker { flex: 1 1 180px; max-width: 260px; }
+.assignee-picker input.input.input-sm { width: 100%; }
+.assignee-picker .picker-opt .muted { font-size: 12px; }
+
+/* ---- bulk dialog ---- */
+.assign-pick { display: flex; align-items: flex-start; gap: 8px; }
+.assign-pick .picker.assignee-picker { max-width: none; }
+.assign-pick input.input.input-sm { height: 34px; font-size: 14px; }
+.assign-pick .btn { height: 34px; }
+.assign-pick .picker-list { position: static; margin-top: 6px; max-height: 232px; box-shadow: none; } /* in the flow: a floating list would be cut by the dialog */
+.assign-chosen { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); font-size: 13.5px; }
+.assign-chosen svg { flex: none; color: var(--accent); }
+.drawer-todo b.todo-late { margin: 0; color: var(--danger); }
+
+/* ---- home: a row under the main numbers, aligned with the two columns of .risk ---- */
+.risk-mine, .risk-late { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 8px 20px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.risk-mine { border-right: 1px solid var(--line); }
+.risk-late { padding-left: 26px; }
+.risk-mine h3, .risk-late h3 { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.risk-mine a, .risk-late a { color: var(--text); }
+.risk-mine a.deadline-over, .risk-late a.deadline-over { color: var(--danger); font-size: 13.5px; }
+.late-sevs { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.late-sevs a { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.late-sevs .sev-dot { width: 8px; height: 8px; }
+
+/* ---- project header ---- */
+.count-chip.count-late:not(.is-zero), .count-chip.count-late:not(.is-zero) b { color: var(--danger); }
+
+/* ---- 관리 → 기본 정책 → 조치 기한 ---- */
+.due-days { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 8px; background: var(--surface-2); font-size: 14px; }
+.due-days:disabled { opacity: 0.6; }
+.due-days-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.due-days-sev { display: inline-flex; align-items: center; gap: 7px; width: 96px; font-size: 12.5px; font-weight: 600; }
+.due-days-row input.input.input-sm { width: 80px; }
+.due-days-row .check-row { margin-left: 12px; font-size: 13px; }

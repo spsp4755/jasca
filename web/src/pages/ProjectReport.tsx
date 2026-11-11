@@ -43,6 +43,7 @@ export default function ProjectReport() {
   const history = runs.data ?? [];
   const shown = history.find((r) => r.id === sel) ?? history.find((r) => r.state === "done");
   const t = d?.summary.by_severity;
+  const late = d?.summary.overdue;
   const pol = d?.policy;
   // the API sends the 100 most severe open findings; the report lists the CRITICAL and HIGH ones and counts the rest
   const top = (d?.findings ?? []).filter((f) => f.severity === "CRITICAL" || f.severity === "HIGH");
@@ -77,7 +78,10 @@ export default function ProjectReport() {
               </header>
               {t && <section><h2>요약</h2><div className="sev-row">
                 {(["critical", "high", "medium", "low", "unknown"] as const).map((s) => <SeverityBadge key={s} severity={s.toUpperCase() as "LOW"} count={t[s] ?? 0} />)}
-                <span className="muted num">열린 결과 {fmtNumber(t.open ?? 0)}</span></div></section>}
+                <span className="muted num">열린 결과 {fmtNumber(t.open ?? 0)}</span></div>
+                {late && <p style={{ margin: "8px 0 0" }}>{late.open === 0 ? "조치 기한이 지난 열린 결과는 없습니다."
+                  : <>조치 기한이 지난 열린 결과 <b className="num">{fmtNumber(late.open)}</b>건{" "}
+                    ({(["critical", "high", "medium", "low"] as const).filter((s) => late[s] > 0).map((s) => `${s.toUpperCase()} ${fmtNumber(late[s])}건`).join(", ")})</>}</p>}</section>}
               {pol && <section><h2>정책</h2><p>{pol.enabled
                 ? `열린 결과 중 심각도 ${SEVERITY_LABEL[pol.min_severity] ?? pol.min_severity} 이상이 ${pol.max_count}개를 넘으면 정책 실패입니다.${pol.new_only ? " 이번 스캔에서 새로 나온 결과만 셉니다." : ""}${pol.fixable_only ? " 조치 버전이 있는 결과만 셉니다." : ""}`
                 : "정책을 쓰지 않습니다. 스캔은 판정하지 않고 '정책 사용 안 함'으로 표시됩니다."}</p></section>}

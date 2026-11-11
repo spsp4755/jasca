@@ -170,7 +170,8 @@ func TestSLASetting(t *testing.T) {
 		wantCode(t, do(t, s, "PUT", "/api/v1/admin/sla", map[string]any{"enabled": false}, ck), 403, "non-admin put")
 	}
 	for _, bad := range []string{`{"enabled":true,"days":{"HIGH":0}}`, `{"enabled":true,"days":{"HIGH":3651}}`, `{"enabled":true,"days":{"UNKNOWN":5}}`,
-		`{"enabled":true,"days":{"high":5}}`, `{"enabled":true,"days":{"HIGH":"5"}}`, `{"enabled":true,"days":[]}`, `{"enabled":true,"extra":1}`} {
+		`{"enabled":true,"days":{"high":5}}`, `{"enabled":true,"days":{"HIGH":"5"}}`, `{"enabled":true,"days":[]}`, `{"enabled":true,"extra":1}`,
+		`{"enabled":true}`, `{"enabled":false,"days":null}`} {
 		wantCode(t, do(t, s, "PUT", "/api/v1/admin/sla", bad, admin), 400, bad)
 	}
 	wantDue(t, s, "CVE-2", "open", 30, 0, false) // nothing above was saved
@@ -561,13 +562,9 @@ func TestOverdueCounts(t *testing.T) {
 	type dash struct {
 		Overdue sevCounts `json:"overdue"`
 		Mine    struct{ Open, Overdue int }
-		Oldest  []struct {
-			RuleID string     `json:"rule_id"`
-			DueAt  *time.Time `json:"due_at"`
-		} `json:"oldest_critical"`
 	}
 	d := decode[dash](t, do(t, s, "GET", "/api/v1/dashboard", nil, ck))
-	if d.Overdue != (sevCounts{Critical: 1, High: 1, Open: 2}) || d.Mine.Open != 2 || d.Mine.Overdue != 1 || len(d.Oldest) != 1 || d.Oldest[0].DueAt == nil {
+	if d.Overdue != (sevCounts{Critical: 1, High: 1, Open: 2}) || d.Mine.Open != 2 || d.Mine.Overdue != 1 {
 		t.Errorf("member dashboard: %+v", d)
 	}
 	if d := decode[dash](t, do(t, s, "GET", "/api/v1/dashboard", nil, loginAs(t, s, mkUser(t, s, "root", "admin")))); d.Overdue.Open != 3 || d.Mine.Open != 0 {

@@ -7,7 +7,7 @@ import Icon from "./Icon";
 import { statusLabel } from "./StatusBadge";
 
 const STATUSES = ["open", "fixed", "accepted", "false_positive"];
-const KEYS = ["project", "target_id", "severity", "status", "kind", "origin", "fixable", "q"] as const;
+const KEYS = ["project", "target_id", "severity", "status", "kind", "origin", "fixable", "q", "assignee", "due", "sort"] as const;
 
 /**
  * Findings filters live in the URL, under the API's own parameter names. A missing `status` means "open" (what people
@@ -79,6 +79,17 @@ export default function FilterBar({ projects, targets }: {
         <option value="">모든 출처</option>
         {Object.entries(ORIGIN_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
       </select>
+      <select className="input" aria-label="담당자" value={f.assignee ?? ""} onChange={(e) => set("assignee", e.target.value)}>
+        <option value="">모든 담당자</option>
+        <option value="me">내 담당</option>
+        <option value="none">담당자 미지정</option>
+        {f.assignee && f.assignee !== "me" && f.assignee !== "none" && <option value={f.assignee}>사용자 #{f.assignee}</option>}
+      </select>
+      <select className="input" aria-label="기한" value={f.due ?? ""} onChange={(e) => set("due", e.target.value)}>
+        <option value="">모든 기한</option>
+        <option value="overdue">기한 지남</option>
+        <option value="soon">기한 7일 이내</option>
+      </select>
       <label className="check-row filter-fix">
         <input type="checkbox" checked={f.fixable === "true"} onChange={(e) => set("fixable", e.target.checked ? "true" : undefined)} />조치 버전 있음
       </label>
@@ -87,6 +98,11 @@ export default function FilterBar({ projects, targets }: {
           <button type="button" aria-label="대상 필터 지우기" onClick={() => set("target_id", undefined)}><Icon name="x" size={12} /></button>
         </span>
       )}
+      <div className="sev-toggles" role="group" aria-label="정렬">
+        {([["", "심각도 순"], ["due", "기한 순"]] as const).map(([v, label]) => (
+          <button key={v} type="button" className="sev-toggle" aria-pressed={(f.sort ?? "") === v} onClick={() => set("sort", v)}>{label}</button>
+        ))}
+      </div>
       {dirty && <Button size="sm" variant="ghost" onClick={() => setSp(new URLSearchParams(), { replace: true })}>필터 초기화</Button>}
     </div>
   );

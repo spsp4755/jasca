@@ -17,7 +17,8 @@ export default function Dialog({ open, onClose, title, description, children, fo
   // showModal() alone focuses the close (X) button, so an Enter right after opening would close the dialog
   const focusFirst = (d: HTMLDialogElement) => {
     const first = (sel: string) => d.querySelector<HTMLElement>(`${sel}:not(:disabled, [hidden], [type=hidden])`);
-    (first(".dialog-body :is(input, select, textarea, button)") ?? (size === "drawer" ? null : first(".dialog-foot button")) ?? d).focus();
+    // a drawer is opened with Enter on a table row: a control focused there (assign to me) would be hit by the next Enter
+    ((size === "drawer" ? null : first(".dialog-body :is(input, select, textarea, button)") ?? first(".dialog-foot button")) ?? d).focus();
   };
   useEffect(() => {
     const d = ref.current;

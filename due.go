@@ -74,7 +74,8 @@ func (s *server) handleSLAGet(w http.ResponseWriter, r *http.Request, c *reqCtx)
 	writeJSON(w, 200, st)
 }
 
-// handleSLAPut replaces the setting and recalculates every open finding whose deadline nobody set by hand.
+// handleSLAPut replaces the setting (both fields, so that a body without days cannot wipe every deadline) and
+// recalculates every open finding whose deadline nobody set by hand.
 func (s *server) handleSLAPut(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	ctx := r.Context()
 	var st slaSetting
@@ -82,14 +83,13 @@ func (s *server) handleSLAPut(w http.ResponseWriter, r *http.Request, c *reqCtx)
 		writeBodyErr(w, err)
 		return
 	}
-	if st.Days == nil {
-		st.Days = map[string]*int{}
-	}
+	bad := st.Days == nil
 	for sev, d := range st.Days {
-		if !slices.Contains(policySeverities[:4], sev) || d != nil && (*d < 1 || *d > 3650) {
-			badRequest(w, "기한은 CRITICAL, HIGH, MEDIUM, LOW마다 1~3650일 또는 기한 없음(null)으로 정하세요. UNKNOWN에는 기한을 둘 수 없습니다.")
-			return
-		}
+		bad = bad || !slices.Contains(policySeverities[:4], sev) || d != nil && (*d < 1 || *d > 3650)
+	}
+	if bad {
+		badRequest(w, "days에 CRITICAL, HIGH, MEDIUM, LOW의 기한을 1~3650일 또는 기한 없음(null)으로 보내세요. UNKNOWN에는 기한을 둘 수 없습니다.")
+		return
 	}
 	if err := s.putSetting(ctx, "sla", st); err != nil {
 		writeInternal(w, "sla put", err)

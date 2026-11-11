@@ -39,6 +39,8 @@ export interface Principal { kind: "user" | "group"; principal: string; display:
 export interface Project {
   id: number; key: string; name: string; description: string; created_by: number | null; created_at: string;
   my_role: ProjectRole | ""; counts: Counts; last_scan_at: string | null;
+  /** open findings past their deadline */
+  overdue: number;
 }
 export interface ProjectCreate { key: string; name: string; description: string }
 export interface Member { principal_kind: "user" | "group"; principal: string; role: ProjectRole; display: string }
@@ -72,17 +74,24 @@ export interface ScanDetail extends Scan { diff: { new: number; fixed: number; u
 export interface ScanJobCreated { scan_id: number }
 
 // --- findings / vulns ---
+/** Who fixes a finding. name is the person's name, else the username; active false = the account was deactivated since. */
+export interface Assignee { id: number; name: string; username: string; active: boolean }
 export interface Finding {
   id: number; project_id: number; project_key: string; target_id: number; target_kind: TargetKind; target_name: string; kind: FindingKind; tool: string; rule_id: string; title: string;
   severity: Severity; pkg_name: string; pkg_version: string; fixed_version: string; pkg_path: string; location: string;
   status: FindingStatus; origin: FindingOrigin; first_seen_at: string; last_seen_at: string; fixed_at: string | null;
   reopened_count: number; exception_id: number | null; details: Record<string, unknown>;
+  /** due_at: the deadline, only while open (overdue = it is in the past). due_manual: a person set it, not the deadline setting. */
+  assignee: Assignee | null; due_at: string | null; due_manual: boolean;
   pending_exception_id?: number | null; // GET /findings/{id} only: a request waiting for a decision that covers it
+  sla_days?: number | null; // GET /findings/{id} only: the days the deadline setting gives this severity
 }
 /** Query of GET /findings and /findings.csv. severity, status, kind and origin take comma lists. */
 export interface FindingFilters {
   project?: string; target_id?: string; severity?: string; status?: string; kind?: string; origin?: string;
   fixable?: "true" | "false" | ""; q?: string; limit?: number; cursor?: string;
+  /** assignee: "me", "none" or a user id. due: overdue, or soon = within 7 days. sort=due: earliest deadline first. */
+  assignee?: string; due?: string; sort?: string;
 }
 export interface FindingPage { items: Finding[]; next_cursor: string | null; total: number }
 export interface VulnAffected {
@@ -140,6 +149,8 @@ export interface DashboardScan {
 export interface Dashboard {
   totals: Counts; trend: TrendPoint[]; oldest_critical: DashboardFinding[]; expiring_exceptions: ExceptionItem[];
   recent_scans: DashboardScan[]; newly_known: DashboardFinding[];
+  /** overdue: open findings past their deadline by severity (open = all). mine: open findings assigned to me. */
+  overdue: Counts; mine: { open: number; overdue: number };
 }
 
 // --- audit / channels ---
@@ -215,6 +226,8 @@ export interface AIPrompts { vuln_guide: string; project_report: string }
 /** GET adds the built-in prompts an empty field falls back to. */
 export interface AIPromptsView extends AIPrompts { defaults: AIPrompts }
 export type DefaultPolicy = Policy;
+/** GET/PUT /admin/sla: days a finding of each severity may stay open; null or left out = no deadline (UNKNOWN never has one). */
+export interface SLA { enabled: boolean; days: Partial<Record<Severity, number | null>> }
 export interface SMTPSettings { host: string; port: number; username: string; password_set: boolean; from: string; tls: "starttls" | "tls" | "none" }
 /** PUT body: an empty or omitted password keeps the stored one. */
 export type SMTPSettingsPut = Omit<SMTPSettings, "password_set"> & { password?: string };
@@ -230,7 +243,7 @@ export interface ReportFinding {
 export interface ProjectReportData {
   project: { key: string; name: string; description: string };
   generated_at: string;
-  summary: { by_severity: Counts; by_kind: Record<FindingKind, number> };
+  summary: { by_severity: Counts; by_kind: Record<FindingKind, number>; overdue?: Counts };
   targets: Target[];
   findings: ReportFinding[];
   exceptions: ExceptionItem[];

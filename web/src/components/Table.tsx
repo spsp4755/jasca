@@ -11,6 +11,8 @@ export type Column<T> = {
   mono?: boolean;
   /** Keep on one line; with a width it is also cut with an ellipsis (without one the column grows to fit). */
   nowrap?: boolean;
+  /** Class for the column's header and cells (e.g. "col-wide": hidden on narrow screens). */
+  className?: string;
 };
 
 export type TableProps<T> = {
@@ -74,7 +76,7 @@ export default function Table<T>({ columns, rows, rowKey, onRowClick, empty, loa
               </th>
             )}
             {columns.map((c) => (
-              <th key={c.key} scope="col" style={{ width: c.width, textAlign: c.align }}>{c.header}</th>
+              <th key={c.key} scope="col" className={c.className} style={{ width: c.width, textAlign: c.align }}>{c.header}</th>
             ))}
           </tr>
         </thead>
@@ -100,7 +102,7 @@ export default function Table<T>({ columns, rows, rowKey, onRowClick, empty, loa
                     <td className="col-check"><input type="checkbox" aria-label="선택" checked={isSel} disabled={!!selectableRow && !selectableRow(row)} onChange={() => toggle(k)} /></td>
                   )}
                   {columns.map((c) => (
-                    <td key={c.key} style={{ textAlign: c.align }} className={[c.mono && "mono", c.nowrap && "nowrap", c.nowrap && c.width !== undefined && "truncate"].filter(Boolean).join(" ") || undefined}>
+                    <td key={c.key} style={{ textAlign: c.align }} className={[c.mono && "mono", c.nowrap && "nowrap", c.nowrap && c.width !== undefined && "truncate", c.className].filter(Boolean).join(" ") || undefined}>
                       {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? "")}
                     </td>
                   ))}

@@ -47,6 +47,11 @@ L.run(async () => {
   await p.getByRole("dialog").first().waitFor();
   await both(p, "finding drawer");
   await p.keyboard.press("Escape");
+  await p.getByLabel("모두 선택").check();
+  await p.getByRole("button", { name: "담당자 지정" }).click();
+  await p.getByRole("dialog", { name: "담당자 지정" }).locator(".picker-opt").first().waitFor();
+  await both(p, "assign dialog");
+  await visit(p, "/findings?assignee=me&due=overdue&sort=due", "findings by assignee and deadline");
   await visit(p, "/vulns/CVE-2022-37434", "vuln");
   await visit(p, "/scan", "scan upload");
   await visit(p, "/scan?tab=harbor", "scan harbor");
