@@ -78,6 +78,11 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request, c *reqC
 		Expiring    []exception   `json:"expiring_exceptions"`
 		RecentScans []dashScan    `json:"recent_scans"`
 		NewlyKnown  []dashFinding `json:"newly_known"`
+		Overdue     sevCounts     `json:"overdue"` // open findings past their deadline; open = all of them
+		Mine        struct {
+			Open    int `json:"open"`
+			Overdue int `json:"overdue"`
+		} `json:"mine"` // open findings assigned to the caller
 	}{}
 	cond, args := vis("f", 1)
 	k := &d.Totals
@@ -85,6 +90,19 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request, c *reqC
 			count(*) filter (where severity = 'MEDIUM'), count(*) filter (where severity = 'LOW'),
 			count(*) filter (where severity = 'UNKNOWN'), count(*) from findings f where f.status = 'open' and `+cond, args...).
 		Scan(&k.Critical, &k.High, &k.Medium, &k.Low, &k.Unknown, &k.Open); err != nil {
+		fail(err)
+		return
+	}
+	o := &d.Overdue
+	if err := s.db.QueryRow(ctx, `select * from `+openCountsSQL("f.due_at < now() and "+cond)+` x`, args...).
+		Scan(&o.Critical, &o.High, &o.Medium, &o.Low, &o.Unknown, &o.Open); err != nil {
+		fail(err)
+		return
+	}
+	// the caller's own, in the projects they can still see: the same findings as GET /findings?assignee=me
+	cond, args = vis("f", 2)
+	if err := s.db.QueryRow(ctx, `select count(*), count(*) filter (where f.due_at < now()) from findings f
+		where f.status = 'open' and f.assignee_id = $1 and `+cond, append([]any{c.User.ID}, args...)...).Scan(&d.Mine.Open, &d.Mine.Overdue); err != nil {
 		fail(err)
 		return
 	}

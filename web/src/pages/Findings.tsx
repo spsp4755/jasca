@@ -14,6 +14,7 @@ import StatusBadge from "../components/StatusBadge";
 import Table, { type Column } from "../components/Table";
 import { KIND_LABEL, fmtDate, fmtDaysAgo, fmtNumber } from "../lib/format";
 import FindingDrawer, { ExceptionRequestDialog, canAskFor } from "./FindingDrawer";
+import { AssignDialog, AssigneeName, DueText, canTriage } from "./FindingTriage";
 import { PkgCell, ProjectTarget } from "./Home";
 
 const LIMIT = 100;
@@ -28,7 +29,7 @@ export default function Findings() {
   );
 }
 
-/** Filter bar + findings table + drawer + bulk exception request. With `project`, scoped to that project. */
+/** Filter bar + findings table + drawer + bulk assignment and exception request. With `project`, scoped to that project. */
 export function FindingsView({ project, projects, targets }: { project?: string; projects?: Project[]; targets?: Target[] }) {
   const [sp, setSp] = useSearchParams();
   const filters = { ...readFilters(sp), ...(project ? { project } : {}) };
@@ -51,13 +52,17 @@ export function FindingsView({ project, projects, targets }: { project?: string;
     return n;
   }, { replace: true });
   const [ask, setAsk] = useState(false);
+  const [assign, setAssign] = useState(false);
   useEffect(() => setSelected(new Set()), [query]);
-  // rows are chosen only to ask for an exception, so the checkboxes follow who may ask (the drawer's rule)
+  // rows are chosen to assign them or to ask for an exception, so the checkboxes follow who may assign (the drawer's
+  // rule); whoever may ask for an exception may assign too
   const sec = isSecurity(useMe().data);
   const roles = useApi<Project[]>("/projects").data;
-  const canAsk = (r: Finding) => canAskFor(r, roles?.find((p) => p.key === r.project_key)?.my_role, sec);
-  const anyAsk = sec || !!roles?.some((p) => (project ? p.key === project : true) && (p.my_role === "member" || p.my_role === "owner"));
-  const picked = rows.filter((r) => selected.has(r.id) && r.status === "open"); // only open findings can get an exception
+  const roleOf = (r: Finding) => roles?.find((p) => p.key === r.project_key)?.my_role;
+  const canPick = (r: Finding) => canTriage(roleOf(r), sec);
+  const anyPick = sec || !!roles?.some((p) => (project ? p.key === project : true) && (p.my_role === "member" || p.my_role === "owner"));
+  const chosen = rows.filter((r) => selected.has(r.id));
+  const picked = chosen.filter((r) => r.status === "open" && canAskFor(r, roleOf(r), sec)); // only open findings can get an exception
 
   const columns: Column<Finding>[] = [
     { key: "sev", header: "심각도", width: 108, render: (r) => <SeverityBadge severity={r.severity} /> },
@@ -74,8 +79,11 @@ export function FindingsView({ project, projects, targets }: { project?: string;
     project
       ? { key: "target", header: "대상", width: "18%", nowrap: true, render: (r) => <span className="pt-target mono" title={r.target_name}>{r.target_name}</span> }
       : { key: "where", header: "프로젝트 · 대상", width: "18%", nowrap: true, render: (r) => <ProjectTarget project={r.project_key} target={r.target_name} /> }, // nowrap + width: cut with an ellipsis, so this column gives way first
-    { key: "status", header: "상태", width: 96, render: (r) => <StatusBadge status={r.status} /> },
-    { key: "seen", header: "처음 발견", width: 92, align: "right", render: (r) => <span className="num muted" title={fmtDate(r.first_seen_at)}>{fmtDaysAgo(r.first_seen_at)}</span> },
+    // narrow screens: with one status chosen (열림 by default) every row says the same, so this column gives way too
+    { key: "status", header: "상태", width: 96, className: filters.status && !filters.status.includes(",") ? "col-wide" : undefined, render: (r) => <StatusBadge status={r.status} /> },
+    { key: "assignee", header: "담당자", render: (r) => <AssigneeName a={r.assignee} /> }, // no width: as wide as the names, which the cell caps
+    { key: "due", header: "기한", width: 92, render: (r) => <DueText at={r.due_at} /> },
+    { key: "seen", header: "처음 발견", width: 92, align: "right", className: "col-wide", render: (r) => <span className="num muted" title={fmtDate(r.first_seen_at)}>{fmtDaysAgo(r.first_seen_at)}</span> },
   ];
 
   return (
@@ -88,8 +96,11 @@ export function FindingsView({ project, projects, targets }: { project?: string;
         </span>
         {selected.size > 0 && (
           <span className="bulk">
-            <span className="num">{selected.size}건 선택{picked.length < selected.size && ` (열린 결과 ${picked.length}건)`}</span>
-            <Button size="sm" variant="primary" icon="shield" disabled={picked.length === 0} onClick={() => setAsk(true)}>예외 요청</Button>
+            <span className="num">{selected.size}건 선택</span>
+            <Button size="sm" onClick={() => setAssign(true)}>담당자 지정</Button>
+            <Button size="sm" variant="primary" icon="shield" disabled={picked.length === 0} onClick={() => setAsk(true)}
+              title={picked.length < selected.size ? `고른 것 중 예외를 요청할 수 있는 열린 결과는 ${picked.length}건입니다.` : undefined}>
+              예외 요청{picked.length < selected.size && ` (${picked.length}건)`}</Button>
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>선택 해제</Button>
           </span>
         )}
@@ -108,10 +119,14 @@ export function FindingsView({ project, projects, targets }: { project?: string;
       )}
       <div className="panel">
         <Table caption="결과 목록" rows={rows} rowKey={(r) => r.id} columns={columns} loading={q.isPending} dense
-          {...(anyAsk ? { selected, onSelectedChange: setSelected, selectableRow: canAsk } : {})} onRowClick={setOpen}
+          {...(anyPick ? { selected, onSelectedChange: setSelected, selectableRow: canPick } : {})} onRowClick={setOpen}
           empty={(
             <Empty compact icon="shieldCheck" title="조건에 맞는 결과가 없습니다"
-              description={filters.status === "open" ? "열린 결과만 보고 있습니다. 해결되거나 예외 처리된 결과도 보려면 상태를 '모든 상태'로 바꾸세요." : "필터를 줄이거나 검색어를 바꿔 보세요."} />
+              description={filters.assignee === "me" ? "내 담당인 결과 중 이 조건에 맞는 것이 없습니다. 담당자는 프로젝트 멤버가 결과 창이나 목록의 '담당자 지정'에서 정합니다."
+                : filters.assignee === "none" ? "이 조건의 결과 중 담당자가 없는 것은 없습니다."
+                : filters.due === "overdue" ? "이 조건의 결과 중 조치 기한이 지난 것은 없습니다. 기한은 열린 결과에만 있습니다."
+                : filters.due === "soon" ? "이 조건의 결과 중 기한이 7일 안에 끝나는 것은 없습니다. 이미 지난 것은 '기한 지남'에서 봅니다."
+                : filters.status === "open" ? "열린 결과만 보고 있습니다. 해결되거나 예외 처리된 결과도 보려면 상태를 '모든 상태'로 바꾸세요." : "필터를 줄이거나 검색어를 바꿔 보세요."} />
           )} />
         {q.hasNextPage && (
           <div className="more"><Button loading={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>{LIMIT}건 더 보기</Button></div>
@@ -119,6 +134,7 @@ export function FindingsView({ project, projects, targets }: { project?: string;
       </div>
       <FindingDrawer finding={open} onClose={() => setOpen(null)} showProject={!project} />
       <ExceptionRequestDialog open={ask} findings={picked} onClose={() => setAsk(false)} onDone={() => setSelected(new Set())} />
+      <AssignDialog open={assign} findings={chosen} onClose={() => setAssign(false)} onDone={() => setSelected(new Set())} />
     </div>
   );
 }

@@ -62,6 +62,10 @@ func newServer(ctx context.Context, cfg config, db *pgxpool.Pool) (*server, erro
 	if err := s.bootstrapAdmin(ctx, cfg.BootstrapPassword); err != nil {
 		return nil, fmt.Errorf("bootstrap admin: %w", err)
 	}
+	// the deadlines of what was open before an upgrade (migration 006); otherwise nothing changes here
+	if _, err := applyDue(ctx, db, "true"); err != nil {
+		return nil, fmt.Errorf("deadlines: %w", err)
+	}
 	// /healthz is liveness (no DB); /readyz is readiness (the DB answers).
 	s.handle("GET /healthz", permPublic, func(w http.ResponseWriter, r *http.Request, c *reqCtx) { io.WriteString(w, "ok") })
 	s.handle("GET /readyz", permPublic, func(w http.ResponseWriter, r *http.Request, c *reqCtx) {

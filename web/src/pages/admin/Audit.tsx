@@ -18,7 +18,8 @@ const ACTION: Record<string, string> = {
   "auth.login": "로그인", "auth.login_failed": "로그인 실패", "auth.logout": "로그아웃",
   "auth.password_change": "비밀번호 변경", "auth.password_change_failed": "비밀번호 변경 실패",
   "user.update": "사용자 역할·상태 변경", "settings.update": "연동 설정 변경", "smtp.update": "메일(SMTP) 설정 변경",
-  "retention.update": "보존 기간 변경", "default_policy.update": "기본 정책 변경",
+  "retention.update": "보존 기간 변경", "default_policy.update": "기본 정책 변경", "sla.update": "조치 기한 정책 변경",
+  "finding.assign": "결과 담당자 지정", "finding.due": "결과 기한 변경",
   "project.create": "프로젝트 생성", "project.update": "프로젝트 수정", "project.delete": "프로젝트 삭제", "project.members": "프로젝트 멤버 변경",
   "policy.update": "프로젝트 정책 변경", "notify.update": "알림 구독 변경", "token.create": "API 토큰 생성", "token.revoke": "API 토큰 폐기",
   "scan.upload": "CI 업로드", "scan.job": "파일 업로드 스캔", "scan.cancel": "스캔 취소", "recheck.start": "재평가 시작",
@@ -42,6 +43,9 @@ const DETAIL: Record<string, string> = {
   format: "형식", ref: "태그·커밋(ref)", tls: "암호화", findings: "결과 수", policy_passed: "정책 통과", total: "대상 수", scanners: "스캐너", error: "오류",
   version: "버전", updated_at: "갱신 시각", groups: "그룹 수", users: "사용자 수", principal_kind: "구분", principal: "대상", role: "역할", channel_id: "채널 번호", events: "이벤트",
   role_from_sso: "Keycloak 역할 따름", added: "추가", removed: "제거", changed: "역할 변경", member_count: "멤버 수",
+  // finding.assign, finding.due, sla.update
+  finding_id: "결과 번호", finding_ids: "결과 번호", count: "건수", assignee: "담당자", unassigned: "지정 해제", due_at: "기한", auto: "정책 기한으로 되돌림",
+  days: "심각도별 기한(일)", recalculated: "기한이 바뀐 결과",
   // trivy.settings: the words of 관리 → Trivy DB → 스캔 옵션
   pkg_types: "패키지 종류", include_dev_deps: "개발용 의존성도 검사", severities: "결과에 넣을 심각도", ignore_unfixed: "조치 버전이 없는 취약점 제외",
   skip_dirs: "건너뛸 디렉터리", skip_files: "건너뛸 파일", detection_priority: "탐지 방식", timeout_min: "스캔 1건 제한 시간(분)",

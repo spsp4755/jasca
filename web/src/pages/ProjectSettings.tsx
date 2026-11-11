@@ -25,6 +25,7 @@ export const NOTIFY_EVENTS: [string, string][] = [
   ["new_critical", "새 CRITICAL·HIGH 결과"], ["policy_failed", "정책 실패"], ["scan_failed", "스캔 실패"], ["new_known", "새로 알려진 취약점"],
   ["exception_requested", "예외 요청"], ["exception_approved", "예외 승인"], ["exception_rejected", "예외 반려"],
   ["exception_expiring", "예외 만료 임박"], ["exception_expired", "예외 만료"],
+  ["due_soon", "조치 기한 임박"], ["overdue", "조치 기한 지남"],
 ];
 
 /** Mutation that toasts and invalidates the given GET paths. */

@@ -90,6 +90,18 @@ export const dateInput = (days = 0) => {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 };
+/** The YYYY-MM-DD of an instant in the display zone, for a date input that shows a stored time. */
+export const dateOf = (iso: string) => new Date(wallClock(new Date(iso).getTime())).toISOString().slice(0, 10);
+/**
+ * A deadline as people say it: "3일 남음", "오늘까지", "5일 지남", counted in calendar days of the display zone.
+ * over: the deadline has passed (what the API counts as overdue). days: calendar days left, negative when past.
+ */
+export function fmtDue(iso: string, now = Date.now()) {
+  const day = (t: number) => Math.floor(wallClock(t) / 86_400_000);
+  const days = day(new Date(iso).getTime()) - day(now);
+  const over = new Date(iso).getTime() < now;
+  return { over, days, text: over ? (days < 0 ? `${-days}일 지남` : "오늘 지남") : days === 0 ? "오늘까지" : `${days}일 남음` };
+}
 /** 23:59:59 of that day in the display zone as RFC3339; the API caps expiry at 365 days, so date pickers stop at dateInput(364). */
 export const endOfDayISO = (date: string) => {
   const t = Date.parse(`${date}T23:59:59Z`);

@@ -11,6 +11,7 @@ import Table from "../components/Table";
 import TrendChart from "../components/TrendChart";
 import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, SOURCE_LABEL, daysSince, daysUntil, fmtDate, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
 import { exceptionWhat } from "./Exceptions";
+import "../styles/due.css"; // the 내 담당 / 기한 지남 row
 
 // why a finding turned up without a new scan, for 새로 알려진 취약점
 const FOUND_BY: Record<FindingOrigin, string> = { scan: "스캔에서 발견", recheck: "재평가로 발견", advisory: "사내 Advisory로 발견" };
@@ -60,7 +61,7 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
   if (d && !d.recent_scans.length && !d.totals.open) return <FirstRun />;
   return (
     <div className="home-grid">
-      <RiskSummary totals={d?.totals} />
+      <RiskSummary totals={d?.totals} overdue={d?.overdue} mine={d?.mine} />
 
       <section className="panel span-8" aria-labelledby="h-trend">
         <div className="panel-head">
@@ -160,9 +161,10 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
   );
 }
 
-function RiskSummary({ totals }: { totals?: Counts }) {
+function RiskSummary({ totals, overdue, mine }: { totals?: Counts; overdue?: Counts; mine?: Dashboard["mine"] }) {
   const sevs = SEVERITIES.map((s) => ({ s, n: totals ? totals[s.toLowerCase() as keyof Counts] : 0 }));
   const sum = sevs.reduce((a, x) => a + x.n, 0);
+  const late = SEVERITIES.map((s) => ({ s, n: overdue?.[s.toLowerCase() as keyof Counts] ?? 0 })).filter((x) => x.n > 0);
   return (
     <section className="panel span-12 risk" aria-labelledby="h-risk">
       <div className="risk-total">
@@ -186,6 +188,27 @@ function RiskSummary({ totals }: { totals?: Counts }) {
         <div className="risk-bar" role="img" aria-label={sum ? sevs.map(({ s, n }) => `${SEVERITY_LABEL[s]} ${n}건`).join(", ") : "열린 결과 없음"}>
           {sum > 0 && sevs.map(({ s, n }) => n > 0 && <span key={s} className={`bar-${s.toLowerCase()}`} style={{ flexGrow: n }} />)}
         </div>
+      </div>
+      {/* who and by when, under the main numbers: my own findings, and what is past its deadline */}
+      <div className="risk-mine">
+        <h3>내 담당</h3>
+        {!mine ? <span className="muted">–</span> : mine.open === 0 ? <span className="muted">맡은 열린 결과가 없습니다</span> : (
+          <span><Link to="/findings?assignee=me"><b className="num">{fmtNumber(mine.open)}</b>건</Link>
+            {mine.overdue > 0 && <> · <Link to="/findings?assignee=me&due=overdue" className="deadline deadline-over"><Icon name="alert" size={13} />기한 지남 {fmtNumber(mine.overdue)}건</Link></>}</span>
+        )}
+      </div>
+      <div className="risk-late">
+        <h3>기한 지남</h3>
+        {!overdue ? <span className="muted">–</span> : overdue.open === 0 ? <span className="muted">조치 기한이 지난 열린 결과가 없습니다</span> : (
+          <>
+            <Link to="/findings?due=overdue&sort=due" className="deadline deadline-over"><Icon name="alert" size={13} /><span><b className="num">{fmtNumber(overdue.open)}</b>건</span></Link>
+            <ul className="late-sevs">
+              {late.map(({ s, n }) => (
+                <li key={s}><Link to={`/findings?due=overdue&severity=${s}`}><span className={`sev-dot dot-${s.toLowerCase()}`} aria-hidden="true" />{SEVERITY_LABEL[s]} <b className="num">{fmtNumber(n)}</b></Link></li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     </section>
   );

@@ -440,15 +440,19 @@ const exceptionMatchSQL = `(e.scope = 'finding' and e.finding_id = f.id
 	or e.scope = 'project_vuln' and f.kind = 'vuln' and e.project_id = f.project_id and e.vuln_id = f.rule_id
 	or e.scope = 'global_vuln' and f.kind = 'vuln' and e.vuln_id = f.rule_id)`
 
-// applyException sets the exception's resolution on the open findings in its scope.
+// applyException sets the exception's resolution on the open findings in its scope; they have no deadline from then on.
 func applyException(ctx context.Context, tx pgx.Tx, ex *exception) error {
 	_, err := tx.Exec(ctx, `update findings f set status = e.resolution, exception_id = e.id from exceptions e
 		where e.id = $1 and f.status = 'open' and `+exceptionMatchSQL, ex.ID)
+	if err == nil {
+		_, err = applyDue(ctx, tx, "f.exception_id = $1", ex.ID)
+	}
 	return err
 }
 
 // reapplyExceptions gives the open findings selected by cond (an SQL condition on f, with one arg) the resolution of an
-// approved, unexpired exception that covers them. Used for new findings and after an exception ends.
+// approved, unexpired exception that covers them. Used for new findings and after an exception ends. The caller
+// applies the deadline rule (applyDue) once it has made all its status changes.
 func reapplyExceptions(ctx context.Context, tx pgx.Tx, cond string, arg any) error {
 	_, err := tx.Exec(ctx, `update findings f set status = e.resolution, exception_id = e.id from exceptions e
 		where e.status = 'approved' and e.expires_at > now() and f.status = 'open' and `+cond+` and `+exceptionMatchSQL, arg)
@@ -456,18 +460,23 @@ func reapplyExceptions(ctx context.Context, tx pgx.Tx, cond string, arg any) err
 }
 
 // releaseException takes the exception off its findings: accepted/false_positive go back to open (fixed stays fixed),
-// then any other active exception that also covers them is applied again.
+// then any other active exception that also covers them is applied again. What stays open is open since now: its
+// deadline starts over.
 func releaseException(ctx context.Context, tx pgx.Tx, id int64) error {
 	var projects []int64
 	rows, _ := tx.Query(ctx, `update findings set exception_id = null,
+			open_since = case when status in ('accepted', 'false_positive') then now() else open_since end,
 			status = case when status in ('accepted', 'false_positive') then 'open' else status end
 		where exception_id = $1 returning project_id`, id)
 	projects, err := pgx.CollectRows(rows, pgx.RowTo[int64])
 	if err != nil || len(projects) == 0 {
 		return err
 	}
-	_, err = tx.Exec(ctx, `update findings f set status = e.resolution, exception_id = e.id from exceptions e
-		where e.status = 'approved' and e.expires_at > now() and f.status = 'open' and f.project_id = any($1) and `+exceptionMatchSQL, projects)
+	if _, err = tx.Exec(ctx, `update findings f set status = e.resolution, exception_id = e.id from exceptions e
+		where e.status = 'approved' and e.expires_at > now() and f.status = 'open' and f.project_id = any($1) and `+exceptionMatchSQL, projects); err != nil {
+		return err
+	}
+	_, err = applyDue(ctx, tx, "f.project_id = any($1)", projects)
 	return err
 }
 

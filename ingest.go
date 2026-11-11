@@ -114,7 +114,8 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 			return err
 		}
 		// back in this scan after being fixed: open again (accepted / false_positive keep their status)
-		rows, _ := tx.Query(ctx, `update findings set status = 'open', fixed_at = null, reopened_at = now(), reopened_count = reopened_count + 1
+		rows, _ := tx.Query(ctx, `update findings set status = 'open', fixed_at = null, reopened_at = now(), open_since = now(),
+				reopened_count = reopened_count + 1
 			where status = 'fixed' and id in (select finding_id from scan_findings where scan_id = $1) returning id`, res.ScanID)
 		if res.Reopened, err = pgx.CollectRows(rows, pgx.RowTo[int64]); err != nil {
 			return err
@@ -138,6 +139,10 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 			}
 		}
 		if err := reapplyExceptions(ctx, tx, "f.target_id = $1", res.TargetID); err != nil {
+			return err
+		}
+		// every status and severity of the target is final: its deadlines, in one statement
+		if _, err := applyDue(ctx, tx, "f.target_id = $1", res.TargetID); err != nil {
 			return err
 		}
 		// what this scan re-opened and resolved, advisory findings included: now() is the transaction start, so

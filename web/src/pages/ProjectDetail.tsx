@@ -51,7 +51,7 @@ export default function ProjectDetail() {
           </span>
         )}
         actions={p && p.my_role !== "viewer" && <Link to={`/scan?project=${encodeURIComponent(key)}`} className="btn btn-primary"><Icon name="scan" />스캔하기</Link>} />
-      {p && <CountsStrip c={p.counts} projectKey={p.key} />}
+      {p && <CountsStrip c={p.counts} overdue={p.overdue} projectKey={p.key} />}
       <Tabs label="프로젝트 화면" value={tab} onChange={(id) => navigate(`/projects/${encodeURIComponent(key)}${id === "results" ? "" : `/${id}`}`)}
         tabs={[
           { id: "results", label: "결과", count: p?.counts.open },
@@ -74,9 +74,9 @@ export default function ProjectDetail() {
   );
 }
 
-function CountsStrip({ c, projectKey }: { c: Counts; projectKey: string }) {
+function CountsStrip({ c, overdue, projectKey }: { c: Counts; overdue: number; projectKey: string }) {
   return (
-    <ul className="counts-strip" aria-label="열린 결과 심각도별">
+    <ul className="counts-strip" aria-label="열린 결과 심각도별, 기한 지남">
       {SEVERITIES.map((s) => {
         const n = c[s.toLowerCase() as keyof Counts];
         return (
@@ -87,6 +87,11 @@ function CountsStrip({ c, projectKey }: { c: Counts; projectKey: string }) {
           </li>
         );
       })}
+      <li>
+        <Link to={`/projects/${projectKey}?due=overdue&sort=due`} className={`count-chip count-late${overdue ? "" : " is-zero"}`}>
+          {overdue > 0 && <Icon name="alert" size={13} />}기한 지남<b className="num">{fmtNumber(overdue)}</b>
+        </Link>
+      </li>
     </ul>
   );
 }

@@ -294,6 +294,9 @@ func (s *server) recheckTarget(ctx context.Context, runID, targetID int64) error
 			if err := reapplyExceptions(ctx, tx, "f.target_id = $1", targetID); err != nil { // same rule as a scan
 				return err
 			}
+			if _, err := applyDue(ctx, tx, "f.target_id = $1", targetID); err != nil {
+				return err
+			}
 			var c sevCounts
 			if err := tx.QueryRow(ctx, openCountsSQL("f.target_id = $1"), targetID).
 				Scan(&c.Critical, &c.High, &c.Medium, &c.Low, &c.Unknown, &c.Open); err != nil {
