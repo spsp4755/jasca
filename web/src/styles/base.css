@@ -50,7 +50,7 @@ h1:focus { box-shadow: none; }
 .skip-link:focus { top: 12px; }
 
 /* ---- shell ---- */
-.app { position: relative; display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; transition: grid-template-columns var(--dur); }
+.app { position: relative; display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; overflow: clip; transition: grid-template-columns var(--dur); }
 .app.is-resizing { transition: none; cursor: col-resize; user-select: none; }
 /* the sidebar's right edge: drag to resize, arrow keys when focused */
 .side-resize { position: absolute; z-index: 5; top: 0; bottom: 0; left: calc(var(--sidebar) - 4px); width: 8px; cursor: col-resize; touch-action: none; }
@@ -58,11 +58,13 @@ h1:focus { box-shadow: none; }
 .side-resize:hover::after, .side-resize:focus-visible::after, .is-resizing .side-resize::after { background: var(--accent); }
 .side-resize:focus-visible { outline: none; box-shadow: none; }
 .app-main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
-.content { flex: 1; min-height: 0; overflow: auto; padding: 28px 32px 56px; scroll-padding-top: 48px; }
+/* position: the scroller must contain its absolutely placed children (.sr-only captions, labels): held by .app instead,
+   they stuck out below the window, the document itself scrolled and the whole shell slid up with the sidebar */
+.content { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 28px 32px 56px; scroll-padding-top: 48px; }
 .content > * { max-width: 1440px; margin-left: auto; margin-right: auto; }
 
 .sidebar {
-  display: flex; flex-direction: column; gap: 8px; height: 100%; overflow: auto;
+  position: relative; display: flex; flex-direction: column; gap: 8px; height: 100%; overflow: auto;
   padding: 14px 12px; border-right: 1px solid var(--line); background: var(--bg);
 }
 .side-head { display: flex; align-items: flex-start; gap: 4px; }

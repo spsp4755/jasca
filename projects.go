@@ -29,6 +29,8 @@ func (s *server) projectRoutes() {
 	s.handle("GET /api/v1/projects/{key}/notify", permProj("viewer"), s.handleNotifyGet)
 	s.handle("PUT /api/v1/projects/{key}/notify", permProj("owner"), s.handleNotifyPut)
 	s.handle("GET /api/v1/projects/{key}/targets", permProj("viewer"), s.handleTargetList)
+	s.handle("PATCH /api/v1/projects/{key}/targets/{id}", permProj("owner"), s.handleTargetRename)
+	s.handle("DELETE /api/v1/projects/{key}/targets/{id}", permProj("owner"), s.handleTargetDelete)
 }
 
 var projectKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,39}$`)
@@ -620,4 +622,66 @@ func (s *server) handleTargetList(w http.ResponseWriter, r *http.Request, c *req
 		return
 	}
 	writeJSON(w, 200, list)
+}
+
+// handleTargetRename fixes a target's name. Findings follow the target, so the next scan under the new name is
+// compared with what is there (the way out for a target that was named after one version).
+func (s *server) handleTargetRename(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+	ctx := r.Context()
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var req struct{ Name string }
+	if err := readJSON(r, 16<<10, &req); err != nil {
+		writeBodyErr(w, err)
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" || utf8.RuneCountInString(name) > 512 {
+		badRequest(w, "대상 이름은 1~512자로 입력하세요.")
+		return
+	}
+	var kind, old string
+	var harbor bool
+	if err := s.db.QueryRow(ctx, `select kind, name, recheck_excluded from targets where id=$1 and project_id=$2`, id, c.Project.ID).Scan(&kind, &old, &harbor); err != nil {
+		writeErr(w, 404, "not_found", "대상을 찾을 수 없습니다.")
+		return
+	}
+	if harbor { // the next sync would bring the repository back under its own name
+		writeErr(w, 409, "conflict", "Harbor에서 받아 오는 대상은 이름을 바꿀 수 없습니다.")
+		return
+	}
+	if _, err := s.db.Exec(ctx, `update targets set name=$2 where id=$1`, id, name); isUniqueViolation(err) {
+		writeErr(w, 409, "conflict", "이 프로젝트에 같은 종류와 이름의 대상이 이미 있습니다.")
+		return
+	} else if err != nil {
+		writeInternal(w, "target rename", err)
+		return
+	}
+	s.audit(ctx, c, "target.rename", &c.Project.ID, kind+":"+name, map[string]any{"from": old})
+	w.WriteHeader(204)
+}
+
+// handleTargetDelete removes a target with its scans, findings and inventory.
+func (s *server) handleTargetDelete(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+	ctx := r.Context()
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var kind, name string
+	var open int
+	var scans []int64
+	err := s.db.QueryRow(ctx, `delete from targets where id=$1 and project_id=$2 returning kind, name,
+		(select count(*) from findings where target_id=$1 and status='open'),
+		(select coalesce(array_agg(id), '{}') from scans where target_id=$1 and status in ('queued', 'running'))`,
+		id, c.Project.ID).Scan(&kind, &name, &open, &scans)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeErr(w, 404, "not_found", "대상을 찾을 수 없습니다.")
+		return
+	}
+	if err != nil {
+		writeInternal(w, "target delete", err)
+		return
+	}
+	for _, sid := range scans { // the cascade drops queued jobs, which then never remove their uploads
+		os.RemoveAll(s.workDir(sid))
+	}
+	s.audit(ctx, c, "target.delete", &c.Project.ID, kind+":"+name, map[string]any{"open": open})
+	w.WriteHeader(204)
 }

@@ -338,6 +338,50 @@ func TestTargetsList(t *testing.T) {
 	}
 }
 
+// A target named after one version is the trap this covers: renamed, its findings stay and the next scan under the
+// new name resolves them; deleted, it takes its findings with it.
+func TestTargetRenameDelete(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	alice := mkUser(t, s, "alice", "")
+	ca := loginAs(t, s, alice)
+	wantCode(t, do(t, s, "POST", "/api/v1/projects", map[string]string{"key": "web", "name": "web"}, ca), 201, "create")
+	wantCode(t, do(t, s, "POST", "/api/v1/projects", map[string]string{"key": "other", "name": "other"}, ca), 201, "create")
+	p, _ := s.projectByKey(ctx, "web")
+	mk := func(name string) int64 {
+		return qint64(t, s, `insert into targets(project_id, kind, name, last_scan_at) values($1, 'fs', $2, now()) returning id`, p.ID, name)
+	}
+	v1, v2 := mk("app-1.0"), mk("app-1.1")
+	sqlExec(t, s, `insert into findings(project_id, target_id, fingerprint, kind, tool, rule_id, severity) values($1, $2, 'a', 'vuln', 'trivy', 'CVE-1', 'HIGH')`, p.ID, v1)
+	path := func(id int64) string { return "/api/v1/projects/web/targets/" + itoa(id) }
+
+	bob := mkUser(t, s, "bob", "")
+	addMember(t, s, p.ID, "user", itoa(bob.ID), "member")
+	cb := loginAs(t, s, bob)
+	wantCode(t, do(t, s, "PATCH", path(v1), map[string]string{"name": "app"}, cb), 403, "member renames")
+	wantCode(t, do(t, s, "DELETE", path(v1), nil, cb), 403, "member deletes")
+	wantCode(t, do(t, s, "PATCH", "/api/v1/projects/other/targets/"+itoa(v1), map[string]string{"name": "app"}, ca), 404, "another project's target")
+	wantCode(t, do(t, s, "DELETE", "/api/v1/projects/other/targets/"+itoa(v1), nil, ca), 404, "another project's target")
+	wantCode(t, do(t, s, "PATCH", path(v1), map[string]string{"name": " "}, ca), 400, "empty name")
+	wantCode(t, do(t, s, "PATCH", path(v1), map[string]string{"name": "app-1.1"}, ca), 409, "name taken")
+
+	wantCode(t, do(t, s, "PATCH", path(v1), map[string]string{"name": " app "}, ca), 204, "rename")
+	if n := qInt(t, s, `select count(*) from findings f join targets t on t.id=f.target_id where t.name='app' and f.status='open'`); n != 1 {
+		t.Fatalf("the finding did not follow the renamed target: %d", n)
+	}
+	sqlExec(t, s, `update targets set recheck_excluded = true where id=$1`, v2)
+	wantCode(t, do(t, s, "PATCH", path(v2), map[string]string{"name": "x"}, ca), 409, "harbor target")
+
+	wantCode(t, do(t, s, "DELETE", path(v1), nil, ca), 204, "delete")
+	wantCode(t, do(t, s, "DELETE", path(v1), nil, ca), 404, "delete again")
+	if n := qInt(t, s, `select count(*) from findings`) + qInt(t, s, `select count(*) from targets where id=$1`, v1); n != 0 {
+		t.Fatalf("rows left after the delete: %d", n)
+	}
+	if auditCount(t, s, "target.rename") != 1 || auditCount(t, s, "target.delete") != 1 {
+		t.Fatal("not audited")
+	}
+}
+
 func TestPrincipals(t *testing.T) {
 	s := testServer(t)
 	u := mkUser(t, s, "kim.security", "")

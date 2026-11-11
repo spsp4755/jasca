@@ -25,6 +25,7 @@ const CONSOLE_ALLOW = [
   { suites: /^login$/, text: /status of 401/, url: /\/api\/v1\/projects$/ },
   { suites: /^advisory$/, text: /status of 404/, url: /\/api\/v1\/advisories\/JASCA-E2E-NONE$/ },
   { suites: /^trivydb$/, text: /status of 400/, url: /\/api\/v1\/admin\/trivy(\/db)?$/ }, // bad bundle, bad option
+  { suites: /^scan$/, text: /status of 409/, url: /\/api\/v1\/projects\/e2e-scan\/targets\/\d+$/ }, // a rename to a name that is taken
   // exceptions.cjs opens a report and a finding as someone without access; the 404s are the point.
   { suites: /^exceptions$/, text: /status of 404/, url: /\/api\/v1\/(projects\/e2e-exc\/report|findings\/\d+)$/ },
 ];

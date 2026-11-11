@@ -41,6 +41,10 @@
 .seg label:focus-within { box-shadow: var(--focus); }
 .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .seg .field-hint { flex-basis: 100%; margin: 0; }
+.scan-target-row { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 12px; align-items: start; }
+.scan-similar { margin: 0; align-items: center; }
+.scan-similar > span { flex: 1; min-width: 0; }
+.scan-similar .btn { flex: none; }
 .scan-new-project { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 14px; border-radius: var(--radius); background: var(--surface-2); }
 .scan-submit { padding: 16px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .scan-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -57,4 +61,4 @@
 .scan-policy { display: flex; gap: 8px; align-items: center; margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); font-size: 13.5px; }
 .scan-policy-pass { background: var(--ok-bg); color: var(--ok); }
 .scan-policy-fail { background: var(--danger-bg); color: var(--danger); }
-@media (max-width: 640px) { .scan-new-project { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .scan-new-project, .scan-target-row { grid-template-columns: 1fr; } }

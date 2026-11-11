@@ -102,6 +102,55 @@ L.run(async () => {
   L.ok(await page.getByLabel(/^대상 이름/).inputValue() === againTarget && await page.getByRole("combobox", { name: /^프로젝트/ }).inputValue() === "e2e-scan",
     "다시 on a recent scan fills in its project and target: " + againTarget);
   L.ok(await aside.getByText("docker save -o app.tar 이미지:태그").count() === 1 && await aside.getByRole("button", { name: /명령 복사$/ }).count() === 2, "the side shows how to make each kind of file, with copy buttons");
+  // A release per file name (relapp-1.0, relapp-1.1) must stay one target: the version goes to its own field, and the
+  // second scan closes what the upgrade fixed. A version typed into the name is caught before it makes a second target.
+  const release = async (ver, lodash, typed) => {
+    await page.goto(L.BASE + "/scan");
+    await page.locator('input[type="file"]').setInputFiles(pack("relapp-" + ver, [["package-lock.json", lock.toString().replaceAll("4.17.15", lodash)]]));
+    await page.getByRole("radio", { name: "소스 코드·패키지" }).waitFor();
+    const name = page.getByLabel(/^대상 이름/), version = page.getByLabel("버전");
+    await page.waitForFunction(() => document.querySelector(".scan-form select").value === "e2e-scan"); // the last project used, once the list is in
+    L.ok(await name.inputValue() === "relapp" && await version.inputValue() === ver, `relapp-${ver}.tar.gz fills in target relapp and version ${ver}`);
+    if (typed) {
+      await page.getByText("이미 있는 대상입니다").waitFor();
+      await name.fill(typed);
+      await version.fill("");
+      await page.locator(".scan-similar").getByText("relapp", { exact: true }).waitFor();
+      await page.getByRole("button", { name: "이 대상으로 스캔" }).click();
+      L.ok(await name.inputValue() === "relapp" && await version.inputValue() === ver && await page.locator(".scan-similar").count() === 0,
+        `typing ${typed} as the target is caught: one click goes back to relapp and keeps the version`);
+    }
+    await page.getByRole("button", { name: "스캔 시작" }).click();
+    await page.locator(".scan-run").getByText(/검사를 마쳤습니다|스캔하지 못했습니다/).waitFor({ timeout: 120000 });
+    const t = (await kim.api.get("/projects/e2e-scan/targets")).find((x) => x.name === "relapp");
+    return { t, scans: (await kim.api.get(`/projects/e2e-scan/scans?target_id=${t.id}`)).items };
+  };
+  const projOpen = async () => (await kim.api.get("/projects/e2e-scan")).counts.open;
+  const open0 = await projOpen();
+  const r1 = await release("1.0", "4.17.15");
+  L.ok(r1.t.counts.open > 0 && r1.scans[0].ref === "1.0", `release 1.0 has ${r1.t.counts.open} open findings and the scan carries its version`);
+  const r2 = await release("1.1", "4.17.21", "relapp-1.1");
+  const fixed = (await kim.api.get(`/findings?project=e2e-scan&target_id=${r2.t.id}&status=fixed&limit=100`)).total;
+  L.ok(r2.t.id === r1.t.id && r2.scans.length === 2 && r2.t.counts.open < r1.t.counts.open && fixed > 0 && await projOpen() === open0 + r2.t.counts.open,
+    `release 1.1 landed on the same target: ${fixed} findings became 조치됨, open ${r1.t.counts.open} → ${r2.t.counts.open}`);
+  // the way out for targets that did get a version in their name: an owner renames (findings follow) or deletes them
+  await page.goto(L.BASE + "/projects/e2e-scan/targets");
+  await page.getByRole("button", { name: "relapp 이름 변경" }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.getByLabel("대상 이름").fill("lodash-app");
+  await dlg.getByRole("button", { name: "변경" }).click();
+  await dlg.getByText("같은 종류와 이름의 대상이 이미 있습니다").waitFor();
+  await dlg.getByLabel("대상 이름").fill("relapp-web");
+  await dlg.getByRole("button", { name: "변경" }).click();
+  await page.getByRole("button", { name: "relapp-web 삭제" }).waitFor();
+  const renamed = (await kim.api.get("/projects/e2e-scan/targets")).find((x) => x.id === r1.t.id);
+  L.ok(renamed.name === "relapp-web" && renamed.counts.open === r2.t.counts.open, "a target can be renamed; a taken name is refused, and its findings follow");
+  await page.getByRole("button", { name: "relapp-web 삭제" }).click();
+  await dlg.getByText(/되돌릴 수 없습니다/).waitFor();
+  await dlg.getByRole("button", { name: "삭제" }).click();
+  await page.getByText('대상 "relapp-web"을(를) 삭제했습니다.').waitFor();
+  L.ok(!(await kim.api.get("/projects/e2e-scan/targets")).some((x) => x.id === r1.t.id) && await projOpen() === open0, "a target can be deleted, and the project's open count drops with it");
+  await page.goto(L.BASE + "/scan");
   // the sidebar folds to icons (button and [ key), keeps link names for screen readers, and remembers it
   await page.getByRole("button", { name: "사이드바 접기" }).click();
   await page.waitForFunction(() => document.querySelector(".sidebar").getBoundingClientRect().width <= 64); // the fold is animated

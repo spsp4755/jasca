@@ -78,6 +78,12 @@ async function sniffKind(file: File): Promise<Kind> {
 }
 
 const baseName = (file: string) => file.replace(/\.(tar\.gz|tgz|tar|zip)$/i, "").slice(0, 200);
+/** "app-1.4.2" → ["app", "1.4.2"]. A version in the target name makes every release a new target, whose findings then never close. */
+const splitVersion = (s: string): [string, string] => {
+  const m = /^(.+?)[-_@:]((?:v?\d+(?:\.\d+)+(?:[-.+_][0-9A-Za-z]+)*)|v?\d+)$/.exec(s);
+  return m ? [m[1], m[2]] : [s, ""];
+};
+const stem = (name: string) => splitVersion(name.trim())[0].toLowerCase();
 /** JASCA_MAX_SCAN_UPLOAD_MB as people say it: 2048 → "2GB", 500 → "500MB". */
 const fmtLimit = (mb: number) => (mb >= 1024 ? `${+(mb / 1024).toFixed(1)}GB` : `${mb}MB`);
 const fmtSize = (n: number) => (n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)} GB` : n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
@@ -207,6 +213,8 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   const [keyEdited, setKeyEdited] = useState(false);
   const [target, setTarget] = useState("");
   const [targetEdited, setTargetEdited] = useState(false);
+  const [ref, setRef] = useState("");
+  const [refEdited, setRefEdited] = useState(false);
   const [kind, setKind] = useState<Kind>("fs");
   const [file, setFile] = useState<File | null>(null);
   const [over, setOver] = useState(false);
@@ -247,6 +255,8 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   const targets = useApi<Target[] | null>(key && !isNew ? `/projects/${key}/targets` : null);
   const known = (targets.data ?? []).filter((t) => t.kind === kind);
   const rescan = known.some((t) => t.name === target.trim());
+  // the same service under another version's name: scanning it as a new target would leave the old findings open
+  const similar = !rescan && target.trim() ? known.find((t) => stem(t.name) === stem(target)) : undefined;
 
   const pick = async (f?: File | null) => {
     if (!f) return;
@@ -256,7 +266,9 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
     setFileErr(bad);
     if (bad) { setFile(null); if (input.current) input.current.value = ""; return; }
     setFile(f);
-    if (!targetEdited) setTarget(baseName(f.name));
+    const [name, version] = splitVersion(baseName(f.name));
+    if (!targetEdited) setTarget(name);
+    if (!refEdited) setRef(version);
     setKind(await sniffKind(f));
   };
   const drop = (e: DragEvent) => { e.preventDefault(); setOver(false); void pick(e.dataTransfer.files[0]); };
@@ -284,7 +296,9 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
     }
     try { localStorage.setItem(LAST_PROJECT, projectKey); } catch { /* storage blocked */ }
     const fd = new FormData();
-    fd.set("target", base.target); fd.set("kind", kind); fd.set("file", file);
+    fd.set("target", base.target); fd.set("kind", kind);
+    if (ref.trim()) fd.set("ref", ref.trim());
+    fd.set("file", file); // last: the server reads the fields before the file
     const cur: Run = { ...base, projectKey, projectName };
     setEditing(false); setRun(cur);
     try {
@@ -294,7 +308,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
       if ((e as ApiError).code === "aborted") { setEditing(true); setRun(null); } else setRun((r) => r && { ...r, error: (e as ApiError).message });
     } finally { xhr.current = null; }
   };
-  const again = () => { setRun(null); setEditing(true); setFile(null); setFileErr(""); setTarget(""); setTargetEdited(false); setTried(false); if (input.current) input.current.value = ""; };
+  const again = () => { setRun(null); setEditing(true); setFile(null); setFileErr(""); setTarget(""); setTargetEdited(false); setRef(""); setRefEdited(false); setTried(false); if (input.current) input.current.value = ""; };
 
   // a recent scan's project and target, ready for the next file
   const reuse = (projectKey: string, name: string) => {
@@ -314,7 +328,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   );
 
   function form() { return (
-    <form className="panel scan-form" noValidate onSubmit={(e) => { e.preventDefault(); if (!noDb) void submit(); }}>
+    <form className="panel scan-form" noValidate onSubmit={(e) => { e.preventDefault(); if (!noDb && loaded) void submit(); }}>
       <section className="scan-part" aria-labelledby="h-file">
         <h2 id="h-file"><span className="scan-part-n" aria-hidden="true">1</span>검사할 파일</h2>
         <div className={`dropzone${over ? " over" : ""}${file ? " has-file" : ""}`} role="button" tabIndex={0} aria-label={file ? `고른 파일 ${file.name}. 눌러서 바꾸기` : "검사할 파일 선택"}
@@ -362,17 +376,30 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
             </Field>
           </div>
         )}
-        <Field label="대상 이름" required error={tried ? errs.target || undefined : undefined}
-          hint={!target.trim() ? "서비스나 이미지 이름을 쓰세요(예: web-app). 같은 이름으로 다시 스캔하면 이전 결과와 비교합니다."
-            : rescan ? "이미 있는 대상입니다. 이전 스캔과 비교해 새로 생긴 것과 사라진 것을 보여 줍니다." : "새 대상으로 등록됩니다. 다음에 같은 이름으로 스캔하면 이번 결과와 비교합니다."}>
-          <input className="input" value={target} list="scan-targets" maxLength={200} placeholder="예: web-app"
-            onChange={(e) => { setTarget(e.target.value); setTargetEdited(true); }} />
-        </Field>
+        <div className="scan-target-row">
+          <Field label="대상 이름" required error={tried ? errs.target || undefined : undefined}
+            hint={!target.trim() ? "서비스나 이미지 이름을 쓰세요(예: web-app). 버전은 옆 칸에 쓰세요. 같은 이름으로 다시 스캔해야 고친 취약점이 조치됨으로 바뀝니다."
+              : rescan ? "이미 있는 대상입니다. 이전 스캔과 비교해, 사라진 취약점은 조치됨으로 바꿉니다." : "새 대상으로 등록됩니다. 다음 버전도 이 이름으로 스캔하세요."}>
+            <input className="input" value={target} list="scan-targets" maxLength={200} placeholder="예: web-app"
+              onChange={(e) => { setTarget(e.target.value); setTargetEdited(true); }} />
+          </Field>
+          <Field label="버전" hint={kind === "image" ? "선택. 비우면 이미지의 태그를 씁니다." : "선택. 스캔 기록에 표시됩니다."}>
+            <input className="input mono" value={ref} maxLength={200} placeholder="예: 1.4.2" spellCheck={false}
+              onChange={(e) => { setRef(e.target.value); setRefEdited(true); }} />
+          </Field>
+        </div>
+        {similar && (
+          <div className="alert alert-warn scan-similar" role="status">
+            <Icon name="alert" />
+            <span>비슷한 대상 <b className="mono">{similar.name}</b>이(가) 있습니다. 같은 서비스의 다른 버전이면 그 대상으로 스캔하세요. 이름이 다르면 다른 대상으로 따로 쌓여, 이전 취약점이 열린 채 남습니다.</span>
+            <Button size="sm" onClick={() => { if (!ref.trim()) setRef(splitVersion(target.trim())[1]); setTarget(similar.name); setTargetEdited(true); }}>이 대상으로 스캔</Button>
+          </div>
+        )}
         <datalist id="scan-targets">{known.map((t) => <option key={t.id} value={t.name} />)}</datalist>
       </section>
 
       <div className="scan-submit">
-        <Button type="submit" variant="primary" icon="scan" disabled={noDb}>스캔 시작</Button>
+        <Button type="submit" variant="primary" icon="scan" disabled={noDb || !loaded}>스캔 시작</Button>
         {run?.error && <span className="muted">이전 시도: {run.error}</span>}
       </div>
     </form>

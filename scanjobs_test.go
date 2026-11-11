@@ -213,6 +213,17 @@ func TestScanJobWithFakeTrivy(t *testing.T) {
 	if kind != "image" {
 		t.Fatalf("target kind %s", kind)
 	}
+	// the version typed in the form is the scan's ref, so it need not go into the target name
+	rec := postScanJob(t, s, ck, "web", map[string]string{"target": "web-src", "kind": "fs", "ref": " 1.4.2 "}, mkZip(t, arEnt{name: "a.js", body: "x"}))
+	wantCode(t, rec, 201, "scan with a version")
+	if ran, err := s.runNextJob(ctx); !ran || err != nil {
+		t.Fatal(ran, err)
+	}
+	var ref string
+	s.db.QueryRow(ctx, `select ref from scans where target_id=$1 order by id desc limit 1`, tid).Scan(&ref)
+	if ref != "1.4.2" {
+		t.Fatalf("ref %q", ref)
+	}
 }
 
 func TestScanJobUploadRules(t *testing.T) {

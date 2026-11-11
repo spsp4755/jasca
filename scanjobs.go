@@ -31,6 +31,7 @@ func (s *server) scanJobRoutes() {
 type scanJobPayload struct {
 	Kind   string `json:"kind"` // fs | image
 	Target string `json:"target"`
+	Ref    string `json:"ref,omitempty"` // the version the uploader named; an image's own tag is used without it
 }
 
 func (s *server) workDir(scanID int64) string {
@@ -128,15 +129,18 @@ func (s *server) handleScanJobCreate(w http.ResponseWriter, r *http.Request, c *
 				badRequest(w, "업로드를 읽지 못했습니다.")
 				return
 			}
-		case "target", "kind":
+		case "target", "kind", "ref":
 			b, err := io.ReadAll(io.LimitReader(part, 4096))
 			if err != nil {
 				badRequest(w, "업로드를 읽지 못했습니다.")
 				return
 			}
-			if part.FormName() == "target" {
+			switch part.FormName() {
+			case "target":
 				p.Target = strings.TrimSpace(string(b))
-			} else {
+			case "ref":
+				p.Ref = strings.TrimSpace(string(b))
+			default:
 				p.Kind = string(b)
 			}
 		default:
@@ -147,8 +151,8 @@ func (s *server) handleScanJobCreate(w http.ResponseWriter, r *http.Request, c *
 		badRequest(w, "kind는 fs(압축 파일) 또는 image(docker save 이미지 tar)로 지정하세요.")
 		return
 	}
-	if p.Target == "" || utf8.RuneCountInString(p.Target) > 512 {
-		badRequest(w, "대상 이름(target)은 1~512자로 지정하세요.")
+	if p.Target == "" || utf8.RuneCountInString(p.Target) > 512 || len(p.Ref) > 512 {
+		badRequest(w, "대상 이름(target)은 1~512자, 버전(ref)은 512자 이하로 지정하세요.")
 		return
 	}
 	if size == 0 {
@@ -428,8 +432,8 @@ func (s *server) serverScan(ctx context.Context, j *job, projectID int64, p scan
 			rep.Complete[sc+":trivy"] = true
 		}
 	}
-	ref := ""
-	if p.Kind == "image" {
+	ref := p.Ref
+	if ref == "" && p.Kind == "image" {
 		ref = rep.Ref
 	}
 	_, err = s.ingest(ctx, ingestInput{ProjectID: projectID, TargetKind: p.Kind, TargetName: p.Target, Ref: ref,

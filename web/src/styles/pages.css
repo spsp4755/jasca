@@ -236,6 +236,7 @@ legend { padding: 0; }
 .count-chip:hover { border-color: var(--line-strong); text-decoration: none; background: var(--surface-2); }
 .count-chip.is-zero { color: var(--muted); }
 .count-chip.is-zero b { color: var(--muted); font-weight: 500; }
+.row-actions { display: inline-flex; gap: 2px; white-space: nowrap; }
 .target-name { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .onboard { padding: 22px 24px 24px; display: flex; flex-direction: column; gap: 16px; }
 .onboard-head h2 { font-size: 17px; margin-bottom: 4px; }

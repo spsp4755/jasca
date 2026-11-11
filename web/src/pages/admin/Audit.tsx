@@ -22,7 +22,7 @@ const ACTION: Record<string, string> = {
   "finding.assign": "결과 담당자 지정", "finding.due": "결과 기한 변경",
   "project.create": "프로젝트 생성", "project.update": "프로젝트 수정", "project.delete": "프로젝트 삭제", "project.members": "프로젝트 멤버 변경",
   "policy.update": "프로젝트 정책 변경", "notify.update": "알림 구독 변경", "token.create": "API 토큰 생성", "token.revoke": "API 토큰 폐기",
-  "scan.upload": "CI 업로드", "scan.job": "파일 업로드 스캔", "scan.cancel": "스캔 취소", "recheck.start": "재평가 시작",
+  "target.rename": "대상 이름 변경", "target.delete": "대상 삭제", "scan.upload": "CI 업로드", "scan.job": "파일 업로드 스캔", "scan.cancel": "스캔 취소", "recheck.start": "재평가 시작",
   "exception.request": "예외 요청", "exception.approve": "예외 승인", "exception.reject": "예외 반려", "exception.revoke": "예외 철회·취소", "exception.expire": "예외 만료",
   "advisory.create": "Advisory 등록", "advisory.update": "Advisory 수정", "advisory.delete": "Advisory 삭제", "advisory.import": "Advisory 가져오기",
   "ai.guide": "AI 조치 안내 요청", "ai.report": "AI 보고서 요청",
@@ -43,6 +43,7 @@ const DETAIL: Record<string, string> = {
   format: "형식", ref: "태그·커밋(ref)", tls: "암호화", findings: "결과 수", policy_passed: "정책 통과", total: "대상 수", scanners: "스캐너", error: "오류",
   version: "버전", updated_at: "갱신 시각", groups: "그룹 수", users: "사용자 수", principal_kind: "구분", principal: "대상", role: "역할", channel_id: "채널 번호", events: "이벤트",
   role_from_sso: "Keycloak 역할 따름", added: "추가", removed: "제거", changed: "역할 변경", member_count: "멤버 수",
+  from: "이전 이름", open: "열린 결과", // target.rename, target.delete
   // finding.assign, finding.due, sla.update
   finding_id: "결과 번호", finding_ids: "결과 번호", count: "건수", assignee: "담당자", unassigned: "지정 해제", due_at: "기한", auto: "정책 기한으로 되돌림",
   days: "심각도별 기한(일)", recalculated: "기한이 바뀐 결과",
@@ -69,7 +70,7 @@ const CODE: Record<string, Record<string, string>> = {
 // The 대상 column: what was acted on, in words where the server stores a code.
 const SETTING: Record<string, string> = { ai: "AI 설정", ai_prompts: "AI 프롬프트", sso: "SSO (Keycloak)", sync: "Keycloak 동기화", db: "취약점 DB", "java-db": "Java DB" };
 function targetText(e: AuditEntry): string {
-  const scan = e.action.startsWith("scan.") && /^(image|repo|fs|sbom):(.*)$/s.exec(e.target); // "fs:name"
+  const scan = /^(scan|target)\./.test(e.action) && /^(image|repo|fs|sbom):(.*)$/s.exec(e.target); // "fs:name"
   if (scan) return `${TARGET_KIND_LABEL[scan[1] as TargetKind]} ${scan[2]}`;
   if (e.action === "settings.update" || e.action.startsWith("trivy.db_upload")) return SETTING[e.target] ?? e.target;
   return e.target.replace(/^finding:/, "결과 #");

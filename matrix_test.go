@@ -48,6 +48,11 @@ var matrixRoutes = []matrixCase{
 	{Method: "GET", Path: "/api/v1/projects/{key}/notify"},
 	{Method: "PUT", Path: "/api/v1/projects/{key}/notify", Body: []any{}},
 	{Method: "GET", Path: "/api/v1/projects/{key}/targets"},
+	{Method: "PATCH", Path: "/api/v1/projects/{key}/targets/{target}", Body: map[string]string{"name": "taken"}},
+	{Method: "DELETE", Path: "/api/v1/projects/{key}/targets/{target}"},
+	// B's target through the caller's own project
+	{Method: "PATCH", Path: "/api/v1/projects/{akey}/targets/{target}", Body: map[string]string{"name": "taken"}},
+	{Method: "DELETE", Path: "/api/v1/projects/{akey}/targets/{target}"},
 }
 
 // matrixFixtures add placeholder values for objects of project B that the base fixture does not create.

@@ -5,12 +5,15 @@ L.run(async () => {
   const browser = await L.launch();
   const tour = async (who, paths) => {
     const u = who === "admin" ? await L.local(browser) : await L.sso(browser, who);
+    const loose = [];
     for (const p of paths) {
       await u.page.goto(L.BASE + p);
       await u.page.locator("main").first().waitFor(); // /admin for a plain user is an empty state without an h1
       await u.page.waitForLoadState("networkidle");
+      // only main scrolls. A document that scrolls too takes the sidebar and the top bar along (hidden labels once stuck out of main)
+      if (await u.page.evaluate(() => document.documentElement.scrollHeight > innerHeight)) loose.push(p);
     }
-    L.ok(true, `${who}: ${paths.length} pages toured`);
+    L.ok(!loose.length, `${who}: ${paths.length} pages toured, the page shell never scrolls` + (loose.length ? ": " + loose.join(" ") : ""));
   };
   await tour("kim", ["/", "/projects", "/projects/e2e-proj", "/projects/e2e-proj/fixes", "/projects/e2e-proj/targets", "/projects/e2e-proj/scans", "/projects/e2e-proj/exceptions",
     "/projects/e2e-proj/settings", "/findings", "/findings?due=overdue&sort=due", "/packages", "/packages?q=ssl", "/vulns/CVE-2022-37434", "/scan", "/scan?tab=harbor", "/exceptions", "/exceptions/approvals",
