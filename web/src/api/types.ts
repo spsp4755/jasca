@@ -97,6 +97,18 @@ export interface Vuln {
   affected: VulnAffected[];
 }
 
+// --- packages ---
+/** One package of a target's current inventory. open_findings 0 = no known vulnerability yet. */
+export interface PackageHit {
+  project_key: string; project_name: string; target_id: number; target_kind: TargetKind; target_name: string;
+  ecosystem: string; name: string; version: string; paths: string[]; path_count: number; scan_id: number; scan_at: string;
+  open_findings: number; worst_severity: Severity | ""; version_unknown: boolean;
+}
+export interface PackageSearch {
+  items: PackageHit[]; truncated: boolean; ecosystems: string[];
+  totals: { matched: number; version_unknown: number; projects: number; targets: number; targets_searched: number; targets_without_inventory: number };
+}
+
 // --- AI ---
 export interface RunRef { run_id: number }
 export interface AiRun {

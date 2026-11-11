@@ -47,6 +47,8 @@ L.run(async () => {
   await p.getByRole("dialog").first().waitFor();
   await both(p, "finding drawer");
   await p.keyboard.press("Escape");
+  await visit(p, "/packages", "packages");
+  await visit(p, "/packages?q=ssl&version=%3C99", "package search result", () => p.getByRole("table", { name: "찾은 패키지" }).waitFor());
   await visit(p, "/vulns/CVE-2022-37434", "vuln");
   await visit(p, "/scan", "scan upload");
   await visit(p, "/scan?tab=harbor", "scan harbor");

@@ -12,6 +12,7 @@ export const NAV: { title?: string; items: NavItem[] }[] = [
       { to: "/", label: "홈", icon: "home", end: true },
       { to: "/projects", label: "프로젝트", icon: "folder" },
       { to: "/findings", label: "취약점", icon: "bug" },
+      { to: "/packages", label: "패키지 찾기", icon: "search" },
       { to: "/scan", label: "스캔하기", icon: "scan" },
     ],
   },

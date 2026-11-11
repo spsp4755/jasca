@@ -29,6 +29,7 @@ import Reports from "./pages/Reports";
 import ScanNew from "./pages/ScanNew";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import Packages from "./pages/Packages";
 
 // Signed-in pages (rendered inside Layout). Add a route here and, for top-level sections, an entry in Sidebar NAV.
 export const pages: RouteObject[] = [
@@ -36,6 +37,7 @@ export const pages: RouteObject[] = [
   { path: "projects", element: <Projects /> },
   { path: "projects/:key/*", element: <ProjectDetail /> },
   { path: "findings", element: <Findings /> },
+  { path: "packages", element: <Packages /> },
   { path: "vulns/:id", element: <Vuln /> },
   { path: "scans/:id", element: <Scan /> },
   { path: "scan", element: <ScanNew /> },

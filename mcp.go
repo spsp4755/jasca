@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/spsp4755/jasca/internal/versions"
 )
 
 // The MCP (Model Context Protocol) server: read-only tools over one project's data for AI agents, at POST /mcp.
@@ -51,7 +52,8 @@ const (
 	rpcBadVersion     = -32022
 
 	mcpInstructions = "Read-only vulnerability data of one JASCA project: the project the API token belongs to. " +
-		"Start with project_summary, then list_findings. Ids for get_finding and get_scan come from the list tools."
+		"Start with project_summary, then list_findings. Ids for get_finding and get_scan come from the list tools. " +
+		"search_packages answers where a package is installed, with or without a known vulnerability."
 )
 
 // mcpLegacy are the handshake-era versions, newest first. 2025-03-26 is what the specification assumes for a request
@@ -853,6 +855,63 @@ func mcpListExceptions(m *mcpCall, raw json.RawMessage) (any, error) {
 	return out, nil
 }
 
+// --- packages ---
+
+func mcpSearchPackages(m *mcpCall, raw json.RawMessage) (any, error) {
+	var a struct {
+		Query   string `json:"query"`
+		Version string `json:"version"`
+		Limit   *int   `json:"limit"`
+	}
+	if err := toolArgs(raw, &a); err != nil {
+		return nil, err
+	}
+	limit, err := limitArg(a.Limit, 100, pkgMaxRows)
+	if err != nil {
+		return nil, err
+	}
+	if n := utf8.RuneCountInString(strings.TrimSpace(a.Query)); n < 2 || n > 200 {
+		return nil, toolErrorf("Invalid arguments: query is required: 2 to 200 characters of a package name.")
+	}
+	q := url.Values{"q": {a.Query}}
+	if a.Version = strings.TrimSpace(a.Version); a.Version != "" {
+		if _, err := versions.Matches("", "0", a.Version); err != nil || len(a.Version) > 200 {
+			return nil, toolErrorf(`Invalid arguments: version must be a version or a range, for example "2.14.1", "<2.17.1" or ">=2.0 <2.17.1".`)
+		}
+		q.Set("version", a.Version)
+	}
+	var res pkgResult
+	if err := m.rest(m.s.handlePackageSearch, "", q, &res); err != nil {
+		return nil, err
+	}
+	type pkg struct {
+		Name           string    `json:"name"`
+		Version        string    `json:"version"`
+		Ecosystem      string    `json:"ecosystem"`
+		Target         string    `json:"target"`
+		Paths          []string  `json:"paths,omitempty"`
+		OpenFindings   int       `json:"open_findings"`
+		WorstSeverity  string    `json:"worst_severity,omitempty"`
+		VersionUnknown bool      `json:"version_unknown,omitempty"`
+		ScanID         int64     `json:"scan_id"`
+		ScannedAt      time.Time `json:"scanned_at"`
+	}
+	out := struct {
+		Total                   int   `json:"total"`
+		TargetsSearched         int   `json:"targets_searched"`
+		TargetsWithoutInventory int   `json:"targets_without_inventory"`
+		Truncated               bool  `json:"truncated,omitempty"`
+		Packages                []pkg `json:"packages"`
+	}{Total: res.Totals.Matched + res.Totals.VersionUnknown, TargetsSearched: res.Totals.TargetsSearched,
+		TargetsWithoutInventory: res.Totals.TargetsWithoutInventory, Packages: []pkg{}}
+	for _, h := range res.Items[:min(limit, len(res.Items))] {
+		out.Packages = append(out.Packages, pkg{h.Name, h.Version, h.Ecosystem, h.TargetName, h.Paths, h.OpenFindings, h.WorstSeverity,
+			h.VersionUnknown, h.ScanID, h.ScanAt.Truncate(time.Second)})
+	}
+	out.Truncated = len(out.Packages) < out.Total
+	return out, nil
+}
+
 // --- the tool list ---
 
 func enumJSON(vs []string) string { b, _ := json.Marshal(vs); return string(b) }
@@ -926,5 +985,18 @@ var mcpTools = func() []mcpTool {
 				"status": {"type": "string", "enum": `+enumJSON(mcpExStatuses)+`, "description": "Only exceptions in this state. All states when omitted."},
 				"limit": `+limitSchema(50, 200)+`}}`,
 			mcpListExceptions),
+		tool("search_packages",
+			"Find where a package is installed: searches the package inventory (every installed package, vulnerable or "+
+				"not) of the latest scan of each scan target by package name, optionally narrowed by a version condition. "+
+				"Each row is one package version in one target with its file paths, the scan it comes from and the open "+
+				"findings for it; open_findings 0 means no vulnerability is known for it yet, not that it is safe. Rows "+
+				"with version_unknown could not be compared with the version condition and are listed to be checked by "+
+				"hand. targets_without_inventory counts targets that were not searched because their scans carry no "+
+				"package list. total counts all matches; truncated says the list was cut.",
+			`{"type": "object", "additionalProperties": false, "required": ["query"], "properties": {
+				"query": {"type": "string", "minLength": 2, "maxLength": 200, "description": "Case-insensitive part of the package name, such as log4j-core or openssl."},
+				"version": {"type": "string", "maxLength": 200, "description": "Only these versions: one version (2.14.1) or a range (<2.17.1, >=2.0 <2.17.1)."},
+				"limit": `+limitSchema(100, pkgMaxRows)+`}}`,
+			mcpSearchPackages),
 	}
 }()
