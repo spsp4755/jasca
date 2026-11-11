@@ -183,6 +183,7 @@ const MCP_TOOLS: [string, string][] = [
   ["list_scans", "최근 스캔: 상태, 결과 수, 정책 통과·실패와 그 이유"],
   ["get_scan", "스캔 한 건과 직전 스캔 대비 새 결과·해결·그대로인 결과 수"],
   ["list_exceptions", "예외 목록: 범위, 처리 방식, 상태, 요청자, 만료일"],
+  ["search_packages", "패키지 찾기: 이름과 버전 조건으로 대상별 최신 패키지 목록에서 찾고, 패키지별 열린 취약점 수를 알려 줍니다"],
 ];
 
 function Mcp({ project, owner }: { project: Project; owner: boolean }) {
@@ -194,7 +195,7 @@ function Mcp({ project, owner }: { project: Project; owner: boolean }) {
     <Section id="mcp" title="MCP 연동" meta="AI 에이전트가 이 프로젝트를 조회하는 주소">
       <div className="ci">
         <p className="mcp-lead">
-          AI 코딩·보안 에이전트를 MCP(Model Context Protocol)로 연결하면 에이전트가 이 프로젝트의 결과, 대상, 스캔, 예외를 직접 조회합니다.
+          AI 코딩·보안 에이전트를 MCP(Model Context Protocol)로 연결하면 에이전트가 이 프로젝트의 결과, 대상, 스캔, 예외, 패키지 목록을 직접 조회합니다.
           조회만 할 수 있으며, <b>읽기</b> 권한이 있는 {owner ? <a href="#tokens">API 토큰</a> : "API 토큰"}이 필요합니다{!owner && "(프로젝트 소유자가 만듭니다)"}.
         </p>
         <div className="secret-box">

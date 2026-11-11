@@ -13,9 +13,9 @@ L.run(async () => {
     L.ok(true, `${who}: ${paths.length} pages toured`);
   };
   await tour("kim", ["/", "/projects", "/projects/e2e-proj", "/projects/e2e-proj/fixes", "/projects/e2e-proj/targets", "/projects/e2e-proj/scans", "/projects/e2e-proj/exceptions",
-    "/projects/e2e-proj/settings", "/findings", "/vulns/CVE-2022-37434", "/scan", "/scan?tab=harbor", "/exceptions", "/exceptions/approvals",
+    "/projects/e2e-proj/settings", "/findings", "/packages", "/packages?q=ssl", "/vulns/CVE-2022-37434", "/scan", "/scan?tab=harbor", "/exceptions", "/exceptions/approvals",
     "/advisories", "/advisories/new", "/advisories/JASCA-E2E-001", "/reports", "/reports/e2e-proj", "/admin/default-policy"]);
-  await tour("lee", ["/", "/projects", "/projects/e2e-proj", "/projects/e2e-proj/fixes", "/projects/e2e-proj/settings", "/findings", "/exceptions", "/advisories", "/reports", "/admin"]);
+  await tour("lee", ["/", "/projects", "/projects/e2e-proj", "/projects/e2e-proj/fixes", "/projects/e2e-proj/settings", "/findings", "/packages", "/exceptions", "/advisories", "/reports", "/admin"]);
   await tour("admin", ["/admin/users", "/admin/sso", "/admin/sync", "/admin/default-policy", "/admin/trivy", "/admin/recheck", "/admin/harbor", "/admin/ai",
     "/admin/channels", "/admin/retention", "/admin/audit"]);
   await browser.close();

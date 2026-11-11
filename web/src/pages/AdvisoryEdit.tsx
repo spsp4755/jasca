@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../components/PageHeader";
 import Field from "../components/Field";
@@ -65,7 +65,13 @@ export default function AdvisoryEdit() {
   const qc = useQueryClient();
   const toast = useToast();
   const q = useApi<Advisory & { warnings?: string[] }>(id ? `/advisories/${encodeURIComponent(id)}` : null);
-  const [f, setF] = useState<Form>(NEW);
+  // "패키지 찾기" opens the new form with what it found: ?pkg=<ecosystem>:<name> (one per package) and ?range=
+  const [sp] = useSearchParams();
+  const [f, setF] = useState<Form>(() => {
+    const pkgs = isNew ? sp.getAll("pkg").filter((p) => p.includes(":")) : [];
+    if (!pkgs.length) return NEW;
+    return { ...NEW, affected: pkgs.map((p) => ({ ecosystem: p.slice(0, p.indexOf(":")), name: p.slice(p.indexOf(":") + 1), range: sp.get("range") ?? "", fixed: "" })) };
+  });
   const [preview, setPreview] = useState<AdvisoryPreviewRow[] | null>(null);
   useEffect(() => {
     const a = q.data;

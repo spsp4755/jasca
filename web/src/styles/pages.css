@@ -120,6 +120,22 @@ legend { padding: 0; }
 .rule .mono { font-weight: 600; }
 .rule-title { flex-basis: 100%; font-size: 12.5px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 
+/* ---- package search ---- */
+.pkg-search { margin-bottom: 6px; }
+.pkg-search .pkg-q { flex: 2 1 260px; max-width: 420px; }
+.pkg-search .pkg-ver { flex: 1 1 190px; max-width: 240px; height: 32px; }
+.pkg-hint { margin-bottom: 16px; }
+.pkg-hint + .pkg-hint { margin-top: -10px; }
+.pkg-actions { display: inline-flex; gap: 8px; margin-left: auto; flex: none; }
+.pkg-hit { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; overflow-wrap: anywhere; }
+.pkg-wrap { overflow-wrap: anywhere; }
+.pkg-path { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.packages .pt-project { overflow: hidden; text-overflow: ellipsis; }
+.pkg-paths { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 12.5px; color: var(--text-2); }
+.pkg-open { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.pkg-unknown { margin-top: 16px; }
+.pkg-unknown .panel-head { flex-wrap: wrap; }
+
 /* ---- detail pages (vuln, scan) ---- */
 .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
 .detail-main, .detail-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }

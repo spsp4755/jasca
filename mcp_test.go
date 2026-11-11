@@ -153,7 +153,7 @@ func findingID(t *testing.T, s *server, pid int64, rule, target string) int64 {
 }
 
 var mcpToolNames = []string{"project_summary", "list_findings", "list_fixes", "get_finding", "get_vulnerability", "list_targets",
-	"list_scans", "get_scan", "list_exceptions"}
+	"list_scans", "get_scan", "list_exceptions", "search_packages"}
 
 func TestMCPInitialize(t *testing.T) {
 	s := testServer(t)
@@ -589,6 +589,47 @@ func TestMCPTools(t *testing.T) {
 		t.Errorf("list_fixes by target: %+v", one)
 	}
 
+	// search_packages: the latest inventory of each target, with the open findings of each package
+	type pkgs struct {
+		Total                   int
+		TargetsSearched         int `json:"targets_searched"`
+		TargetsWithoutInventory int `json:"targets_without_inventory"`
+		Truncated               bool
+		Packages                []struct {
+			Name, Version, Ecosystem, Target string
+			Paths                            []string
+			OpenFindings                     int       `json:"open_findings"`
+			WorstSeverity                    string    `json:"worst_severity"`
+			VersionUnknown                   bool      `json:"version_unknown"`
+			ScanID                           int64     `json:"scan_id"`
+			ScannedAt                        time.Time `json:"scanned_at"`
+		}
+	}
+	lib := callTool[pkgs](t, s, tok, "search_packages", map[string]any{"query": "LIB"})
+	if lib.Total != 1 || len(lib.Packages) != 1 || lib.TargetsSearched != 2 || lib.TargetsWithoutInventory != 0 || lib.Truncated {
+		t.Fatalf("search_packages LIB: %+v", lib)
+	}
+	// zlib's only finding is under an approved exception: nothing open
+	if p := lib.Packages[0]; p.Name != "zlib" || p.Version != "1.0" || p.Ecosystem != "alpine" || p.Target != "shop-api" ||
+		p.OpenFindings != 0 || p.WorstSeverity != "" || p.ScanID != f.scan2 || time.Since(p.ScannedAt) > time.Minute {
+		t.Errorf("search_packages row: %+v", p)
+	}
+	if p := callTool[pkgs](t, s, tok, "search_packages", map[string]any{"query": "ssl", "version": "<2"}); len(p.Packages) != 1 ||
+		p.Packages[0].Target != "shop-web" || p.Packages[0].OpenFindings != 1 || p.Packages[0].WorstSeverity != "CRITICAL" {
+		t.Errorf("search_packages ssl <2: %+v", p)
+	}
+	if p := callTool[pkgs](t, s, tok, "search_packages", map[string]any{"query": "ssl", "version": ">=2"}); p.Total != 0 || p.Packages == nil {
+		t.Errorf("search_packages ssl >=2: %+v", p)
+	}
+	sqlExec(t, s, `insert into packages(scan_id, name, version, ecosystem) values($1, 'lib-a', '1', 'npm'), ($1, 'lib-b', '1.x', 'npm')`, f.scan2)
+	if p := callTool[pkgs](t, s, tok, "search_packages", map[string]any{"query": "lib", "limit": 2}); p.Total != 3 || len(p.Packages) != 2 || !p.Truncated {
+		t.Errorf("search_packages limit: %+v", p)
+	}
+	if p := callTool[pkgs](t, s, tok, "search_packages", map[string]any{"query": "lib-", "version": "1"}); p.Total != 2 ||
+		p.Packages[0].VersionUnknown || !p.Packages[1].VersionUnknown {
+		t.Errorf("search_packages version_unknown: %+v", p)
+	}
+
 	// reads are not audited
 	if n := qInt(t, s, `select count(*) from audit_log where action not in ('scan.upload')`); n != 0 {
 		t.Errorf("%d audit rows after MCP reads", n)
@@ -641,6 +682,7 @@ func TestMCPIsolation(t *testing.T) {
 		{"list_findings", map[string]any{"query": "CVE-2099"}}, {"get_vulnerability", map[string]any{"id": "CVE-2024-1111"}},
 		{"get_vulnerability", map[string]any{"id": "CVE-2024-3333"}}, {"list_targets", nil}, {"list_scans", nil},
 		{"get_scan", map[string]any{"id": a.scan2}}, {"list_exceptions", nil}, {"list_fixes", nil},
+		{"search_packages", map[string]any{"query": "other"}}, {"search_packages", map[string]any{"query": "ssl"}},
 	} {
 		res, text := toolRaw(t, s, a.tok, tc.tool, tc.args)
 		if res["isError"] == true {
@@ -784,6 +826,11 @@ func TestMCPProtocolErrors(t *testing.T) {
 		{"list_exceptions", map[string]any{"status": "open"}, "status"},
 		{"list_fixes", map[string]any{"limit": 201}, "limit"},
 		{"list_fixes", map[string]any{"target": "nope"}, "nope"},
+		{"search_packages", nil, "query"},
+		{"search_packages", map[string]any{"query": "a"}, "query"},
+		{"search_packages", map[string]any{"query": "zlib", "version": "<"}, "version"},
+		{"search_packages", map[string]any{"query": "zlib", "limit": 1001}, "limit"},
+		{"search_packages", map[string]any{"query": "zlib", "ecosystem": "npm"}, "ecosystem"},
 		{"list_targets", map[string]any{"limit": 501}, "limit"},
 		{"project_summary", map[string]any{"verbose": true}, "verbose"},
 	} {
