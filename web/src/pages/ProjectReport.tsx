@@ -14,8 +14,9 @@ import { useApi, useAuthConfig } from "../api/hooks";
 import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, TARGET_KIND_LABEL, fmtDate, fmtDateTime, fmtNumber } from "../lib/format";
 import { exceptionWhat } from "./Exceptions";
 import { whereOf } from "./FindingDrawer";
+import { fixCounts, fixTo } from "./ProjectFixes";
 import { renderMarkdown } from "../lib/markdown";
-import type { AiRun, ProjectReportData, RunRef } from "../api/types";
+import type { AiRun, FixPlan, ProjectReportData, RunRef } from "../api/types";
 import { Loading } from "./admin/parts";
 import "../styles/t17.css";
 import "../styles/print.css";
@@ -40,6 +41,7 @@ export default function ProjectReport() {
     onError: (e) => toast(e.message, "error"),
   });
   const d = q.data;
+  const fixes = useApi<FixPlan>(q.isError ? null : `/projects/${k}/fixes`).data; // the 조치 계획 tab's order; the report prints its top 10
   const history = runs.data ?? [];
   const shown = history.find((r) => r.id === sel) ?? history.find((r) => r.state === "done");
   const t = d?.summary.by_severity;
@@ -86,6 +88,14 @@ export default function ProjectReport() {
                   { key: "n", header: "대상", render: (r) => r.name }, { key: "k", header: "종류", nowrap: true, render: (r) => TARGET_KIND_LABEL[r.kind] ?? r.kind },
                   { key: "c", header: "열린 결과 심각도별", render: (r) => <SummaryCell s={r.counts} /> },
                   { key: "s", header: "마지막 스캔", nowrap: true, render: (r) => fmtDate(r.last_scan_at) }]} /></section>}
+              {fixes && fixes.groups.length > 0 && <section><h2>먼저 올릴 패키지</h2>
+                <p className="muted" style={{ margin: "0 0 8px" }}>가장 심각한 취약점을 해결하는 패키지부터, 같으면 많이 해결하는 순서입니다{fixes.groups.length > 10 ? `(패키지 ${fmtNumber(fixes.groups.length)}개 중 앞의 10개)` : ""}.
+                  {fixes.totals.no_fix > 0 && ` 조치 버전이 아직 없는 취약점 ${fmtNumber(fixes.totals.no_fix)}건은 여기에 없습니다.`}</p>
+                <Table dense rows={fixes.groups.slice(0, 10)} rowKey={(g) => `${g.ecosystem}|${g.package}|${g.installed}`} caption="먼저 올릴 패키지" columns={[
+                  { key: "p", header: "패키지", render: (g) => <><b>{g.package}</b>{g.ecosystem && <span className="muted"> {g.ecosystem}</span>}</> },
+                  { key: "v", header: "설치 버전 → 올릴 버전", width: "34%", render: (g) => <span className="mono">{g.installed} → {fixTo(g)}{!g.recommended && " (비교 못 함)"}</span> },
+                  { key: "c", header: "해결되는 취약점", render: (g) => <span className="row-gap"><SummaryCell s={fixCounts(g)} /><span className="num nw">{fmtNumber(g.resolves.open)}건</span></span> },
+                  { key: "t", header: "대상", nowrap: true, align: "right", render: (g) => `${fmtNumber(g.targets.length)}개` }]} /></section>}
               {(d.findings ?? []).length > 0 && <section className="page-break"><h2>주요 취약점</h2>
                 <p className="muted" style={{ margin: "0 0 8px" }}>{top.length === 0 ? "열린 CRITICAL·HIGH 결과가 없습니다." : `CRITICAL·HIGH만 싣습니다${t && t.critical + t.high > top.length ? `(많아서 앞의 ${fmtNumber(top.length)}건)` : ""}.`}
                   {rest.length > 0 && ` ${rest.join(", ")}은 프로젝트의 결과 화면에서 볼 수 있습니다.`}</p>

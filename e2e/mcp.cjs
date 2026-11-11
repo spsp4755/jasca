@@ -43,7 +43,7 @@ L.run(async () => {
     init.body.result.serverInfo.name === "jasca" && JSON.stringify(init.body.result.capabilities) === '{"tools":{}}', "initialize negotiates 2025-11-25, tools only");
   L.ok((await post({ jsonrpc: "2.0", method: "notifications/initialized" }, old)).status === 202, "notifications/initialized: 202");
   const tools = (await post(req("tools/list"), old)).body.result.tools;
-  L.ok(tools.length === 8 && tools.every((t) => t.annotations.readOnlyHint === true && t.inputSchema.type === "object"), "tools/list: 8 read-only tools with object schemas");
+  L.ok(tools.length === 9 && tools.every((t) => t.annotations.readOnlyHint === true && t.inputSchema.type === "object"), "tools/list: 9 read-only tools with object schemas");
   L.ok(JSON.stringify(tools.map((t) => t.name)) === JSON.stringify(shown), "the settings page lists exactly the server's tools, in order");
   const call = async (name, args, headers = old, meta) => {
     const r = await post(req("tools/call", { name, arguments: args, ...(meta ? { _meta: meta } : {}) }), headers);
@@ -58,6 +58,9 @@ L.run(async () => {
   L.ok(found.data.total >= 1 && !!hit, "list_findings finds the uploaded CVE-2022-37434 on alpine-app");
   const one = await call("get_finding", { id: hit.id });
   L.ok(one.data.vulnerability_id === "CVE-2022-37434" && one.data.kind === "vuln", "get_finding gives the details");
+  const fixes = await call("list_fixes", { target: "alpine-app" });
+  L.ok(fixes.data.resolved_by_upgrade >= 1 && fixes.data.upgrades.some((u) => u.package === "zlib" && u.upgrade_to === "1.2.12-r2" && u.vulnerabilities.includes("CVE-2022-37434")),
+    "list_fixes names the zlib upgrade that resolves CVE-2022-37434 on alpine-app");
   const miss = await call("get_finding", { id: 99999999 });
   L.ok(miss.isError === true && /not found/.test(miss.content[0].text), "an unknown id is a tool error the model can read");
 

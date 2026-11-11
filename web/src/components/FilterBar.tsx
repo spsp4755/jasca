@@ -87,6 +87,11 @@ export default function FilterBar({ projects, targets }: {
           <button type="button" aria-label="대상 필터 지우기" onClick={() => set("target_id", undefined)}><Icon name="x" size={12} /></button>
         </span>
       )}
+      {f.fixable === "false" && ( // only links set it (조치 계획): the checkbox above cannot show it
+        <span className="tag filter-chip">조치 버전 없음
+          <button type="button" aria-label="조치 버전 없음 필터 지우기" onClick={() => set("fixable", undefined)}><Icon name="x" size={12} /></button>
+        </span>
+      )}
       {dirty && <Button size="sm" variant="ghost" onClick={() => setSp(new URLSearchParams(), { replace: true })}>필터 초기화</Button>}
     </div>
   );

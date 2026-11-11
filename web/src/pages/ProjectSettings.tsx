@@ -176,6 +176,7 @@ function Tokens({ project }: { project: Project }) {
 const MCP_TOOLS: [string, string][] = [
   ["project_summary", "프로젝트 요약: 심각도별 열린 결과 수, 대상 수, 마지막 스캔 시각, 정책 기준"],
   ["list_findings", "결과 목록. 심각도·상태·종류·대상·검색어·조치 버전 유무로 거릅니다"],
+  ["list_fixes", "조치 계획: 어떤 패키지를 어느 버전으로 올리면 열린 취약점 몇 건이 해결되는지"],
   ["get_finding", "결과 한 건의 상세: 위치, 설치·조치 버전, 예외 상태"],
   ["get_vulnerability", "취약점(CVE) 설명, CVSS, 참고 링크와 이 프로젝트에서 영향받는 대상"],
   ["list_targets", "대상 목록: 종류, 마지막 스캔 시각, 심각도별 열린 결과 수"],

@@ -152,7 +152,7 @@ func findingID(t *testing.T, s *server, pid int64, rule, target string) int64 {
 	return qint64(t, s, `select f.id from findings f join targets t on t.id=f.target_id where f.project_id=$1 and f.rule_id=$2 and t.name=$3`, pid, rule, target)
 }
 
-var mcpToolNames = []string{"project_summary", "list_findings", "get_finding", "get_vulnerability", "list_targets",
+var mcpToolNames = []string{"project_summary", "list_findings", "list_fixes", "get_finding", "get_vulnerability", "list_targets",
 	"list_scans", "get_scan", "list_exceptions"}
 
 func TestMCPInitialize(t *testing.T) {
@@ -562,6 +562,33 @@ func TestMCPTools(t *testing.T) {
 		t.Errorf("list_exceptions pending: %+v", p)
 	}
 
+	type fixList struct {
+		OpenVulnerabilities int            `json:"open_vulnerabilities"`
+		ResolvedByUpgrade   int            `json:"resolved_by_upgrade"`
+		NotCovered          map[string]int `json:"not_covered"`
+		UpgradesTotal       int            `json:"upgrades_total"`
+		Upgrades            []struct {
+			Package, Ecosystem       string
+			InstalledVersion         string `json:"installed_version"`
+			UpgradeTo                string `json:"upgrade_to"`
+			Resolves                 sevCounts
+			Targets, Vulnerabilities []string
+		}
+		NoFixYet []any `json:"no_fix_yet"`
+	}
+	fx := callTool[fixList](t, s, tok, "list_fixes", nil)
+	if fx.OpenVulnerabilities != 2 || fx.ResolvedByUpgrade != 2 || fx.NotCovered["misconfig"] != 1 || fx.UpgradesTotal != 2 || len(fx.Upgrades) != 2 || fx.NoFixYet == nil {
+		t.Fatalf("list_fixes: %+v", fx)
+	}
+	if u := fx.Upgrades[0]; u.Package != "openssl" || u.Ecosystem != "alpine" || u.InstalledVersion != "1.0" || u.UpgradeTo != "3.0.9" ||
+		u.Resolves.Critical != 1 || u.Resolves.Open != 1 || !slices.Equal(u.Targets, []string{"shop-web"}) || !slices.Equal(u.Vulnerabilities, []string{"CVE-2024-1111"}) {
+		t.Errorf("list_fixes first upgrade: %+v", u)
+	}
+	if one := callTool[fixList](t, s, tok, "list_fixes", map[string]any{"target": "shop-api", "limit": 1}); one.OpenVulnerabilities != 1 ||
+		len(one.Upgrades) != 1 || one.Upgrades[0].Package != "curl" {
+		t.Errorf("list_fixes by target: %+v", one)
+	}
+
 	// reads are not audited
 	if n := qInt(t, s, `select count(*) from audit_log where action not in ('scan.upload')`); n != 0 {
 		t.Errorf("%d audit rows after MCP reads", n)
@@ -613,7 +640,7 @@ func TestMCPIsolation(t *testing.T) {
 		{"list_findings", map[string]any{"status": "accepted"}}, {"list_findings", map[string]any{"query": "other"}},
 		{"list_findings", map[string]any{"query": "CVE-2099"}}, {"get_vulnerability", map[string]any{"id": "CVE-2024-1111"}},
 		{"get_vulnerability", map[string]any{"id": "CVE-2024-3333"}}, {"list_targets", nil}, {"list_scans", nil},
-		{"get_scan", map[string]any{"id": a.scan2}}, {"list_exceptions", nil},
+		{"get_scan", map[string]any{"id": a.scan2}}, {"list_exceptions", nil}, {"list_fixes", nil},
 	} {
 		res, text := toolRaw(t, s, a.tok, tc.tool, tc.args)
 		if res["isError"] == true {
@@ -755,6 +782,8 @@ func TestMCPProtocolErrors(t *testing.T) {
 		{"list_scans", map[string]any{"cursor": "cx"}, "before"}, // the REST handler's own check, passed on
 		{"list_scans", map[string]any{"cursor": 3}, "cursor"},
 		{"list_exceptions", map[string]any{"status": "open"}, "status"},
+		{"list_fixes", map[string]any{"limit": 201}, "limit"},
+		{"list_fixes", map[string]any{"target": "nope"}, "nope"},
 		{"list_targets", map[string]any{"limit": 501}, "limit"},
 		{"project_summary", map[string]any{"verbose": true}, "verbose"},
 	} {
