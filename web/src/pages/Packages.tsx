@@ -21,10 +21,10 @@ const columns: Column<PackageHit>[] = [
       <span className="pkg-hit"><span className="pkg-name">{r.name}</span>{r.ecosystem && <span className="tag tag-quiet">{r.ecosystem}</span>}</span>
     ),
   },
-  { key: "version", header: "버전", width: "12%", render: (r) => <span className="mono pkg-wrap">{r.version}</span> },
+  { key: "version", header: "버전", width: "16%", render: (r) => <span className="mono pkg-wrap">{r.version}</span> },
   { key: "where", header: "프로젝트 · 대상", width: "21%", nowrap: true, render: (r) => <ProjectTarget project={r.project_key} target={r.target_name} /> }, // nowrap + width: cut with an ellipsis
   {
-    key: "paths", header: "위치", width: "20%", render: (r) => (r.path_count === 0 ? <span className="muted">—</span> : (
+    key: "paths", header: "위치", width: "16%", render: (r) => (r.path_count === 0 ? <span className="muted">—</span> : (
       <span className="pkg-paths">
         <span className="mono pkg-wrap pkg-path" title={r.paths.join("\n")}>{r.paths[0]}</span>
         {r.path_count > 1 && <span className="muted nw">외 {fmtNumber(r.path_count - 1)}곳</span>}
