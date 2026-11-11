@@ -42,6 +42,10 @@ L.run(async () => {
   await visit(p, "/projects", "projects");
   await visit(p, "/projects/e2e-proj", "project results", () => p.getByRole("table", { name: "결과 목록" }).waitFor());
   for (const tab of ["targets", "scans", "exceptions", "settings"]) await visit(p, `/projects/e2e-proj/${tab}`, `project ${tab}`);
+  await visit(p, "/projects/e2e-proj/fixes", "project fixes", () => p.getByRole("heading", { name: "올릴 패키지" }).waitFor());
+  await p.locator(".fix-row").first().click(); // an opened group: targets, findings table, copy button
+  await p.locator(".fix-body").getByRole("table").waitFor();
+  await both(p, "project fixes, a group opened");
   await visit(p, "/findings", "findings");
   await p.getByRole("table", { name: "결과 목록" }).getByRole("row").nth(1).locator(".pkg-name").click();
   await p.getByRole("dialog").first().waitFor();

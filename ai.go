@@ -659,6 +659,21 @@ func (s *server) genReport(ctx context.Context, pid int64) (string, error) {
 			fmt.Fprintf(&head, "- %s: +%d / -%d\n", t.Day, t.New, t.Fix)
 		}
 	}
+	// the upgrades that resolve the most, in the order of the 조치 계획 tab
+	plan, err := s.fixPlan(ctx, pid, 0)
+	if err != nil {
+		return "", err
+	}
+	if len(plan.Groups) > 0 {
+		head.WriteString("\n먼저 올릴 패키지(올리면 해결되는 열린 취약점 수):\n")
+	}
+	for _, g := range plan.Groups[:min(10, len(plan.Groups))] {
+		to := g.Recommended + " 이상"
+		if g.Recommended == "" {
+			to = strings.Join(g.FixedVersions, ", ") + " (버전을 비교하지 못함)"
+		}
+		fmt.Fprintf(&head, "- %s %s → %s: %d건\n", g.Package, g.Installed, to, g.Resolves.Open)
+	}
 	// top 50 open findings, most severe and oldest first
 	rows, _ = s.db.Query(ctx, `select f.severity, f.rule_id, t.name, f.pkg_name, f.pkg_version, f.fixed_version, f.title,
 			greatest(0, (current_date - f.first_seen_at::date))

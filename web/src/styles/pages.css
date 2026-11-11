@@ -224,6 +224,46 @@ legend { padding: 0; }
 .onboard-head h2 { font-size: 17px; margin-bottom: 4px; }
 .onboard-head p { max-width: 72ch; }
 
+/* ---- 조치 계획 (project fixes tab) ---- */
+.fixes { display: flex; flex-direction: column; gap: 12px; }
+.fix-bar { display: flex; align-items: center; gap: 8px; }
+.fix-bar:empty { display: none; }
+.fix-bar select.input { width: auto; max-width: 340px; height: 32px; font-size: 13px; }
+.fix-copy { margin-left: auto; }
+.fix-summary { padding: 16px 18px; }
+.fix-summary > .empty { padding: 10px 20px; }
+.fix-summary > .muted { margin: 4px 0 0; font-size: 13.5px; }
+.fix-lead { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; }
+.fix-lead .num { font-size: 18px; }
+.fix-win { color: var(--ok); }
+.fix-rest { display: flex; flex-direction: column; gap: 4px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--text-2); }
+.fix-rest a { text-decoration: underline; text-underline-offset: 2px; } /* links inside a sentence: not told apart by colour alone */
+.fix-summary > .empty + .fix-rest { align-items: center; }
+.fix-note { max-width: 86ch; margin: 0; padding: 0 18px 12px; font-size: 13px; color: var(--text-2); }
+.fix-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.fix-list > li + li { border-top: 1px solid var(--line); }
+.fix-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 18px 10px 12px; cursor: pointer; list-style: none; }
+.fix-row::-webkit-details-marker { display: none; }
+.fix-row:hover { background: var(--surface-2); }
+.fix-row:focus-visible { box-shadow: inset 3px 0 0 var(--accent); border-radius: 0; background: var(--accent-soft); }
+.fix-list > li:last-child .fix-item:not([open]) > .fix-row { border-radius: 0 0 10px 10px; }
+.fix-chev { flex: none; color: var(--muted); transition: transform var(--dur); }
+.fix-item[open] > .fix-row .fix-chev { transform: rotate(90deg); }
+.fix-what { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; flex: 1 1 320px; min-width: 0; font-size: 14px; }
+.fix-pkg { font-weight: 650; overflow-wrap: anywhere; }
+.fix-ver { color: var(--text-2); overflow-wrap: anywhere; }
+.fix-what .pkg-fix { font-weight: 600; overflow-wrap: anywhere; }
+.fix-arrow { color: var(--muted); }
+.fix-gain { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 12px; margin-left: auto; font-size: 13px; }
+.fix-gain > .num:not(.muted) { font-weight: 600; }
+.fix-body { border-top: 1px solid var(--line); background: var(--surface-2); }
+.fix-body > .table-wrap { border-top: 1px solid var(--line); background: var(--surface); }
+.fix-facts { display: flex; align-items: flex-start; gap: 16px; padding: 12px 18px 12px 38px; font-size: 13px; }
+.fix-facts > div { flex: 1; min-width: 0; }
+.fix-facts p { max-width: 86ch; margin: 0 0 8px; color: var(--text-2); }
+.fix-targets { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.fix-targets li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+
 /* ---- project settings ---- */
 .settings { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 24px; align-items: start; }
 .settings-nav { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; }

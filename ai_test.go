@@ -226,9 +226,13 @@ func TestAIStripsThink(t *testing.T) {
 	p := mkProject(t, s, "rep-proj")
 	addMember(t, s, p, "user", itoa(u.ID), "member")
 	ck := loginAs(t, s, u)
+	mustUpload(t, s, "rep-proj", "", trivyDoc("A", []tv{{ID: "CVE-2024-1000", Fixed: "1.2.12-r0, 1.1.9-r0"}}, nil), ck)
 	r := waitRun(t, s, ck, postRun(t, s, "/api/v1/projects/rep-proj/ai-report", ck))
 	if r.State != "done" || r.Output != "# 보고서" || r.Kind != "project_report" || r.ProjectID == nil {
 		t.Fatalf("%+v", r)
+	}
+	if f.countUser("프로젝트: rep-proj") != 1 || !strings.Contains(f.users[0], "먼저 올릴 패키지") || !strings.Contains(f.users[0], "- zlib 1.0 → 1.2.12-r0 이상: 1건\n") {
+		t.Errorf("the report input lacks the upgrade plan:\n%s", f.users[0])
 	}
 }
 

@@ -51,7 +51,8 @@ const (
 	rpcBadVersion     = -32022
 
 	mcpInstructions = "Read-only vulnerability data of one JASCA project: the project the API token belongs to. " +
-		"Start with project_summary, then list_findings. Ids for get_finding and get_scan come from the list tools."
+		"Start with project_summary, then list_fixes (which package upgrades resolve the most) or list_findings. " +
+		"Ids for get_finding and get_scan come from the list tools."
 )
 
 // mcpLegacy are the handshake-era versions, newest first. 2025-03-26 is what the specification assumes for a request
@@ -604,6 +605,79 @@ func mcpListFindings(m *mcpCall, raw json.RawMessage) (any, error) {
 	return out, nil
 }
 
+// mcpListFixes is the 조치 계획 screen for a model: one row per package upgrade, without the finding rows.
+func mcpListFixes(m *mcpCall, raw json.RawMessage) (any, error) {
+	var a struct {
+		Target string `json:"target"`
+		Limit  *int   `json:"limit"`
+	}
+	if err := toolArgs(raw, &a); err != nil {
+		return nil, err
+	}
+	limit, err := limitArg(a.Limit, 30, 200)
+	if err != nil {
+		return nil, err
+	}
+	q := url.Values{}
+	if a.Target != "" {
+		id, err := m.targetID(a.Target)
+		if err != nil {
+			return nil, err
+		}
+		q.Set("target_id", itoa(id))
+	}
+	var p fixPlan
+	if err := m.rest(m.s.handleFixes, "", q, &p); err != nil {
+		return nil, err
+	}
+	type fix struct {
+		Package          string     `json:"package"`
+		Ecosystem        string     `json:"ecosystem,omitempty"`
+		InstalledVersion string     `json:"installed_version"`
+		UpgradeTo        string     `json:"upgrade_to,omitempty"`
+		FixedVersions    []string   `json:"fixed_versions,omitempty"` // only when upgrade_to could not be worked out
+		Resolves         *sevCounts `json:"resolves,omitempty"`
+		WithoutFix       int        `json:"without_fix,omitempty"`
+		Targets          []string   `json:"targets"`
+		Vulnerabilities  []string   `json:"vulnerabilities"`
+	}
+	rows := func(gs []*fixGroup) []fix {
+		out := []fix{}
+		for _, g := range gs[:min(limit, len(gs))] {
+			f := fix{Package: g.Package, Ecosystem: g.Ecosystem, InstalledVersion: g.Installed, UpgradeTo: g.Recommended,
+				WithoutFix: g.NoFix, Targets: []string{}, Vulnerabilities: []string{}}
+			if g.Resolves.Open > 0 {
+				f.Resolves = &g.Resolves
+			}
+			if g.Recommended == "" {
+				f.FixedVersions = g.FixedVersions
+			}
+			for _, t := range g.Targets {
+				f.Targets = append(f.Targets, t.Name)
+			}
+			for _, fd := range g.Findings {
+				if !slices.Contains(f.Vulnerabilities, fd.RuleID) {
+					f.Vulnerabilities = append(f.Vulnerabilities, fd.RuleID)
+				}
+			}
+			out = append(out, f)
+		}
+		return out
+	}
+	t := p.Totals
+	return struct {
+		OpenVulnerabilities int            `json:"open_vulnerabilities"`
+		ResolvedByUpgrade   int            `json:"resolved_by_upgrade"`
+		WithoutFix          int            `json:"without_fix"`
+		NotCovered          map[string]int `json:"not_covered"` // open findings of the other kinds: this plan says nothing about them
+		Truncated           bool           `json:"truncated,omitempty"`
+		UpgradesTotal       int            `json:"upgrades_total"`
+		Upgrades            []fix          `json:"upgrades"`
+		NoFixYetTotal       int            `json:"no_fix_yet_total"`
+		NoFixYet            []fix          `json:"no_fix_yet"`
+	}{t.OpenVulns, t.Fixable, t.NoFix, t.OtherKinds, p.Truncated, len(p.Groups), rows(p.Groups), len(p.NoFixGroups), rows(p.NoFixGroups)}, nil
+}
+
 func mcpGetFinding(m *mcpCall, raw json.RawMessage) (any, error) {
 	var a struct {
 		ID *int64 `json:"id"`
@@ -888,6 +962,18 @@ var mcpTools = func() []mcpTool {
 				"limit": `+limitSchema(50, 200)+`,
 				"cursor": {"type": "string", "description": "next_cursor from the previous call with the same filters."}}}`,
 			mcpListFindings),
+		tool("list_fixes",
+			"The remediation plan: the project's open vulnerability findings grouped by the package upgrade that resolves "+
+				"them, most valuable first (worst severity, then most findings resolved). upgrade_to is the version to move "+
+				"to: that version or a higher one resolves every finding counted in resolves (by severity; open is their "+
+				"sum). When upgrade_to is absent the listed fixed_versions could not be compared: choose the one for the "+
+				"installed release line. without_fix counts findings no upgrade resolves yet; no_fix_yet lists packages "+
+				"where that is all of them. not_covered counts open misconfigurations, secrets and SAST results, which "+
+				"this plan does not include. With truncated, only the 5000 most severe findings were grouped.",
+			`{"type": "object", "additionalProperties": false, "properties": {
+				"target": {"type": "string", "description": "Only this scan target: its exact name from list_targets."},
+				"limit": `+limitSchema(30, 200)+`}}`,
+			mcpListFixes),
 		tool("get_finding",
 			"Everything about one finding: severity, rule id, package with installed and fixed version, target, file "+
 				"location, status, the exception covering it (if any), scanner details, and for a vulnerability the "+

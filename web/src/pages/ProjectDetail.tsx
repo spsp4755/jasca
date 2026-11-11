@@ -10,11 +10,12 @@ import Tabs from "../components/Tabs";
 import { ROLE_LABEL, SEVERITY_LABEL, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
 import { exceptionColumns } from "./Exceptions";
 import ProjectFindings from "./ProjectFindings";
+import ProjectFixes from "./ProjectFixes";
 import ProjectScans from "./ProjectScans";
 import ProjectSettings from "./ProjectSettings";
 import ProjectTargets from "./ProjectTargets";
 
-const TABS = ["results", "targets", "scans", "exceptions", "settings"] as const;
+const TABS = ["results", "fixes", "targets", "scans", "exceptions", "settings"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function ProjectDetail() {
@@ -54,6 +55,7 @@ export default function ProjectDetail() {
       <Tabs label="프로젝트 화면" value={tab} onChange={(id) => navigate(`/projects/${encodeURIComponent(key)}${id === "results" ? "" : `/${id}`}`)}
         tabs={[
           { id: "results", label: "결과", count: p?.counts.open },
+          { id: "fixes", label: "조치 계획" },
           { id: "targets", label: "대상" },
           { id: "scans", label: "스캔 기록" },
           { id: "exceptions", label: "예외" },
@@ -62,6 +64,7 @@ export default function ProjectDetail() {
       <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {!p ? <div className="panel"><Table caption="불러오는 중" rows={[]} rowKey={() => 0} columns={[{ key: "x", header: "" }]} loading /></div>
           : tab === "results" ? <ProjectFindings project={p} />
+          : tab === "fixes" ? <ProjectFixes project={p} />
           : tab === "targets" ? <ProjectTargets project={p} />
           : tab === "scans" ? <ProjectScans project={p} />
           : tab === "exceptions" ? <ProjectExceptions project={p} />

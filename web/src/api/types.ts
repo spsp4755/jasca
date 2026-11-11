@@ -227,6 +227,23 @@ export interface ReportFinding {
   pkg_name: string; pkg_version: string; fixed_version: string; first_seen_at: string;
   location: string; details: { start_line?: number; end_line?: number };
 }
+// --- 조치 계획: GET /projects/{key}/fixes ---
+export interface FixFinding { id: number; rule_id: string; severity: Severity; title: string; target_id: number; target: string; pkg_path: string; fixed_version: string }
+export interface FixTarget { id: number; kind: TargetKind; name: string; paths: string[] }
+/**
+ * One package at one installed version. recommended: that version or a higher one resolves every finding counted in
+ * resolves (resolves.open = all of them); "" when the fixed versions could not be compared, then fixed_versions is shown as written.
+ */
+export interface FixGroup {
+  package: string; ecosystem: string; installed: string; recommended: string; fixed_versions: string[];
+  resolves: Counts; no_fix: number; targets: FixTarget[]; findings: FixFinding[];
+}
+/** inventory_targets: targets whose scans listed packages (0: nothing looked at packages). truncated: only the `limit` most severe findings were grouped. */
+export interface FixPlan {
+  groups: FixGroup[]; no_fix_groups: FixGroup[];
+  totals: { open_vulns: number; fixable: number; no_fix: number; other_kinds: Record<"misconfig" | "secret" | "sast", number>; inventory_targets: number };
+  limit: number; truncated: boolean;
+}
 export interface ProjectReportData {
   project: { key: string; name: string; description: string };
   generated_at: string;
