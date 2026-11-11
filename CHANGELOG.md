@@ -1,5 +1,18 @@
 # 변경 이력
 
+## v1.1.2 - 2026-11-11
+
+### 새로 생긴 것
+
+- **`jasca.yaml` 하나로 사내 PostgreSQL에 설치**: DB 담당자에게 받은 Host, Port, Database, User, Schema, Password를 `jasca.yaml`의 `JASCA_DB_HOST`, `JASCA_DB_PORT`, `JASCA_DB_DATABASE`, `JASCA_DB_USER`, `JASCA_DB_SCHEMA`, `JASCA_DB_PASSWORD`에 그대로 적습니다. `postgres.yaml`과 그 Secret은 더 이상 필요 없습니다(사내 DB가 없을 때만 씁니다).
+- **스키마 지정**(`JASCA_DB_SCHEMA`): 테이블을 지정한 스키마 안에만 만들고 씁니다. 스키마가 없거나 권한이 모자라면 시작할 때 로그로 무엇이 문제인지 알려 줍니다.
+- 시작 로그에 접속한 DB가 한 줄로 나옵니다(`database <Host>:<Port>/<Database> as <User>, schema <Schema>`).
+- `DEPLOY-OFFLINE.md`에 전용 PostgreSQL의 데이터를 사내 DB로 옮기는 절차를 넣었습니다.
+
+### 바뀐 동작
+
+- 새 `jasca.yaml`은 `jasca-postgres-secrets` Secret을 참조하지 않습니다. v1.1.1까지의 `jasca.yaml`(`JASCA_DATABASE_URL`, `PGPASSWORD`)은 그대로 동작합니다. 두 방식을 함께 적으면 앱이 시작하지 않습니다.
+
 ## v1.1.1 - 2026-11-11
 
 ### 고친 것

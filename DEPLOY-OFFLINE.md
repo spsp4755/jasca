@@ -1,4 +1,4 @@
-# JASCA v1.1.1 — 폐쇄망 배포 / 데이터 보존
+# JASCA v1.1.2 — 폐쇄망 배포 / 데이터 보존
 
 ## 가장 중요한 점
 
@@ -17,10 +17,10 @@
 
 | 파일 | 용도 |
 |---|---|
-| jasca-v1.1.1.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.1.1`만 포함(Trivy 0.76.1 실행 파일 포함) |
+| jasca-v1.1.2.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.1.2`만 포함(Trivy 0.76.1 실행 파일 포함) |
 | postgres-v17.11-jasca1.tar.gz | 별도 선택 이미지 `postgres:v17.11-jasca1` (공식 17.11-bookworm 기반, 쓰지 않는 gosu·snakeoil 키 제거, root로 실행 불가) |
-| jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress |
-| postgres.yaml | 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
+| jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress. 사내 PostgreSQL 접속 정보까지 이 파일 하나에 적습니다 |
+| postgres.yaml | 사내 DB가 없을 때만 쓰는 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
 | db.tar.gz, javadb.tar.gz | 릴리스 날짜 기준 Trivy 취약점 DB와 Java DB. 설치 뒤 **관리 → Trivy DB**에서 올립니다(아래 "Trivy DB 오프라인 갱신"). 시간이 지났으면 새로 받으세요 |
 | DEPLOY-OFFLINE.md | 이 문서 |
 | RELEASE-NOTES.md | 이번 버전의 변경 사항 |
@@ -34,17 +34,17 @@
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS # 이번에 반입한 파일 검증
-podman load -i jasca-v1.1.1.tar.gz
-podman load -i postgres-v17.11-jasca1.tar.gz
-podman image inspect jasca:v1.1.1 --format '{{.Os}}/{{.Architecture}}'
+podman load -i jasca-v1.1.2.tar.gz
+podman load -i postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
+podman image inspect jasca:v1.1.2 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 **Podman load만으로 Kubernetes containerd에 이미지가 등록되지는 않습니다.** 실행 가능한 모든 워커의 실제 CRI에 반입하세요.
 
 ```sh
 # 일반 containerd
-sudo ctr -n k8s.io images import jasca-v1.1.1.tar.gz
-sudo ctr -n k8s.io images import postgres-v17.11-jasca1.tar.gz
+sudo ctr -n k8s.io images import jasca-v1.1.2.tar.gz
+sudo ctr -n k8s.io images import postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
 # k3s는 sudo k3s ctr images import, RKE2는 해당 런타임의 socket/ctr 사용.
 ```
 
@@ -54,27 +54,42 @@ sudo ctr -n k8s.io images import postgres-v17.11-jasca1.tar.gz
 
 Namespace `jasca`는 미리 생성되어 있다고 가정합니다(`kubectl create namespace jasca`). YAML은 namespace/IngressClass/StorageClass를 만들거나 고정하지 않습니다.
 
-1. `jasca.yaml`의 `JASCA_BOOTSTRAP_PASSWORD`를 12~72자 ASCII로 변경(기본값 `CHANGE_ME`는 12자 미만이라 앱이 시작하지 않습니다).
-2. `postgres.yaml`의 `POSTGRES_PASSWORD`를 강력한 암호로 변경. 앱도 같은 Secret을 `PGPASSWORD`로 참조하므로 URL 인코딩이 필요 없습니다.
+`jasca.yaml` 하나만 고쳐서 적용합니다. PostgreSQL은 사내 DB를 씁니다.
+
+1. `JASCA_BOOTSTRAP_PASSWORD`를 12~72자 ASCII로 변경(기본값 `CHANGE_ME`는 12자 미만이라 앱이 시작하지 않습니다).
+2. DB 담당자에게 받은 접속 정보를 적습니다.
+
+   | 받은 값 | `jasca.yaml`의 항목 |
+   |---|---|
+   | Host | `JASCA_DB_HOST` |
+   | Port | `JASCA_DB_PORT` |
+   | Database | `JASCA_DB_DATABASE` |
+   | User | `JASCA_DB_USER` |
+   | Schema | `JASCA_DB_SCHEMA` |
+   | Password | `JASCA_DB_PASSWORD` (Secret `jasca-secrets`) |
+
+   - 스키마는 미리 만들어져 있어야 하고, 계정에 그 스키마의 `USAGE`, `CREATE` 권한이 있어야 합니다. 테이블은 앱이 시작할 때 그 스키마 안에 자동으로 만들고, 다른 스키마(`public` 포함)는 건드리지 않습니다. 슈퍼유저 권한이나 확장(extension)은 필요 없습니다.
+   - 비밀번호는 받은 그대로 적습니다. URL 인코딩은 필요 없고, YAML 큰따옴표 안에서 `"`와 `\`만 앞에 `\`를 붙입니다.
+   - `JASCA_DB_SSLMODE`는 기본 `prefer`(DB가 TLS를 받으면 암호화, 아니면 평문)입니다. 암호화를 강제하려면 `require`, 서버 인증서까지 검증하려면 `verify-full`로 바꾸고 CA 파일을 마운트해 환경 변수 `PGSSLROOTCERT`로 경로를 알려 주세요.
+   - `JASCA_DB_MAX_CONNS`(기본 20)는 앱이 여는 최대 연결 수입니다. 계정의 연결 한도보다 작게 두세요.
+   - PostgreSQL 13 이상에서 동작합니다(13~17에서 테스트).
 3. Ingress host(`jasca.example.internal`)를 실제 사내 주소로 변경하고, 필요하면 `ingressClassName`을 지정.
-4. 기본 StorageClass가 없으면 `postgres.yaml`과 `jasca.yaml`(PVC `jasca-data`, 기본 30Gi)의 `storageClassName`을 지정. 앱 PVC는 ReadWriteOnce 하나면 됩니다(replicas 1).
+4. 기본 StorageClass가 없으면 PVC `jasca-data`(기본 30Gi)의 `storageClassName`을 지정. ReadWriteOnce 하나면 됩니다(replicas 1).
 5. Ingress TLS 항목은 생략했습니다. 사내 앞단/LB/Ingress 공용 인증서로 **HTTPS**를 제공하세요.
 6. 스캔 파일 업로드 상한은 기본 2GiB입니다. Ingress의 `proxy-body-size`(예: `2100m`, 상한보다 조금 크게)와 읽기·쓰기 제한 시간(600초)이 이 값 이상이어야 합니다. `proxy-request-buffering: "off"`로 큰 업로드를 컨트롤러 디스크에 쌓지 않게 합니다. 상한을 바꾸면 ConfigMap의 `JASCA_MAX_SCAN_UPLOAD_MB`와 함께 바꾸세요.
 7. Trivy는 임시 파일을 `/tmp`(emptyDir 2Gi)에, 취약점 DB를 `/data/trivy`에 씁니다. Pod 메모리 한도는 2Gi입니다. 큰 이미지를 스캔하면 늘려야 할 수 있습니다.
 
 ```sh
-kubectl -n jasca apply --dry-run=server -f postgres.yaml
 kubectl -n jasca apply --dry-run=server -f jasca.yaml
-kubectl -n jasca apply -f postgres.yaml
-kubectl -n jasca rollout status statefulset/jasca-postgres --timeout=300s
 kubectl -n jasca apply -f jasca.yaml
 kubectl -n jasca rollout status deployment/jasca --timeout=300s
 kubectl -n jasca get pods,pvc,svc,ingress
+kubectl -n jasca logs deployment/jasca | grep database # database <Host>:<Port>/<Database> as <User>, schema <Schema>
 ```
 
-DB 스키마는 앱이 시작할 때 자동으로 만들고 올립니다. PostgreSQL Secret 암호는 **DB 최초 초기화 때만** 적용됩니다. 운영 중 Secret만 바꾸면 DB 암호는 바뀌지 않으므로 DB 계정 암호와 Secret을 함께 바꾸세요.
+DB에 닿지 못하면 앱은 1분 동안 다시 시도한 뒤 로그에 `database:` 오류를 남기고 끝납니다(Pod가 재시작됩니다). 원인은 아래 "문제 해결"을 보세요.
 
-**기존 사내 DB**: `postgres.yaml`을 적용하지 않고 DB와 전용 계정(`jasca`)을 준비합니다. `jasca-config`의 `JASCA_DATABASE_URL`(호스트·DB·계정)을 바꾸고 `jasca-postgres-secrets` Secret에 `POSTGRES_PASSWORD`를 만듭니다. 외부 DB는 `sslmode=verify-full&sslrootcert=/마운트한/CA`를 사용하세요.
+**사내 DB가 없을 때(전용 PostgreSQL)**: `postgres.yaml`의 `POSTGRES_PASSWORD`를 정해 먼저 적용하고(`kubectl -n jasca apply -f postgres.yaml`, `rollout status statefulset/jasca-postgres`), `jasca.yaml`에는 `JASCA_DB_HOST: "jasca-postgres"`, `JASCA_DB_PORT: "5432"`, `JASCA_DB_DATABASE: "jasca"`, `JASCA_DB_USER: "jasca"`, `JASCA_DB_SCHEMA: ""`, `JASCA_DB_SSLMODE: "require"`, `JASCA_DB_PASSWORD`에는 같은 암호를 적습니다. PostgreSQL Secret의 암호는 **DB 최초 초기화 때만** 적용되므로, 운영 중에는 DB 계정 암호와 두 Secret을 함께 바꾸세요.
 
 설치 후 **Trivy DB를 올리기 전에는 서버 스캔이 동작하지 않습니다.** 아래 "Trivy DB 오프라인 갱신"을 먼저 하세요.
 
@@ -169,12 +184,39 @@ sha256sum db.tar.gz javadb.tar.gz > trivy-db.sha256
 
 1. DB와 PVC를 백업합니다(아래 "백업과 복원").
 2. 새 `jasca-vX.Y.Z.tar.gz`를 모든 워커에 반입합니다(위 "이미지 반입").
-3. 새 `jasca.yaml`에 쓰던 값(Ingress host, `ingressClassName`, `JASCA_BOOTSTRAP_PASSWORD`, `JASCA_TZ`, DB 주소, 이미지 경로)을 옮겨 적고 적용합니다. `CHANGE_ME`인 채로 적용하면 Secret을 덮어씁니다. 새 `postgres.yaml`을 적용할 때도 `POSTGRES_PASSWORD`를 옮겨 적으세요.
+3. 새 `jasca.yaml`에 쓰던 값(Ingress host, `ingressClassName`, `JASCA_BOOTSTRAP_PASSWORD`, `JASCA_TZ`, DB 접속 정보, 이미지 경로)을 옮겨 적고 적용합니다. v1.1.1까지의 `jasca.yaml`(`JASCA_DATABASE_URL`과 `PGPASSWORD`)을 그대로 쓰면서 이미지 태그만 바꿔도 됩니다. 두 방식을 한 파일에 섞으면 앱이 시작하지 않습니다. `CHANGE_ME`인 채로 적용하면 Secret을 덮어씁니다. 새 `postgres.yaml`을 적용할 때도 `POSTGRES_PASSWORD`를 옮겨 적으세요.
 ```sh
 kubectl apply -f jasca.yaml
 kubectl -n jasca rollout status deployment/jasca
 ```
 4. 로그인 화면 아래에 새 버전(`JASCA vX.Y.Z`)이 보이는지 보고, 로그인과 스캔 한 건으로 확인합니다. Recreate 전략이라 교체 중 잠시 접속이 끊깁니다.
+
+## 전용 PostgreSQL에서 사내 DB로 옮기기
+
+`postgres.yaml`로 띄운 DB의 데이터를 사내 DB의 스키마로 옮기는 절차입니다. 데이터를 옮기지 않고 새로 시작하려면 "신규 설치"대로 `jasca.yaml`만 적용하면 됩니다(Trivy DB는 PVC에 있어 그대로 남습니다).
+
+덤프는 스키마 이름을 바꿔서 복원할 수 없으므로, 옮기기 전에 옛 DB의 `public` 스키마 이름을 받은 스키마 이름으로 바꿉니다(받은 스키마가 `public`이면 이름 변경을 건너뜁니다).
+
+```sh
+kubectl -n jasca scale deployment/jasca --replicas=0 # 앱을 멈춥니다
+umask 077
+kubectl -n jasca exec jasca-postgres-0 -- pg_dump -U jasca -d jasca -Fc > jasca-before-move.dump # 되돌릴 때 쓸 백업
+kubectl -n jasca exec jasca-postgres-0 -- psql -U jasca -d jasca -c 'alter schema public rename to "<Schema>"'
+kubectl -n jasca exec jasca-postgres-0 -- pg_dump -U jasca -d jasca -n '<Schema>' --no-owner --no-acl -f /tmp/jasca-move.sql
+# 사내 DB에 넣습니다. 비밀번호를 물으면 받은 Password를 입력합니다.
+kubectl -n jasca exec -it jasca-postgres-0 -- psql -h <Host> -p <Port> -U <User> -d <Database> -f /tmp/jasca-move.sql
+kubectl -n jasca exec jasca-postgres-0 -- rm /tmp/jasca-move.sql
+```
+
+덤프 파일은 PostgreSQL Pod의 `/tmp`(노드의 임시 저장소)에 잠시 둡니다. 크기는 DB의 두 배쯤까지 될 수 있습니다.
+
+넣는 중 아래 오류는 정상입니다. 스키마가 이미 만들어져 있고 계정이 그 소유자가 아니어서 나는 것과, 사내 DB가 17보다 낮은 버전일 때 나는 것입니다. 다른 오류가 있으면 멈추고 DB 담당자와 확인하세요.
+
+- `permission denied for database …` 또는 `schema "…" already exists` (CREATE SCHEMA)
+- `must be owner of schema …` (COMMENT ON SCHEMA)
+- `unrecognized configuration parameter "transaction_timeout"`
+
+그다음 새 `jasca.yaml`에 사내 DB 접속 정보와 **쓰던 값**(Ingress host, `JASCA_TZ` 등)을 적어 적용합니다. 로그인해 프로젝트와 결과 수가 그대로인지 확인한 뒤에 옛 DB를 정리하세요(`kubectl -n jasca delete -f postgres.yaml`은 PVC를 지우지 않습니다. 백업 파일과 PVC는 확인이 끝날 때까지 두세요). 되돌리려면 옛 DB에서 `alter schema "<Schema>" rename to public`을 실행하고 예전 `jasca.yaml`을 적용합니다.
 
 ## 백업과 복원
 
@@ -184,6 +226,8 @@ DB와 앱 PVC를 **같은 시점에** 함께 받으세요.
 umask 077
 kubectl -n jasca exec jasca-postgres-0 -- pg_dump -U jasca -d jasca -Fc > jasca.dump
 ```
+
+사내 DB를 쓰면 DB 백업은 DB 담당자의 백업 정책을 따르거나, `pg_dump -h <Host> -p <Port> -U <User> -d <Database> -n '<Schema>' -Fc`로 JASCA 스키마만 받습니다.
 
 앱 PVC(`jasca-data`)는 스토리지의 스냅샷 기능(CSI VolumeSnapshot 등)으로 받는 것이 가장 간단합니다. 스냅샷을 쓸 수 없으면, 앱 이미지에는 셸이 없으므로 이미 반입한 PostgreSQL 이미지로 임시 Pod를 띄워 받습니다(PVC가 ReadWriteOnce라 앱을 잠시 멈춥니다). 스캔 작업 폴더(`work`)는 제외합니다.
 
@@ -227,7 +271,7 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 | 증상 | 확인 |
 |---|---|
 | Pod가 시작하지 않고 로그에 `JASCA_BOOTSTRAP_PASSWORD must be set to 12-72 characters` | Secret의 `JASCA_BOOTSTRAP_PASSWORD`가 `CHANGE_ME`이거나 12자 미만입니다. 매번 시작할 때 검사합니다. |
-| 로그에 `database:` 오류, `/readyz`가 503 | `JASCA_DATABASE_URL`, `PGPASSWORD`(Secret `jasca-postgres-secrets`), PostgreSQL Pod, NetworkPolicy(`app=jasca`만 허용)를 확인합니다. |
+| 로그에 `database:` 오류, `/readyz`가 503 | `password authentication failed`: `JASCA_DB_USER`, `JASCA_DB_PASSWORD`. `JASCA_DB_SCHEMA: schema … does not exist … or … no USAGE privilege`: 스키마 이름(대소문자 구분)과 권한. `no CREATE privilege on schema`: 계정에 그 스키마의 CREATE 권한이 필요합니다. `connection refused`나 시간 초과: `JASCA_DB_HOST`, `JASCA_DB_PORT`, 방화벽. 전용 PostgreSQL이면 Pod와 NetworkPolicy(`app=jasca`만 허용)도 봅니다. |
 | 로그인 화면에서 "Keycloak에 연결하지 못했습니다"(`?error=sso`) | Issuer URL이 `.well-known/openid-configuration`의 `issuer`와 글자 그대로 같은지(구형은 `/auth` 포함), Pod에서 Keycloak으로 닿는지, 사내 CA(`SSL_CERT_FILE`)를 확인합니다. 서버 로그의 `sso callback` 줄에 단계(`discovery`, `exchange`, `verify`)가 나옵니다. |
 | Keycloak 로그인 직후 `Invalid redirect_uri` | Keycloak client의 Valid redirect URIs가 `https://<접속 주소>/api/v1/auth/sso/callback`과 같은지, JASCA의 사이트 주소가 실제 접속 주소와 같은지 봅니다. |
 | "로그인 요청을 확인하지 못했습니다"(`?error=state`) | 로그인 도중 10분이 지났거나 쿠키가 막혔습니다. 사이트 주소와 접속 주소가 다르면 쿠키가 전달되지 않습니다. |
