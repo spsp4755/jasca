@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthConfig, useLogout, useMe } from "../api/hooks";
 import type { Me } from "../api/types";
@@ -17,6 +17,19 @@ import Sidebar from "./Sidebar";
 
 const THEMES: [ThemeMode, string, IconName][] = [["system", "시스템", "monitor"], ["light", "라이트", "sun"], ["dark", "다크", "moon"]];
 
+// Sidebar width and folded state are this browser's preference. Without one, a narrow window starts folded.
+const SIDE_KEY = "jasca.sidebar", SIDE_MIN = 200, SIDE_MAX = 360, SIDE_DEFAULT = 228, SIDE_RAIL = 60, SIDE_STEP = 16;
+type Side = { w: number; c: boolean };
+const clampSide = (w: number) => Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(w)));
+function loadSide(): Side {
+  try {
+    const v = JSON.parse(localStorage.getItem(SIDE_KEY) ?? "null");
+    if (v && typeof v.w === "number") return { w: clampSide(v.w), c: !!v.c };
+  } catch { /* storage blocked or old value */ }
+  return { w: SIDE_DEFAULT, c: window.innerWidth < 1100 };
+}
+function saveSide(s: Side) { try { localStorage.setItem(SIDE_KEY, JSON.stringify(s)); } catch { /* storage blocked */ } }
+
 /** "CVE-2024-1234" or "GHSA-…" opens the vuln page; anything else searches findings. */
 export function searchTarget(q: string): string {
   const t = q.trim();
@@ -34,8 +47,35 @@ export default function Layout() {
   const loc = useLocation();
   const [help, setHelp] = useState(false);
   const search = useRef<HTMLInputElement>(null);
+  const [side, setSide] = useState(loadSide);
+  const [resizing, setResizing] = useState(false);
+  const keepSide = (s: Side) => { setSide(s); saveSide(s); };
+  const toggleSide = () => keepSide({ ...side, c: !side.c });
+  // drag the edge: left of the rail folds it, anything else is the width
+  const dragSide = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    setResizing(true);
+    let last = side;
+    const move = (ev: PointerEvent) => { last = ev.clientX < 130 ? { w: last.w, c: true } : { w: clampSide(ev.clientX), c: false }; setSide(last); };
+    const up = () => {
+      el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
+      setResizing(false); saveSide(last);
+    };
+    el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+  };
+  const keySide = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowLeft") keepSide(side.c ? side : side.w <= SIDE_MIN ? { ...side, c: true } : { w: clampSide(side.w - SIDE_STEP), c: false });
+    else if (e.key === "ArrowRight") keepSide(side.c ? { ...side, c: false } : { w: clampSide(side.w + SIDE_STEP), c: false });
+    else if (e.key === "Enter" || e.key === " ") toggleSide();
+    else return;
+    e.preventDefault();
+  };
 
   useHotkeys({
+    "[": toggleSide,
     "/": () => search.current?.focus(),
     "?": () => setHelp(true),
     "g h": () => navigate("/"),
@@ -71,9 +111,13 @@ export default function Layout() {
   };
 
   return (
-    <div className="app">
+    <div className={`app${side.c ? " side-collapsed" : ""}${resizing ? " is-resizing" : ""}`} style={{ "--sidebar": `${side.c ? SIDE_RAIL : side.w}px` } as CSSProperties}>
       <a href="#main" className="skip-link">본문으로 건너뛰기</a>
-      <Sidebar me={me.data} onHelp={() => setHelp(true)} />
+      <Sidebar me={me.data} onHelp={() => setHelp(true)} collapsed={side.c} onToggle={toggleSide} />
+      <div className="side-resize no-print" role="separator" aria-orientation="vertical" aria-label="사이드바 너비 조절" tabIndex={0}
+        aria-valuemin={SIDE_RAIL} aria-valuemax={SIDE_MAX} aria-valuenow={side.c ? SIDE_RAIL : side.w}
+        title="끌어서 너비 조절 · 두 번 눌러 기본 너비" onPointerDown={dragSide} onKeyDown={keySide}
+        onDoubleClick={() => keepSide({ w: SIDE_DEFAULT, c: false })} />
       <div className="app-main">
         <header className="topbar">
           <form role="search" className="search" onSubmit={onSearch}>

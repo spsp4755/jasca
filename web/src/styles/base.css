@@ -50,7 +50,13 @@ h1:focus { box-shadow: none; }
 .skip-link:focus { top: 12px; }
 
 /* ---- shell ---- */
-.app { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; }
+.app { position: relative; display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; transition: grid-template-columns var(--dur); }
+.app.is-resizing { transition: none; cursor: col-resize; user-select: none; }
+/* the sidebar's right edge: drag to resize, arrow keys when focused */
+.side-resize { position: absolute; z-index: 5; top: 0; bottom: 0; left: calc(var(--sidebar) - 4px); width: 8px; cursor: col-resize; touch-action: none; }
+.side-resize::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background var(--dur); }
+.side-resize:hover::after, .side-resize:focus-visible::after, .is-resizing .side-resize::after { background: var(--accent); }
+.side-resize:focus-visible { outline: none; box-shadow: none; }
 .app-main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
 .content { flex: 1; min-height: 0; overflow: auto; padding: 28px 32px 56px; scroll-padding-top: 48px; }
 .content > * { max-width: 1440px; margin-left: auto; margin-right: auto; }
@@ -59,7 +65,12 @@ h1:focus { box-shadow: none; }
   display: flex; flex-direction: column; gap: 8px; height: 100%; overflow: auto;
   padding: 14px 12px; border-right: 1px solid var(--line); background: var(--bg);
 }
+.side-head { display: flex; align-items: flex-start; gap: 4px; }
+.side-head .brand { flex: 1; min-width: 0; }
+.side-toggle { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; margin-top: 4px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); }
+.side-toggle:hover { background: var(--surface-3); color: var(--text); }
 .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 14px; color: var(--text); }
+.brand-text, .nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand:hover { text-decoration: none; }
 .brand-mark {
   display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px;
@@ -91,6 +102,16 @@ h1:focus { box-shadow: none; }
 }
 .sidebar-help:hover { background: var(--surface-3); color: var(--text); }
 .sidebar-help kbd { margin-left: auto; }
+/* folded to a rail of icons: labels stay in the accessibility tree, sections become a rule */
+.side-collapsed .sidebar { padding: 14px 8px; overflow-x: hidden; }
+.side-collapsed .side-head { flex-direction: column; align-items: center; gap: 2px; padding-bottom: 8px; }
+.side-collapsed .brand { flex: none; padding: 6px 0; }
+.side-collapsed .side-toggle { margin-top: 0; }
+.side-collapsed .brand-text, .side-collapsed .sidebar-help kbd { display: none; }
+.side-collapsed .nav-label { position: absolute; width: 1px; height: 1px; clip: rect(0 0 0 0); }
+.side-collapsed .nav-title { height: 1px; margin: 0 8px 7px; padding: 0; overflow: hidden; background: var(--line); color: transparent; }
+.side-collapsed .nav-link, .side-collapsed .sidebar-help { justify-content: center; padding: 0; gap: 0; }
+.side-collapsed .nav-link.active::before { left: -8px; }
 
 .topbar {
   display: flex; align-items: center; gap: 16px; height: var(--topbar); flex: none; padding: 0 20px 0 32px;

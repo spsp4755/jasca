@@ -9,8 +9,11 @@ import Icon from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { API_BASE, ApiError, api, loginUrl } from "../api/client";
 import { isAdmin, useApi, useAuthConfig, useMe, useUnloadGuard } from "../api/hooks";
-import { SEVERITIES, type Counts, type Project, type ScanDetail, type ScanJobCreated, type Target } from "../api/types";
-import { SEVERITY_LABEL, fmtNumber } from "../lib/format";
+import { SEVERITIES, type Counts, type Dashboard, type Project, type ScanDetail, type ScanJobCreated, type Target } from "../api/types";
+import { copyText } from "../lib/clipboard";
+import { SEVERITY_LABEL, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
+import StatusBadge from "../components/StatusBadge";
+import { ProjectTarget, SummaryCell } from "./Home";
 import { Panel } from "./admin/parts";
 import { KEY_RE, suggestKey } from "./Projects";
 import "../styles/t17.css";
@@ -23,6 +26,13 @@ const KIND_TEXT: Record<Kind, [string, string]> = {
   fs: ["소스 코드·패키지", "프로젝트 폴더를 압축한 zip, tar, tar.gz"],
   image: ["컨테이너 이미지", "docker save 또는 podman save로 만든 tar"],
 };
+// how to make each kind of file: [title, where to run it, command, what gets read]
+const PREP: [string, string, string, string][] = [
+  ["소스 코드·패키지", "프로젝트 폴더 안에서", "tar czf ../app.tar.gz --exclude=.git .",
+    "의존성 잠금 파일(package-lock.json, go.mod, pom.xml, requirements.txt 등)과 JAR·WAR 파일을 읽습니다. Windows에서는 폴더를 zip으로 압축해도 됩니다."],
+  ["컨테이너 이미지", "이미지가 있는 서버에서", "docker save -o app.tar 이미지:태그",
+    "OS 패키지와 이미지 안의 라이브러리를 읽습니다. podman save도 같은 형식입니다."],
+];
 
 /** multipart upload through XHR (fetch has no upload progress). */
 function uploadJob(key: string, form: FormData, onProgress: (pct: number) => void, abort: { current: XMLHttpRequest | null }) {
@@ -286,9 +296,24 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   };
   const again = () => { setRun(null); setEditing(true); setFile(null); setFileErr(""); setTarget(""); setTargetEdited(false); setTried(false); if (input.current) input.current.value = ""; };
 
-  if (run && !editing) return <ScanRun run={run} onCancelUpload={() => xhr.current?.abort()} onAgain={again} onEdit={() => setEditing(true)} />;
+  // a recent scan's project and target, ready for the next file
+  const reuse = (projectKey: string, name: string) => {
+    setKey(projectKey); setConflict(false); setTarget(name); setTargetEdited(true);
+    try { localStorage.setItem(LAST_PROJECT, projectKey); } catch { /* storage blocked */ }
+    (file ? document.querySelector<HTMLElement>(".scan-submit button") : document.querySelector<HTMLElement>(".dropzone"))?.focus();
+  };
+  const running = !!run && !editing;
 
   return (
+    <div className="scan-layout">
+      <div className="scan-main">
+        {running ? <ScanRun run={run} onCancelUpload={() => xhr.current?.abort()} onAgain={again} onEdit={() => setEditing(true)} /> : form()}
+      </div>
+      <ScanAside canReuse={(k) => !running && writable.some((p) => p.key === k)} onReuse={reuse} />
+    </div>
+  );
+
+  function form() { return (
     <form className="panel scan-form" noValidate onSubmit={(e) => { e.preventDefault(); if (!noDb) void submit(); }}>
       <section className="scan-part" aria-labelledby="h-file">
         <h2 id="h-file"><span className="scan-part-n" aria-hidden="true">1</span>검사할 파일</h2>
@@ -351,6 +376,54 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
         {run?.error && <span className="muted">이전 시도: {run.error}</span>}
       </div>
     </form>
+  ); }
+}
+
+/** Beside the form: how to make the file, and the latest scans with a way to scan the same target again. */
+function ScanAside({ canReuse, onReuse }: { canReuse: (projectKey: string) => boolean; onReuse: (projectKey: string, target: string) => void }) {
+  const toast = useToast();
+  const d = useApi<Dashboard>("/dashboard");
+  const scans = (d.data?.recent_scans ?? []).filter((s) => s.source === "server" || s.source === "upload").slice(0, 5);
+  const copy = async (cmd: string) => ((await copyText(cmd)) ? toast("명령을 복사했습니다.", "ok") : toast("복사하지 못했습니다. 직접 선택해 복사하세요.", "error"));
+  return (
+    <aside className="scan-aside" aria-label="스캔 도움말과 최근 스캔">
+      <section className="panel" aria-labelledby="h-prep">
+        <div className="panel-head"><h2 id="h-prep">올릴 파일 만드는 법</h2></div>
+        <div className="panel-body scan-prep">
+          {PREP.map(([title, where, cmd, reads]) => (
+            <div key={title}>
+              <h3>{title} <span className="muted">{where}</span></h3>
+              <div className="scan-cmd">
+                <code>{cmd}</code>
+                <Button size="sm" variant="ghost" icon="copy" aria-label={`${title} 명령 복사`} title="복사" onClick={() => void copy(cmd)} />
+              </div>
+              <p className="field-hint">{reads}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="panel" aria-labelledby="h-recent-scans">
+        <div className="panel-head"><h2 id="h-recent-scans">최근 올린 스캔</h2></div>
+        {d.isPending ? <div className="panel-body"><div className="skeleton skeleton-block" style={{ height: 96 }} /></div>
+          : scans.length === 0 ? <p className="panel-body muted" style={{ margin: 0 }}>아직 없습니다. 스캔을 마치면 여기에서 같은 대상을 다시 스캔할 수 있습니다.</p>
+          : (
+            <ul className="scan-recent">
+              {scans.map((s) => (
+                <li key={s.id}>
+                  <Link to={`/scans/${s.id}`} className="scan-recent-main">
+                    <ProjectTarget project={s.project_key} target={s.target} />
+                    <span className="scan-recent-meta">
+                      {s.status === "done" ? <SummaryCell s={s.summary} /> : <StatusBadge status={s.status} />}
+                      <span className="muted nw" title={fmtDateTime(s.created_at)}>{fmtRelative(s.created_at)}</span>
+                    </span>
+                  </Link>
+                  {canReuse(s.project_key) && <Button size="sm" aria-label={`${s.target} 다시 스캔`} title="이 프로젝트와 대상 이름으로 채웁니다" onClick={() => onReuse(s.project_key, s.target)}>다시</Button>}
+                </li>
+              ))}
+            </ul>
+          )}
+      </section>
+    </aside>
   );
 }
 
@@ -393,7 +466,7 @@ export default function ScanNew() {
           </div>
         )}
         <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
-          {tab === "harbor" ? <HarborTab /> : <UploadTab projects={list} loaded={projects.isSuccess} />}
+          {tab === "harbor" ? <div className="scan-main"><HarborTab /></div> : <UploadTab projects={list} loaded={projects.isSuccess} />}
         </div>
       </div>
     </>

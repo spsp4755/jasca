@@ -94,6 +94,27 @@ L.run(async () => {
   await page.locator('input[type="file"]').setInputFiles(empty);
   await page.getByText("빈 파일입니다").waitFor();
   L.ok(await page.locator(".dropzone.has-file").count() === 0, "a 0-byte file is refused when chosen");
+  // beside the form: the latest uploads can be scanned again without retyping, and the commands that make the file
+  const aside = page.getByRole("complementary", { name: "스캔 도움말과 최근 스캔" });
+  await aside.getByRole("button", { name: "lodash-app 다시 스캔" }).first().click();
+  L.ok(await page.getByLabel(/^대상 이름/).inputValue() === "lodash-app" && await page.getByRole("combobox", { name: /^프로젝트/ }).inputValue() === "e2e-scan",
+    "다시 on a recent scan fills in its project and target");
+  L.ok(await aside.getByText("docker save -o app.tar 이미지:태그").count() === 1 && await aside.getByRole("button", { name: /명령 복사$/ }).count() === 2, "the side shows how to make each kind of file, with copy buttons");
+  // the sidebar folds to icons (button and [ key), keeps link names for screen readers, and remembers it
+  await page.getByRole("button", { name: "사이드바 접기" }).click();
+  L.ok((await page.locator(".sidebar").boundingBox()).width <= 64 && await page.getByRole("link", { name: "취약점", exact: true }).getAttribute("title") === "취약점", "the sidebar folds to an icon rail; links keep their names and get a tooltip");
+  await page.reload();
+  await page.getByRole("button", { name: "사이드바 펴기" }).waitFor();
+  L.ok(true, "the folded sidebar is remembered after a reload");
+  await page.locator("main h1").click();
+  await page.keyboard.press("[");
+  await page.getByRole("button", { name: "사이드바 접기" }).waitFor();
+  const edge = page.getByRole("separator", { name: "사이드바 너비 조절" });
+  await edge.focus();
+  for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowRight");
+  L.ok(await edge.getAttribute("aria-valuenow") === "276", "the sidebar edge resizes with the arrow keys (228 → 276)");
+  await edge.dblclick();
+  L.ok(await edge.getAttribute("aria-valuenow") === "228", "double-clicking the edge restores the default width");
   // no vulnerability DB (what /auth/config would say on a new server): the page says so before a file is picked
   await page.route("**/api/v1/auth/config", async (route) => {
     const r = await route.fetch();

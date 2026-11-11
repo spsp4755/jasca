@@ -8,6 +8,7 @@ export const SHORTCUTS: { keys: string; label: string }[] = [
   { keys: "g p", label: "프로젝트" },
   { keys: "g f", label: "취약점" },
   { keys: "g s", label: "스캔하기" },
+  { keys: "[", label: "사이드바 접기 · 펴기" },
   { keys: "?", label: "단축키 도움말" },
   { keys: "escape", label: "대화상자 닫기 · 검색 나가기" },
 ];

@@ -27,10 +27,12 @@ export const NAV: { title?: string; items: NavItem[] }[] = [
   { title: "시스템", items: [{ to: "/admin", label: "관리", icon: "settings", show: isSecurity }] },
 ];
 
-export default function Sidebar({ me, onHelp }: { me?: Me; onHelp: () => void }) {
+export default function Sidebar({ me, onHelp, collapsed, onToggle }: { me?: Me; onHelp: () => void; collapsed: boolean; onToggle: () => void }) {
+  const toggleLabel = collapsed ? "사이드바 펴기" : "사이드바 접기";
   return (
-    <aside className="sidebar">
-      <NavLink to="/" className="brand" aria-label="JASCA 홈">
+    <aside className="sidebar" id="sidebar">
+      <div className="side-head">
+      <NavLink to="/" className="brand" aria-label="JASCA 홈" title={collapsed ? "JASCA 홈" : undefined}>
         <span className="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" strokeLinecap="round">
             <path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.3 7.5 9.5 4.4-1.2 7.5-4.9 7.5-9.5V6z" /><path d="M8 12h8" />
@@ -41,6 +43,10 @@ export default function Sidebar({ me, onHelp }: { me?: Me; onHelp: () => void })
           <span className="brand-sub">취약점 관리</span>
         </span>
       </NavLink>
+      <button type="button" className="side-toggle" aria-label={toggleLabel} aria-expanded={!collapsed} aria-controls="sidebar" title={`${toggleLabel} ( [ )`} onClick={onToggle}>
+        <Icon name="panelLeft" size={16} />
+      </button>
+      </div>
       <nav aria-label="주 메뉴" className="nav">
         {NAV.map((sec, i) => {
           const items = sec.items.filter((it) => !it.show || it.show(me));
@@ -51,7 +57,8 @@ export default function Sidebar({ me, onHelp }: { me?: Me; onHelp: () => void })
               <ul>
                 {items.map((it) => (
                   <li key={it.to}>
-                    <NavLink to={it.to} end={it.end} className="nav-link"><Icon name={it.icon} />{it.label}</NavLink>
+                    {/* collapsed: the label stays for screen readers, the title is the tooltip */}
+                    <NavLink to={it.to} end={it.end} className="nav-link" title={collapsed ? it.label : undefined}><Icon name={it.icon} /><span className="nav-label">{it.label}</span></NavLink>
                   </li>
                 ))}
               </ul>
@@ -59,8 +66,8 @@ export default function Sidebar({ me, onHelp }: { me?: Me; onHelp: () => void })
           );
         })}
       </nav>
-      <button type="button" className="sidebar-help" onClick={onHelp}>
-        <Icon name="keyboard" />단축키<kbd>?</kbd>
+      <button type="button" className="sidebar-help" onClick={onHelp} title={collapsed ? "단축키 ( ? )" : undefined}>
+        <Icon name="keyboard" /><span className="nav-label">단축키</span><kbd>?</kbd>
       </button>
     </aside>
   );
