@@ -96,13 +96,16 @@ L.run(async () => {
   L.ok(await page.locator(".dropzone.has-file").count() === 0, "a 0-byte file is refused when chosen");
   // beside the form: the latest uploads can be scanned again without retyping, and the commands that make the file
   const aside = page.getByRole("complementary", { name: "스캔 도움말과 최근 스캔" });
-  await aside.getByRole("button", { name: "lodash-app 다시 스캔" }).first().click();
-  L.ok(await page.getByLabel(/^대상 이름/).inputValue() === "lodash-app" && await page.getByRole("combobox", { name: /^프로젝트/ }).inputValue() === "e2e-scan",
-    "다시 on a recent scan fills in its project and target");
+  const againBtn = aside.getByRole("button", { name: / 다시 스캔$/ }).first();
+  const againTarget = (await againBtn.getAttribute("aria-label")).replace(/ 다시 스캔$/, "");
+  await againBtn.click();
+  L.ok(await page.getByLabel(/^대상 이름/).inputValue() === againTarget && await page.getByRole("combobox", { name: /^프로젝트/ }).inputValue() === "e2e-scan",
+    "다시 on a recent scan fills in its project and target: " + againTarget);
   L.ok(await aside.getByText("docker save -o app.tar 이미지:태그").count() === 1 && await aside.getByRole("button", { name: /명령 복사$/ }).count() === 2, "the side shows how to make each kind of file, with copy buttons");
   // the sidebar folds to icons (button and [ key), keeps link names for screen readers, and remembers it
   await page.getByRole("button", { name: "사이드바 접기" }).click();
-  L.ok((await page.locator(".sidebar").boundingBox()).width <= 64 && await page.getByRole("link", { name: "취약점", exact: true }).getAttribute("title") === "취약점", "the sidebar folds to an icon rail; links keep their names and get a tooltip");
+  await page.waitForFunction(() => document.querySelector(".sidebar").getBoundingClientRect().width <= 64); // the fold is animated
+  L.ok(await page.getByRole("link", { name: "취약점", exact: true }).getAttribute("title") === "취약점", "the sidebar folds to an icon rail; links keep their names and get a tooltip");
   await page.reload();
   await page.getByRole("button", { name: "사이드바 펴기" }).waitFor();
   L.ok(true, "the folded sidebar is remembered after a reload");
