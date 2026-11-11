@@ -40,6 +40,7 @@ legend { padding: 0; }
 .drawer-title .mono { font-size: 16px; }
 .drawer-todo { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 14px; line-height: 1.5; }
 .drawer-todo svg { flex: none; margin-top: 3px; color: var(--accent); }
+.drawer-todo a { text-decoration: underline; text-underline-offset: 2px; }
 .drawer-todo b { margin-right: 6px; }
 .drawer-sec h3 { font-size: 12.5px; font-weight: 650; color: var(--muted); margin-bottom: 2px; }
 

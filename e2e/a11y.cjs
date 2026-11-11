@@ -47,7 +47,7 @@ L.run(async () => {
   await p.locator(".fix-body").getByRole("table").waitFor();
   await both(p, "project fixes, a group opened");
   await visit(p, "/findings", "findings");
-  await p.getByRole("table", { name: "결과 목록" }).getByRole("row").nth(1).locator(".pkg-name").click();
+  await p.getByRole("table", { name: "결과 목록" }).locator(".pkg-name").first().click(); // the first rows may be secrets, which have no package
   await p.getByRole("dialog").first().waitFor();
   await both(p, "finding drawer");
   await p.keyboard.press("Escape");

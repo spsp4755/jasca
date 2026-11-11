@@ -143,8 +143,10 @@ L.run(async () => {
   await park.page.goto(`${L.BASE}/packages?q=log4j-core`);
   const mine = park.page.getByRole("table", { name: "찾은 패키지" });
   await mine.getByRole("row", { name: /e2e-pkg.*pay-api/ }).waitFor();
-  L.ok(await mine.getByText("worker").count() === 0 && await park.page.getByRole("button", { name: "사내 Advisory로 등록" }).count() === 0 &&
-    await park.page.getByRole("link", { name: "CSV 내려받기" }).count() === 1, "a viewer sees his project's packages and the CSV, not the other project and no advisory button");
+  // by project key: the fixes suite leaves park another project whose target name also has "worker" in it
+  L.ok(await mine.getByText("e2e-pkg2").count() === 0, "a viewer sees his project's packages, not the other project's");
+  L.ok(await park.page.getByRole("button", { name: "사내 Advisory로 등록" }).count() === 0, "a viewer has no advisory button");
+  L.ok(await park.page.getByRole("link", { name: "CSV 내려받기" }).count() === 1, "a viewer can download the CSV");
   const theirs = await park.api.get("/packages?q=log4j-core&project=e2e-pkg2");
   L.ok(theirs.items.length === 0 && theirs.totals.targets_searched === 0 && theirs.totals.targets_without_inventory === 0, "asking for a project he cannot see gives nothing, not even counts");
   // lee is in neither project

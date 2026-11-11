@@ -41,7 +41,7 @@ export default function ProjectReport() {
     onError: (e) => toast(e.message, "error"),
   });
   const d = q.data;
-  const fixes = useApi<FixPlan>(q.isError ? null : `/projects/${k}/fixes`).data; // the 조치 계획 tab's order; the report prints its top 10
+  const fixes = useApi<FixPlan>(q.isSuccess ? `/projects/${k}/fixes` : null).data; // the 조치 계획 tab's order; the report prints its top 10
   const history = runs.data ?? [];
   const shown = history.find((r) => r.id === sel) ?? history.find((r) => r.state === "done");
   const t = d?.summary.by_severity;

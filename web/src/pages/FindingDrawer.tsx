@@ -93,6 +93,8 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
         {f && (
           <>
             {f.status === "open" && <p className="drawer-todo"><Icon name="arrowRight" size={15} /><span><b>할 일</b> {todo(f)}
+              {/* this sentence looks at one vulnerability; the plan names the version that clears every one of the package */}
+              {f.kind === "vuln" && f.fixed_version && <> <Link to={`/projects/${encodeURIComponent(f.project_key)}/fixes`}>이 패키지의 다른 취약점까지 한 번에 해결하는 버전은 조치 계획에서 봅니다.</Link></>}
               {late?.over && <b className="todo-late"> 조치 기한이 {late.days < 0 ? `${-late.days}일` : "오늘"} 지났습니다.</b>}</span></p>}
             {now && <Triage f={now} canEdit={canTriage(role, isSecurity(me.data))} />}
             <dl className="kv">

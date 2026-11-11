@@ -17,7 +17,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /src/web/dist ./web/dist
-ARG VERSION=1.0.1
+ARG VERSION=1.1.0
 # DB-backed tests need JASCA_TEST_DATABASE_URL and are skipped here; they run against PostgreSQL before release.
 RUN go vet ./... && go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/jasca . \
     && mkdir -p /out/tmp /out/licenses && chmod 1777 /out/tmp && cp /usr/local/go/LICENSE /out/licenses/Go-LICENSE \
@@ -33,7 +33,7 @@ COPY --from=web /src/web/node_modules/pretendard/dist/LICENSE.txt /out/licenses/
 COPY --from=aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c /usr/local/bin/trivy /out/usr/local/bin/trivy
 
 FROM scratch
-ARG VERSION=1.0.1
+ARG VERSION=1.1.0
 LABEL org.opencontainers.image.title="jasca" org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.source="https://github.com/spsp4755/jasca"
 COPY --from=build /out/ /
