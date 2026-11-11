@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -30,8 +32,17 @@ func testServer(t *testing.T) *server {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
-	if _, err := db.Exec(ctx, `drop schema public cascade; create schema public`); err != nil {
+	// JASCA_TEST_SCHEMA runs the suite inside another schema, the way a database handed out by a DBA is used
+	schema := os.Getenv("JASCA_TEST_SCHEMA")
+	q := pgx.Identifier{cmp.Or(schema, "public")}.Sanitize()
+	if _, err := db.Exec(ctx, `drop schema if exists `+q+` cascade; create schema `+q); err != nil {
 		t.Fatal(err)
+	}
+	if schema != "" {
+		if db, err = openDB(ctx, url, schema); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(db.Close)
 	}
 	cfg, err := configFrom(func(string) string { return "" }) // defaults only, whatever the shell has set
 	if err != nil {

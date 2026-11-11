@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata" // air-gapped images may lack zoneinfo
@@ -18,11 +19,11 @@ import (
 var version = "dev"
 
 type config struct {
-	Addr, DatabaseURL, DataDir, BootstrapPassword, TrivyBin string
-	Loc                                                     *time.Location // JASCA_TZ
-	SessionIdle, ScanTimeout                                time.Duration  // 0 idle means sessions never idle out
-	MaxSessions                                             int            // per user; 0 = unlimited
-	MaxReportMB, MaxScanUploadMB, MaxExtractMB              int64
+	Addr, DatabaseURL, DBSchema, DataDir, BootstrapPassword, TrivyBin string
+	Loc                                                               *time.Location // JASCA_TZ
+	SessionIdle, ScanTimeout                                          time.Duration  // 0 idle means sessions never idle out
+	MaxSessions                                                       int            // per user; 0 = unlimited
+	MaxReportMB, MaxScanUploadMB, MaxExtractMB                        int64
 }
 
 func loadConfig() (config, error) { return configFrom(os.Getenv) }
@@ -49,6 +50,7 @@ func configFrom(getenv func(string) string) (config, error) {
 	c := config{
 		Addr:              str("ADDR", "0.0.0.0:8080"),
 		DatabaseURL:       getenv("JASCA_DATABASE_URL"),
+		DBSchema:          getenv("JASCA_DB_SCHEMA"),
 		DataDir:           str("DATA_DIR", "/data"),
 		BootstrapPassword: getenv("JASCA_BOOTSTRAP_PASSWORD"),
 		TrivyBin:          str("TRIVY_BIN", "/usr/local/bin/trivy"),
@@ -64,7 +66,34 @@ func configFrom(getenv func(string) string) (config, error) {
 		errs = append(errs, fmt.Errorf("JASCA_TZ: %w", err))
 	}
 	c.Loc = loc
+	if dsn, err := dbDSN(getenv); err != nil {
+		errs = append(errs, err)
+	} else if dsn != "" && c.DatabaseURL != "" {
+		errs = append(errs, errors.New("set either JASCA_DATABASE_URL or the JASCA_DB_* values, not both"))
+	} else if dsn != "" {
+		c.DatabaseURL = dsn
+	}
 	return c, errors.Join(errs...)
+}
+
+// dbDSN builds the connection string from the separate values a DBA hands over (host, port, database, user, password),
+// in keyword/value form so that a password needs no URL encoding. Empty when none of them is set.
+func dbDSN(getenv func(string) string) (string, error) {
+	var b strings.Builder
+	for _, kv := range [][2]string{{"host", "HOST"}, {"port", "PORT"}, {"dbname", "DATABASE"}, {"user", "USER"},
+		{"password", "PASSWORD"}, {"sslmode", "SSLMODE"}, {"pool_max_conns", "MAX_CONNS"}} {
+		if v := getenv("JASCA_DB_" + kv[1]); v != "" {
+			b.WriteString(kv[0] + "='" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(v) + "' ")
+		}
+	}
+	if b.Len() > 0 {
+		for _, k := range []string{"HOST", "DATABASE", "USER"} {
+			if getenv("JASCA_DB_"+k) == "" {
+				return "", fmt.Errorf("JASCA_DB_%s must be set together with the other JASCA_DB_* values", k)
+			}
+		}
+	}
+	return b.String(), nil
 }
 
 func main() {
@@ -83,7 +112,7 @@ func main() {
 	time.Local = time.UTC // pgx returns timestamptz in time.Local; JSON times must be UTC (display zone is cfg.Loc)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	db, err := openDB(ctx, cfg.DatabaseURL)
+	db, err := openDB(ctx, cfg.DatabaseURL, cfg.DBSchema)
 	if err != nil {
 		log.Fatalf("database: %v", err)
 	}

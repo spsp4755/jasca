@@ -1,10 +1,12 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"embed"
 	"fmt"
 	"io/fs"
+	"log"
 	"path"
 	"sort"
 	"time"
@@ -16,9 +18,20 @@ import (
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
-// openDB connects with JASCA_DATABASE_URL, or the standard PG* variables when it is empty.
-func openDB(ctx context.Context, url string) (*pgxpool.Pool, error) {
-	db, err := pgxpool.New(ctx, url)
+// openDB connects with the connection string (URL or keyword/value), or the standard PG* variables when it is empty.
+// With a schema, every connection works in that schema only: a database handed out by a DBA usually comes with one
+// schema the account may create tables in, and it is not always the account's default.
+func openDB(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
+	pc, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if schema != "" {
+		// SET after connecting, not a startup parameter: connection poolers refuse startup parameters they do not know
+		set := "set search_path to " + pgx.Identifier{schema}.Sanitize()
+		pc.AfterConnect = func(ctx context.Context, c *pgx.Conn) error { _, err := c.Exec(ctx, set); return err }
+	}
+	db, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {
 		return nil, err
 	}
@@ -29,10 +42,26 @@ func openDB(ctx context.Context, url string) (*pgxpool.Pool, error) {
 		}
 		time.Sleep(2 * time.Second)
 	}
+	if err == nil && schema != "" {
+		// a schema that is missing or closed to the account drops out of the search path silently; say so here,
+		// not as "no schema has been selected to create in" from the first migration
+		var cur *string
+		var create bool
+		err = db.QueryRow(ctx, `select current_schema(),
+			coalesce((select has_schema_privilege(oid, 'CREATE') from pg_namespace where nspname = current_schema()), false)`).Scan(&cur, &create)
+		if err == nil && cur == nil {
+			err = fmt.Errorf("JASCA_DB_SCHEMA: schema %q does not exist in database %q, or user %q has no USAGE privilege on it",
+				schema, pc.ConnConfig.Database, pc.ConnConfig.User)
+		} else if err == nil && !create {
+			err = fmt.Errorf("JASCA_DB_SCHEMA: user %q has no CREATE privilege on schema %q", pc.ConnConfig.User, schema)
+		}
+	}
 	if err != nil {
 		db.Close()
 		return nil, err
 	}
+	log.Printf("database %s:%d/%s as %s, schema %s", pc.ConnConfig.Host, pc.ConnConfig.Port, pc.ConnConfig.Database,
+		pc.ConnConfig.User, cmp.Or(schema, "(default)"))
 	return db, nil
 }
 

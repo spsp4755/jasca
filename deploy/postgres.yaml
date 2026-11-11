@@ -1,5 +1,7 @@
-# 전용 PostgreSQL이 필요할 때만 적용합니다. 사내 DB를 쓰면 이 파일 대신 jasca-config의 JASCA_DATABASE_URL과
-# jasca-postgres-secrets(POSTGRES_PASSWORD)를 준비하세요. 워커에 postgres-v17.11-jasca1.tar.gz를 반입하세요.
+# 사내 DB가 없어 PostgreSQL을 클러스터 안에 따로 띄울 때만 적용합니다. 사내 DB를 쓰면 이 파일은 필요 없습니다.
+# 이 DB를 쓸 때 jasca.yaml에 적을 값: JASCA_DB_HOST "jasca-postgres", JASCA_DB_PORT "5432", JASCA_DB_DATABASE "jasca",
+# JASCA_DB_USER "jasca", JASCA_DB_SCHEMA ""(비움), JASCA_DB_SSLMODE "require", JASCA_DB_PASSWORD는 아래 POSTGRES_PASSWORD와 같은 값.
+# 워커에 postgres-v17.11-jasca1.tar.gz를 반입하세요.
 # 프로젝트·스캔 결과·사용자 데이터가 모두 이 DB에 저장됩니다. DB PVC는 절대 삭제하지 마세요.
 apiVersion: v1
 kind: Secret

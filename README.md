@@ -29,12 +29,11 @@ JASCA는 폐쇄망 Kubernetes에서 쓰는 취약점 관리 서비스입니다. 
 
 ## 빠른 시작 (Kubernetes, 폐쇄망)
 
-릴리스 파일(`jasca-vX.Y.Z.tar.gz`, `jasca.yaml`, `postgres.yaml`)을 반입하고 다음 순서로 설치합니다. 전체 절차(이미지 반입, Keycloak 설정, Trivy DB 올리기, 업그레이드, 백업)는 **[DEPLOY-OFFLINE.md](DEPLOY-OFFLINE.md)** 를 보세요.
+릴리스 파일(`jasca-vX.Y.Z.tar.gz`, `jasca.yaml`)을 반입하고 다음 순서로 설치합니다. PostgreSQL은 사내 DB를 쓰고(13 이상), 없으면 `postgres.yaml`로 따로 띄웁니다. 전체 절차(이미지 반입, Keycloak 설정, Trivy DB 올리기, 업그레이드, 백업)는 **[DEPLOY-OFFLINE.md](DEPLOY-OFFLINE.md)** 를 보세요.
 
 ```sh
 kubectl create namespace jasca
-# jasca.yaml: JASCA_BOOTSTRAP_PASSWORD, Ingress host / postgres.yaml: POSTGRES_PASSWORD 변경
-kubectl -n jasca apply -f postgres.yaml
+# jasca.yaml: JASCA_BOOTSTRAP_PASSWORD, DB 접속 정보(JASCA_DB_*), Ingress host 변경
 kubectl -n jasca apply -f jasca.yaml
 ```
 

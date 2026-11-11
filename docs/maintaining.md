@@ -87,6 +87,7 @@ cd web && npm ci && npm run build
 ```
 
 - **`JASCA_TEST_DATABASE_URL`은 그 DB의 스키마를 지우고 다시 만듭니다.** 개발용 별도 DB를 쓰세요. 설정하지 않으면 DB 테스트는 건너뜁니다(`Dockerfile`의 `go test`도 DB 없이 돌기 때문에 건너뛰므로, DB 테스트는 릴리스 전에 따로 돌려야 합니다).
+- `JASCA_TEST_SCHEMA`를 정하면 테스트 전체를 `public` 대신 그 스키마 안에서 돌립니다(사내 DB처럼 스키마를 지정해 쓰는 설치의 확인용. 그 스키마도 지우고 다시 만듭니다).
 - `JASCA_TRIVY_CACHE`는 이미 받아 둔 Trivy DB 디렉터리입니다. 설정하지 않으면 해당 테스트는 건너뜁니다.
 - 회사·내부 식별자 검사: `sh scripts/check-forbidden.sh`(금지어 목록은 저장소 밖 `~/.config/jasca/forbidden-words.txt`, 파일이 없거나 비어 있으면 실패).
 
