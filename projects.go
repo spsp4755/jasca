@@ -62,6 +62,7 @@ type projectView struct {
 	MyRole     string     `json:"my_role"`
 	Counts     sevCounts  `json:"counts"`
 	LastScanAt *time.Time `json:"last_scan_at"`
+	Overdue    int        `json:"overdue"` // open findings past their deadline
 }
 
 // projectViews returns the projects u can see, or with onlyID > 0 just that one (the caller has authorized it).
@@ -77,7 +78,8 @@ func (s *server) projectViews(ctx context.Context, u *user, onlyID int64) ([]pro
 	rows, err := s.db.Query(ctx, `select p.id, p.key, p.name, p.description, p.created_by, p.created_at,
 			(select coalesce(max(case pm.role when 'owner' then 3 when 'member' then 2 when 'viewer' then 1 end), 0)
 				from project_members pm where pm.project_id = p.id and `+memberMatchSQL("$1::bigint")+`),
-			fc.*, (select max(t.last_scan_at) from targets t where t.project_id = p.id)
+			fc.*, (select max(t.last_scan_at) from targets t where t.project_id = p.id),
+			(select count(*) from findings f where f.project_id = p.id and f.status = 'open' and f.due_at < now())
 		from (select *, id as project_id from projects) p cross join lateral `+openCountsSQL("f.project_id = p.id")+` fc
 		where `+cond+` order by p.key`, append([]any{uid}, args...)...)
 	if err != nil {
@@ -90,7 +92,7 @@ func (s *server) projectViews(ctx context.Context, u *user, onlyID int64) ([]pro
 		var rank int
 		c := &v.Counts
 		if err := rows.Scan(&v.ID, &v.Key, &v.Name, &v.Description, &v.CreatedBy, &v.CreatedAt, &rank,
-			&c.Critical, &c.High, &c.Medium, &c.Low, &c.Unknown, &c.Open, &v.LastScanAt); err != nil {
+			&c.Critical, &c.High, &c.Medium, &c.Low, &c.Unknown, &c.Open, &v.LastScanAt, &v.Overdue); err != nil {
 			return nil, err
 		}
 		if u != nil {
@@ -491,7 +493,7 @@ func (s *server) handlePolicyPut(w http.ResponseWriter, r *http.Request, c *reqC
 // --- notification subscriptions (channels and delivery are Task 12) ---
 
 var notifyEvents = []string{"new_critical", "policy_failed", "scan_failed", "exception_requested", "exception_approved",
-	"exception_rejected", "exception_expiring", "exception_expired", "new_known"}
+	"exception_rejected", "exception_expiring", "exception_expired", "new_known", "due_soon", "overdue"}
 
 type notifySub struct {
 	ChannelID int64    `json:"channel_id"`

@@ -401,6 +401,22 @@ https://jasca.example.internal/exceptions?id=17`},
 다시 스캔하지 않아도 결과 목록에 "재평가"로 표시됩니다.
 
 https://jasca.example.internal/projects/web?origin=recheck`},
+		{"due_soon", `"count":7,"critical":1,"high":2,"low":4,"top":[{"severity":"CRITICAL","rule_id":"CVE-2022-37434","pkg":"zlib","target":"alpine-app","due_at":"2026-12-10T14:59:59Z","assignee":"이개발"},{"severity":"HIGH","rule_id":"DS002","pkg":"","target":"Dockerfile","due_at":"2026-12-11T03:00:00Z","assignee":""}]`,
+			`[웹 서비스] 조치 기한 임박 7건
+3일 안에 조치 기한이 끝나는 열린 결과입니다.
+CRITICAL 1건, HIGH 2건, LOW 4건
+- CRITICAL CVE-2022-37434 (zlib) · 대상 alpine-app · 기한 2026-12-10 23:59 · 담당 이개발
+- HIGH DS002 · 대상 Dockerfile · 기한 2026-12-11 12:00 · 담당 미지정
+외 5건
+
+https://jasca.example.internal/projects/web?due=soon&sort=due`},
+		{"overdue", `"count":1,"medium":1,"top":[{"severity":"MEDIUM","rule_id":"CVE-2024-1","pkg":"curl","target":"api","due_at":"2026-11-01T00:00:00Z","assignee":"박운영"}]`,
+			`[웹 서비스] 조치 기한 지남 1건
+조치 기한이 지났는데 아직 열려 있는 결과입니다.
+MEDIUM 1건
+- MEDIUM CVE-2024-1 (curl) · 대상 api · 기한 2026-11-01 09:00 · 담당 박운영
+
+https://jasca.example.internal/projects/web?due=overdue&sort=due`},
 	} {
 		m := s.renderMsg(ctx, c.event, []byte(`{"project_key":"web","project_name":"웹 서비스","data":{`+c.data+`}}`))
 		if got := m.text(); got != c.want {
@@ -410,7 +426,7 @@ https://jasca.example.internal/projects/web?origin=recheck`},
 			t.Errorf("%s subject: %s", c.event, m.subject())
 		}
 	}
-	if len(eventLabels) != 10 {
+	if len(eventLabels) != 12 {
 		t.Errorf("an event was added (%d): give it a message here", len(eventLabels))
 	}
 	m := s.renderMsg(ctx, "test", []byte(`{"data":{"channel":"보안팀 채널"}}`))

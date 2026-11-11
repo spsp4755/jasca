@@ -131,13 +131,17 @@ type findingView struct {
 	ReopenedCount int             `json:"reopened_count"`
 	ExceptionID   *int64          `json:"exception_id"`
 	Details       json.RawMessage `json:"details"`
-	// only GET /findings/{id} fills it: not a column of findingCols
+	Assignee      *assigneeView   `json:"assignee"`
+	DueAt         *time.Time      `json:"due_at"` // only an open finding has one; overdue = it is in the past
+	DueManual     bool            `json:"due_manual"`
+	// only GET /findings/{id} fills these: not columns of findingCols
 	PendingExceptionID *int64 `json:"pending_exception_id,omitempty" db:"-"`
+	SLADays            *int   `json:"sla_days,omitempty" db:"-"` // the days the deadline setting gives this severity
 }
 
 const findingCols = `select f.id, f.project_id, p.key, f.target_id, t.kind, t.name, f.kind, f.tool, f.rule_id, f.title, f.severity,
 		f.pkg_name, f.pkg_version, f.fixed_version, f.pkg_path, f.location, f.status, f.origin, f.first_seen_at,
-		f.last_seen_at, f.fixed_at, f.reopened_count, f.exception_id, f.details
+		f.last_seen_at, f.fixed_at, f.reopened_count, f.exception_id, f.details, ` + assigneeSQL + `, f.due_at, f.due_manual
 	from findings f join targets t on t.id = f.target_id join projects p on p.id = f.project_id `
 
 // where collects AND-ed SQL conditions; each ? in a condition becomes the $n of its value.
@@ -165,7 +169,8 @@ func (s *server) visibleWhere(u *user) *where {
 }
 
 // findingFilter adds the list query parameters to w; it returns a message for the user when one is invalid.
-func findingFilter(q url.Values, w *where) string {
+// u is the caller, for assignee=me (nil for an API token).
+func findingFilter(q url.Values, w *where, u *user) string {
 	if v := q.Get("project"); v != "" {
 		w.add("f.project_id = (select id from projects where key = ?)", v)
 	}
@@ -196,27 +201,69 @@ func findingFilter(q url.Values, w *where) string {
 		}
 		w.add("(f.rule_id ilike ? or f.pkg_name ilike ? or f.title ilike ?)", "%"+likeEscaper.Replace(v)+"%")
 	}
+	switch v := q.Get("assignee"); v {
+	case "":
+	case "none":
+		w.conds = append(w.conds, "f.assignee_id is null")
+	default:
+		n, err := strconv.ParseInt(v, 10, 64)
+		if v == "me" && u != nil {
+			n, err = u.ID, nil
+		}
+		if err != nil {
+			return "assignee는 me, none 또는 사용자 ID입니다."
+		}
+		w.add("f.assignee_id = ?", n)
+	}
+	switch q.Get("due") {
+	case "":
+	case "overdue":
+		w.conds = append(w.conds, "f.status = 'open' and f.due_at < now()")
+	case "soon": // within 7 days and not past
+		w.conds = append(w.conds, "f.status = 'open' and f.due_at >= now() and f.due_at < now() + interval '7 days'")
+	default:
+		return "due는 overdue 또는 soon입니다."
+	}
 	return ""
 }
 
 func (s *server) handleFindingList(w http.ResponseWriter, r *http.Request, c *reqCtx) {
-	s.writeFindings(w, r, s.visibleWhere(c.User))
+	s.writeFindings(w, r, c.User, s.visibleWhere(c.User))
 }
 
-// Lists put what to fix first on top: CRITICAL down to UNKNOWN, the newest first inside a severity.
+// Lists put what to fix first on top: CRITICAL down to UNKNOWN, the newest first inside a severity. With sort=due
+// it is the earliest deadline first, and the findings without a deadline last.
 var severityRank = map[string]int{"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4, "UNKNOWN": 5}
 
 const (
-	sevRankSQL   = `coalesce(array_position(array['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'], f.severity), 5)`
-	findingOrder = ` order by ` + sevRankSQL + `, f.id desc`
+	sevRankSQL      = `coalesce(array_position(array['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'], f.severity), 5)`
+	findingOrder    = ` order by ` + sevRankSQL + `, f.id desc`
+	findingOrderDue = ` order by f.due_at nulls last, f.id desc`
 )
 
-// writeFindings answers {items, next_cursor, total} for the findings matching base plus the query parameters,
-// most severe first, with keyset pagination (cursor = "<severity rank>.<id>" of the last row seen).
-func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, f *where) {
+// findingSort reads the sort parameter: the ORDER BY to use and whether it is the deadline order.
+func findingSort(q url.Values) (order string, byDue bool, msg string) {
+	switch q.Get("sort") {
+	case "", "severity":
+		return findingOrder, false, ""
+	case "due":
+		return findingOrderDue, true, ""
+	}
+	return "", false, "sort는 severity 또는 due입니다."
+}
+
+// writeFindings answers {items, next_cursor, total} for the findings matching base plus the query parameters (u is
+// the caller, see findingFilter), with keyset pagination: the cursor is "<severity rank>.<id>" of the last row seen,
+// or with sort=due "<its due_at, - for none>.<id>".
+func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, u *user, f *where) {
 	ctx := r.Context()
 	q := r.URL.Query()
-	if msg := findingFilter(q, f); msg != "" {
+	if msg := findingFilter(q, f, u); msg != "" {
+		badRequest(w, msg)
+		return
+	}
+	order, byDue, msg := findingSort(q)
+	if msg != "" {
 		badRequest(w, msg)
 		return
 	}
@@ -231,18 +278,33 @@ func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, f *where)
 		return
 	}
 	if v := q.Get("cursor"); v != "" {
-		rs, is, _ := strings.Cut(v, ".")
-		rank, err1 := strconv.Atoi(rs)
-		id, err2 := strconv.ParseInt(is, 10, 64)
-		if err1 != nil || err2 != nil {
+		i := strings.LastIndexByte(v, '.') // a due_at has dots of its own
+		head, tail := v[:max(i, 0)], v[i+1:]
+		id, err := strconv.ParseInt(tail, 10, 64)
+		n := len(f.args) + 1
+		switch {
+		case err != nil || i < 0:
+			err = cmp.Or(err, strconv.ErrSyntax)
+		case byDue && head == "-": // the deadlines are through: on to the rest of the findings without one
+			f.args = append(f.args, id)
+			f.conds = append(f.conds, fmt.Sprintf("f.due_at is null and f.id < $%d", n))
+		case byDue:
+			var due time.Time
+			due, err = time.Parse(time.RFC3339Nano, head)
+			f.args = append(f.args, due, id)
+			f.conds = append(f.conds, fmt.Sprintf("(f.due_at > $%d or f.due_at is null or f.due_at = $%d and f.id < $%d)", n, n, n+1))
+		default:
+			var rank int
+			rank, err = strconv.Atoi(head)
+			f.args = append(f.args, rank, id)
+			f.conds = append(f.conds, fmt.Sprintf("(%s > $%d or (%s = $%d and f.id < $%d))", sevRankSQL, n, sevRankSQL, n, n+1))
+		}
+		if err != nil {
 			badRequest(w, "cursor가 잘못되었습니다.")
 			return
 		}
-		f.args = append(f.args, rank, id)
-		n := len(f.args)
-		f.conds = append(f.conds, fmt.Sprintf("(%s > $%d or (%s = $%d and f.id < $%d))", sevRankSQL, n-1, sevRankSQL, n-1, n))
 	}
-	rows, _ := s.db.Query(ctx, findingCols+`where `+f.sql()+findingOrder+` limit `+strconv.Itoa(limit), f.args...)
+	rows, _ := s.db.Query(ctx, findingCols+`where `+f.sql()+order+` limit `+strconv.Itoa(limit), f.args...)
 	items, err := pgx.CollectRows(rows, pgx.RowToStructByPos[findingView])
 	if err != nil {
 		writeInternal(w, "finding list", err)
@@ -251,7 +313,14 @@ func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, f *where)
 	var next *string
 	if len(items) == limit {
 		last := items[len(items)-1]
-		next = new(fmt.Sprintf("%d.%d", cmp.Or(severityRank[last.Severity], 5), last.ID))
+		head := strconv.Itoa(cmp.Or(severityRank[last.Severity], 5))
+		if byDue {
+			head = "-"
+			if last.DueAt != nil {
+				head = last.DueAt.UTC().Format(time.RFC3339Nano)
+			}
+		}
+		next = new(head + "." + itoa(last.ID))
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "next_cursor": next, "total": total})
 }
@@ -269,13 +338,15 @@ func pageLimit(v string) (int, string) {
 }
 
 // handleFindingGet also names the exception request that waits for a decision and would cover the finding
-// (pending_exception_id), so the screen can show that instead of offering a second request.
+// (pending_exception_id), so the screen can show that instead of offering a second request, and the days the
+// deadline setting gives the finding's severity (sla_days), so the screen can say where a deadline comes from.
 func (s *server) handleFindingGet(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	rows, _ := s.db.Query(r.Context(), findingCols+`where f.id = $1`, pathID(r))
 	f, err := pgx.CollectOneRow(rows, pgx.RowToStructByPos[findingView])
 	if err == nil {
-		err = s.db.QueryRow(r.Context(), `select min(e.id) from exceptions e join findings f on f.id = $1
-			where e.status = 'pending' and e.expires_at > now() and `+exceptionMatchSQL, f.ID).Scan(&f.PendingExceptionID)
+		err = s.db.QueryRow(r.Context(), `select (select min(e.id) from exceptions e join findings f on f.id = $1
+			where e.status = 'pending' and e.expires_at > now() and `+exceptionMatchSQL+`), (`+slaDaysSQL+`->>$2)::int`,
+			f.ID, f.Severity).Scan(&f.PendingExceptionID, &f.SLADays)
 	}
 	if err != nil {
 		writeInternal(w, "finding get", err)
@@ -294,11 +365,12 @@ func csvCell(v string) string {
 
 func (s *server) handleFindingCSV(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	f := s.visibleWhere(c.User)
-	if msg := findingFilter(r.URL.Query(), f); msg != "" {
+	order, _, msg := findingSort(r.URL.Query())
+	if msg = cmp.Or(findingFilter(r.URL.Query(), f, c.User), msg); msg != "" {
 		badRequest(w, msg)
 		return
 	}
-	rows, err := s.db.Query(r.Context(), findingCols+`where `+f.sql()+findingOrder, f.args...)
+	rows, err := s.db.Query(r.Context(), findingCols+`where `+f.sql()+order, f.args...)
 	if err != nil {
 		writeInternal(w, "finding csv", err)
 		return
@@ -319,7 +391,7 @@ func (s *server) handleFindingCSV(w http.ResponseWriter, r *http.Request, c *req
 		bw.WriteString("\r\n")
 	}
 	line("프로젝트", "대상 종류", "대상", "종류", "도구", "규칙/취약점 ID", "제목", "심각도", "상태", "패키지", "설치 버전",
-		"조치 버전", "패키지 경로", "위치", "출처", "처음 발견", "마지막 발견", "해결 시각")
+		"조치 버전", "패키지 경로", "위치", "출처", "처음 발견", "마지막 발견", "해결 시각", "담당자", "조치 기한")
 	at := func(t *time.Time) string {
 		if t == nil {
 			return ""
@@ -333,7 +405,8 @@ func (s *server) handleFindingCSV(w http.ResponseWriter, r *http.Request, c *req
 			return
 		}
 		line(v.ProjectKey, v.TargetKind, v.TargetName, v.Kind, v.Tool, v.RuleID, v.Title, v.Severity, v.Status, v.PkgName,
-			v.PkgVersion, v.FixedVersion, v.PkgPath, v.Location, v.Origin, at(&v.FirstSeenAt), at(&v.LastSeenAt), at(v.FixedAt))
+			v.PkgVersion, v.FixedVersion, v.PkgPath, v.Location, v.Origin, at(&v.FirstSeenAt), at(&v.LastSeenAt), at(v.FixedAt),
+			v.Assignee.display(), at(v.DueAt))
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("finding csv: %v", err) // the header is out; the truncated file is all we can give

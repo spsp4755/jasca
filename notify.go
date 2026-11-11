@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -48,6 +49,7 @@ var eventLabels = map[string]string{
 	"new_critical": "새 CRITICAL/HIGH 취약점", "policy_failed": "정책 실패", "scan_failed": "스캔 실패",
 	"exception_requested": "예외 요청", "exception_approved": "예외 승인", "exception_rejected": "예외 반려",
 	"exception_expiring": "예외 만료 임박", "exception_expired": "예외 만료", "new_known": "새로 알려진 취약점", "test": "시험 메시지",
+	"due_soon": "조치 기한 임박", "overdue": "조치 기한 지남",
 }
 
 // --- queueing ---
@@ -280,6 +282,40 @@ func (s *server) renderMsg(ctx context.Context, event string, raw []byte) notify
 			`다시 스캔하지 않아도 결과 목록에 "재평가"로 표시됩니다.`}
 		if path != "" {
 			path += "?origin=recheck"
+		}
+	case "due_soon", "overdue": // notifyDue
+		what += fmt.Sprintf(" %d건", num("count"))
+		if event == "overdue" {
+			m.Lines = []string{"조치 기한이 지났는데 아직 열려 있는 결과입니다."}
+		} else {
+			m.Lines = []string{"3일 안에 조치 기한이 끝나는 열린 결과입니다."}
+		}
+		var counts []string
+		for _, sev := range policySeverities {
+			if n := num(strings.ToLower(sev)); n > 0 {
+				counts = append(counts, fmt.Sprintf("%s %d건", sev, n))
+			}
+		}
+		m.Lines = append(m.Lines, strings.Join(counts, ", "))
+		top, _ := d["top"].([]any)
+		for _, t := range top {
+			t, _ := t.(map[string]any)
+			get := func(k string) string { v, _ := t[k].(string); return clean(v) }
+			l := "- " + strings.TrimSpace(get("severity")+" "+get("rule_id"))
+			if pkg := get("pkg"); pkg != "" {
+				l += " (" + pkg + ")"
+			}
+			l += " · 대상 " + get("target")
+			if at, err := time.Parse(time.RFC3339, get("due_at")); err == nil {
+				l += " · 기한 " + at.In(s.cfg.Loc).Format("2006-01-02 15:04")
+			}
+			m.Lines = append(m.Lines, l+" · 담당 "+cmp.Or(get("assignee"), "미지정"))
+		}
+		if rest := num("count") - len(top); rest > 0 {
+			m.Lines = append(m.Lines, fmt.Sprintf("외 %d건", rest))
+		}
+		if path != "" { // the project's results, filtered to these and sorted by deadline
+			path += "?due=" + map[string]string{"due_soon": "soon", "overdue": "overdue"}[event] + "&sort=due"
 		}
 	case "test":
 		what = "알림 채널 시험 메시지"

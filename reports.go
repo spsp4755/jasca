@@ -56,7 +56,13 @@ func (s *server) handleProjectReport(w http.ResponseWriter, r *http.Request, c *
 		fail(err)
 		return
 	}
-	rep.Summary = map[string]any{"by_severity": sev,
+	var over sevCounts // the open findings past their deadline
+	if err := s.db.QueryRow(ctx, `select * from `+openCountsSQL("f.due_at < now() and f.project_id = $1")+` x`, pid).
+		Scan(&over.Critical, &over.High, &over.Medium, &over.Low, &over.Unknown, &over.Open); err != nil {
+		fail(err)
+		return
+	}
+	rep.Summary = map[string]any{"by_severity": sev, "overdue": over,
 		"by_kind": map[string]int{"vuln": byKind.Vuln, "misconfig": byKind.Misconfig, "secret": byKind.Secret, "sast": byKind.SAST}}
 	var err error
 	if rep.Targets, err = s.projectTargets(ctx, pid); err != nil {

@@ -25,18 +25,19 @@ type trendPoint struct {
 
 // dashFinding and the structs below list their fields in the order of the SELECTs (RowToStructByPos).
 type dashFinding struct {
-	ID           int64     `json:"id"`
-	ProjectKey   string    `json:"project_key"`
-	Target       string    `json:"target"`
-	RuleID       string    `json:"rule_id"`
-	Title        string    `json:"title"`
-	Severity     string    `json:"severity"`
-	PkgName      string    `json:"pkg_name"`
-	PkgVersion   string    `json:"pkg_version"`
-	FixedVersion string    `json:"fixed_version"`
-	Location     string    `json:"location"` // where a secret or misconfiguration sits; those have no package
-	Origin       string    `json:"origin"`
-	FirstSeenAt  time.Time `json:"first_seen_at"`
+	ID           int64      `json:"id"`
+	ProjectKey   string     `json:"project_key"`
+	Target       string     `json:"target"`
+	RuleID       string     `json:"rule_id"`
+	Title        string     `json:"title"`
+	Severity     string     `json:"severity"`
+	PkgName      string     `json:"pkg_name"`
+	PkgVersion   string     `json:"pkg_version"`
+	FixedVersion string     `json:"fixed_version"`
+	Location     string     `json:"location"` // where a secret or misconfiguration sits; those have no package
+	Origin       string     `json:"origin"`
+	FirstSeenAt  time.Time  `json:"first_seen_at"`
+	DueAt        *time.Time `json:"due_at"`
 }
 
 type dashScan struct {
@@ -51,7 +52,7 @@ type dashScan struct {
 }
 
 const dashFindingSQL = `select f.id, p.key, t.name, f.rule_id, f.title, f.severity, f.pkg_name, f.pkg_version, f.fixed_version,
-	f.location, f.origin, f.first_seen_at from findings f join projects p on p.id = f.project_id join targets t on t.id = f.target_id where `
+	f.location, f.origin, f.first_seen_at, f.due_at from findings f join projects p on p.id = f.project_id join targets t on t.id = f.target_id where `
 
 func collect[T any](ctx context.Context, s *server, q string, args ...any) ([]T, error) {
 	rows, err := s.db.Query(ctx, q, args...)
@@ -78,6 +79,11 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request, c *reqC
 		Expiring    []exception   `json:"expiring_exceptions"`
 		RecentScans []dashScan    `json:"recent_scans"`
 		NewlyKnown  []dashFinding `json:"newly_known"`
+		Overdue     sevCounts     `json:"overdue"` // open findings past their deadline; open = all of them
+		Mine        struct {
+			Open    int `json:"open"`
+			Overdue int `json:"overdue"`
+		} `json:"mine"` // open findings assigned to the caller
 	}{}
 	cond, args := vis("f", 1)
 	k := &d.Totals
@@ -85,6 +91,19 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request, c *reqC
 			count(*) filter (where severity = 'MEDIUM'), count(*) filter (where severity = 'LOW'),
 			count(*) filter (where severity = 'UNKNOWN'), count(*) from findings f where f.status = 'open' and `+cond, args...).
 		Scan(&k.Critical, &k.High, &k.Medium, &k.Low, &k.Unknown, &k.Open); err != nil {
+		fail(err)
+		return
+	}
+	o := &d.Overdue
+	if err := s.db.QueryRow(ctx, `select * from `+openCountsSQL("f.due_at < now() and "+cond)+` x`, args...).
+		Scan(&o.Critical, &o.High, &o.Medium, &o.Low, &o.Unknown, &o.Open); err != nil {
+		fail(err)
+		return
+	}
+	// the caller's own, in the projects they can still see: the same findings as GET /findings?assignee=me
+	cond, args = vis("f", 2)
+	if err := s.db.QueryRow(ctx, `select count(*), count(*) filter (where f.due_at < now()) from findings f
+		where f.status = 'open' and f.assignee_id = $1 and `+cond, append([]any{c.User.ID}, args...)...).Scan(&d.Mine.Open, &d.Mine.Overdue); err != nil {
 		fail(err)
 		return
 	}

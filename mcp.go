@@ -523,11 +523,15 @@ type mcpFinding struct {
 	Target           string    `json:"target"`
 	Status           string    `json:"status"`
 	FirstSeen        time.Time `json:"first_seen"`
+	// who fixes it and by when; only an open finding has a deadline
+	Assignee string     `json:"assignee,omitempty"`
+	DueAt    *time.Time `json:"due_at,omitempty"`
+	Overdue  bool       `json:"overdue,omitempty"`
 }
 
 func mcpFindingRow(f findingView) mcpFinding {
 	return mcpFinding{f.ID, f.Severity, f.RuleID, clip(f.Title, 200), f.PkgName, f.PkgVersion, f.FixedVersion, f.TargetName,
-		f.Status, f.FirstSeenAt.Truncate(time.Second)}
+		f.Status, f.FirstSeenAt.Truncate(time.Second), f.Assignee.display(), sec(f.DueAt), f.DueAt != nil && f.DueAt.Before(time.Now())}
 }
 
 func mcpListFindings(m *mcpCall, raw json.RawMessage) (any, error) {
@@ -538,6 +542,7 @@ func mcpListFindings(m *mcpCall, raw json.RawMessage) (any, error) {
 		Target   string   `json:"target"`
 		Query    string   `json:"query"`
 		Fixable  *bool    `json:"fixable"`
+		Overdue  bool     `json:"overdue"`
 		Limit    *int     `json:"limit"`
 		Cursor   string   `json:"cursor"`
 	}
@@ -575,6 +580,9 @@ func mcpListFindings(m *mcpCall, raw json.RawMessage) (any, error) {
 	if a.Fixable != nil {
 		q.Set("fixable", strconv.FormatBool(*a.Fixable))
 	}
+	if a.Overdue {
+		q.Set("due", "overdue")
+	}
 	if a.Cursor != "" {
 		cur, err := cursorIn(a.Cursor)
 		if err != nil {
@@ -589,7 +597,7 @@ func mcpListFindings(m *mcpCall, raw json.RawMessage) (any, error) {
 	}
 	base := &where{}
 	base.add("f.project_id = ?", m.c.Project.ID)
-	list := func(w http.ResponseWriter, r *http.Request, c *reqCtx) { m.s.writeFindings(w, r, base) }
+	list := func(w http.ResponseWriter, r *http.Request, c *reqCtx) { m.s.writeFindings(w, r, nil, base) }
 	if err := m.rest(list, "", q, &page); err != nil {
 		return nil, err
 	}
@@ -876,8 +884,9 @@ var mcpTools = func() []mcpTool {
 			`{"type": "object", "additionalProperties": false, "properties": {}}`, mcpProjectSummary),
 		tool("list_findings",
 			"List the project's findings (vulnerabilities, misconfigurations, leaked secrets, SAST results), most severe "+
-				"first. Returns open findings unless status says otherwise. Narrow down with the filters, then call "+
-				"get_finding for one finding's details. total counts all matches; pass next_cursor as cursor for the next page.",
+				"first. Returns open findings unless status says otherwise. Each row names its assignee and remediation "+
+				"deadline (due_at) when it has them. Narrow down with the filters, then call get_finding for one finding's "+
+				"details. total counts all matches; pass next_cursor as cursor for the next page.",
 			`{"type": "object", "additionalProperties": false, "properties": {
 				"severity": {"type": "array", "items": {"type": "string", "enum": `+enumJSON(mcpSeverities)+`}, "description": "Only findings of these severities."},
 				"status": {"type": "string", "enum": `+enumJSON(mcpStatuses)+`, "default": "open", "description": "Finding status. accepted and false_positive are findings under an approved exception."},
@@ -885,12 +894,13 @@ var mcpTools = func() []mcpTool {
 				"target": {"type": "string", "description": "Only findings of this scan target: its exact name from list_targets."},
 				"query": {"type": "string", "maxLength": 200, "description": "Case-insensitive text to find in the rule id (such as a CVE id), package name or title."},
 				"fixable": {"type": "boolean", "description": "true: only findings with a fixed version available. false: only findings without one."},
+				"overdue": {"type": "boolean", "description": "true: only open findings whose remediation deadline (due_at) has passed."},
 				"limit": `+limitSchema(50, 200)+`,
 				"cursor": {"type": "string", "description": "next_cursor from the previous call with the same filters."}}}`,
 			mcpListFindings),
 		tool("get_finding",
 			"Everything about one finding: severity, rule id, package with installed and fixed version, target, file "+
-				"location, status, the exception covering it (if any), scanner details, and for a vulnerability the "+
+				"location, status, assignee and remediation deadline, the exception covering it (if any), scanner details, and for a vulnerability the "+
 				"vulnerability_id to pass to get_vulnerability.",
 			fmt.Sprintf(idSchema, "Finding id from list_findings or get_vulnerability."), mcpGetFinding),
 		tool("get_vulnerability",

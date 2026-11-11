@@ -253,7 +253,7 @@ func (s *server) handleScanFindings(w http.ResponseWriter, r *http.Request, c *r
 		badRequest(w, "change는 new 또는 fixed입니다.")
 		return
 	}
-	s.writeFindings(w, r, f)
+	s.writeFindings(w, r, c.User, f)
 }
 
 func (s *server) handleScanRaw(w http.ResponseWriter, r *http.Request, c *reqCtx) {
