@@ -121,7 +121,7 @@ export default function AdvisoryEdit() {
       {!sec && <div className="alert alert-info">읽기 전용입니다. 수정은 보안 담당자만 할 수 있습니다.</div>}
       {(q.data?.warnings ?? []).map((w, i) => <div key={i} className="alert alert-warn" role="alert">{w}</div>)}
       {(isNew || q.data) && (
-        <form className="stack" style={{ maxWidth: 980 }} onSubmit={(e) => { e.preventDefault(); if (valid) prev.mutate(); }}>
+        <div><form className="stack" style={{ maxWidth: 980 }} onSubmit={(e) => { e.preventDefault(); if (valid) prev.mutate(); }}>
           <Panel title="기본 정보">
             <div className="stack">
               <div className="admin-form" style={{ maxWidth: "none" }}>
@@ -143,7 +143,7 @@ export default function AdvisoryEdit() {
             <Button type="submit" loading={prev.isPending} disabled={!valid}>영향 미리보기</Button>
             <span className="muted">저장 전에 어떤 프로젝트가 영향을 받는지 확인한 뒤 저장합니다.</span>
           </div>}
-        </form>
+        </form></div>
       )}
       <Dialog open={preview !== null} onClose={() => setPreview(null)} size="lg" title="영향 미리보기"
         description={!preview ? undefined : f.active ? `${preview.length.toLocaleString("ko-KR")}건의 기존 스캔 결과가 이 Advisory에 걸립니다.`

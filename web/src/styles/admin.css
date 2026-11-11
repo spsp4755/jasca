@@ -5,6 +5,8 @@
 .admin-nav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .admin-nav .nav-title { margin: 12px 10px 4px; }
 .admin-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* a page of forms only keeps a readable column instead of cards that are half blank on a wide screen (older browsers: full width) */
+.admin-main:not(:has(table, pre, .db-grid)) { max-width: 880px; }
 .admin-form { display: flex; flex-direction: column; gap: 14px; max-width: 560px; }
 .admin-form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .admin-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
