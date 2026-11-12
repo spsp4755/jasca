@@ -1,4 +1,4 @@
-# JASCA v1.1.2 — 폐쇄망 배포 / 데이터 보존
+# JASCA v1.2.0 — 폐쇄망 배포 / 데이터 보존
 
 ## 가장 중요한 점
 
@@ -17,7 +17,7 @@
 
 | 파일 | 용도 |
 |---|---|
-| jasca-v1.1.2.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.1.2`만 포함(Trivy 0.76.1 실행 파일 포함) |
+| jasca-v1.2.0.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.2.0`만 포함(Trivy 0.76.1 실행 파일 포함) |
 | postgres-v17.11-jasca1.tar.gz | 별도 선택 이미지 `postgres:v17.11-jasca1` (공식 17.11-bookworm 기반, 쓰지 않는 gosu·snakeoil 키 제거, root로 실행 불가) |
 | jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress. 사내 PostgreSQL 접속 정보까지 이 파일 하나에 적습니다 |
 | postgres.yaml | 사내 DB가 없을 때만 쓰는 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
@@ -34,16 +34,16 @@
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS # 이번에 반입한 파일 검증
-podman load -i jasca-v1.1.2.tar.gz
+podman load -i jasca-v1.2.0.tar.gz
 podman load -i postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
-podman image inspect jasca:v1.1.2 --format '{{.Os}}/{{.Architecture}}'
+podman image inspect jasca:v1.2.0 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 **Podman load만으로 Kubernetes containerd에 이미지가 등록되지는 않습니다.** 실행 가능한 모든 워커의 실제 CRI에 반입하세요.
 
 ```sh
 # 일반 containerd
-sudo ctr -n k8s.io images import jasca-v1.1.2.tar.gz
+sudo ctr -n k8s.io images import jasca-v1.2.0.tar.gz
 sudo ctr -n k8s.io images import postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
 # k3s는 sudo k3s ctr images import, RKE2는 해당 런타임의 socket/ctr 사용.
 ```
@@ -264,7 +264,7 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 - 크기는 `대상 수 × max(최근 N개, 보존 일수 × 하루 업로드 수) × 스캔 1건`으로 잡으세요. 스캔 1건은 원본 0.1~1MB와 패키지 1,000개당 약 0.3MB입니다. 예: 대상 300개, CI가 하루 5번 올리고 보존 14일이면 300 × 70 × 약 0.8MB ≈ 17GB입니다. 기본값(90일)은 업로드가 잦은 곳에서 20Gi를 넘을 수 있으니 일수를 줄이거나 PVC를 늘리세요.
 - 검사 대상 수백 개 규모를 기준으로 설계했고 2,000개까지는 무리 없이 동작하도록 만들었습니다.
 - Ingress는 업로드 상한보다 조금 큰 `proxy-body-size`, 요청 버퍼링 끄기, 600초 읽기·쓰기 제한 시간이 필요합니다(`jasca.yaml`에 있음). NGINX가 아닌 Ingress는 같은 의미의 설정을 따로 하세요.
-- AI 에이전트용 MCP 주소(`/mcp`)도 같은 Service와 Ingress로 나갑니다. 요청마다 JSON으로 한 번 응답하므로(SSE·WebSocket 없음) 따로 설정할 것이 없습니다. `Authorization` 헤더만 그대로 전달되면 됩니다.
+- AI 에이전트용 MCP 주소(`/mcp`)도 같은 Service와 Ingress로 나갑니다. 요청마다 JSON으로 한 번 응답하므로(SSE·WebSocket 없음) 따로 설정할 것이 없습니다. `Authorization` 헤더만 그대로 전달되면 됩니다. 개인 MCP 키로 작은 보고서를 올리는 요청은 본문이 8MB까지이므로 기본 `proxy-body-size`(2100m) 안에 들어갑니다.
 
 ## 문제 해결
 
@@ -281,7 +281,8 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 | 서버 스캔이 "실패"로 끝남 | 스캔 상세의 원인 문구를 먼저 봅니다. "Trivy 실행에 실패했습니다"는 원인이 서버 로그(`server scan <번호>:` 줄)에 있습니다. 제한 시간(**관리 → Trivy DB → 스캔 옵션**에서 정하고, 비워 두면 `JASCA_SCAN_TIMEOUT_MIN`, 기본 15분), 메모리 한도(OOMKilled), 압축 파일 형식(zip, tar, tar.gz만)도 봅니다. |
 | 업로드가 413 | 보고서는 `JASCA_MAX_REPORT_MB`(기본 50), 스캔 파일은 `JASCA_MAX_SCAN_UPLOAD_MB`(기본 2048)가 상한입니다. Ingress `proxy-body-size`도 함께 봅니다. |
 | CI 업로드가 401 | 토큰이 만료·폐기됐거나, 다른 프로젝트의 토큰이거나, 권한 범위에 `upload`가 없습니다. 토큰은 해당 프로젝트 키의 경로에서만 쓸 수 있습니다. |
-| MCP 클라이언트가 `/mcp`에서 401·403 | 401은 토큰이 틀렸거나 만료·폐기된 것이고(클라이언트에 따라 OAuth 등록 오류로 보입니다), 403은 권한 범위에 `read`가 없거나 프록시가 다른 사이트의 `Origin` 헤더를 붙이는 경우입니다. |
+| MCP 클라이언트가 `/mcp`에서 401·403 | 401은 MCP 키나 토큰이 틀렸거나 만료·폐기된 것, 또는 키 주인의 계정이 비활성화된 것입니다(클라이언트에 따라 OAuth 등록 오류로 보입니다). 403은 프로젝트 토큰의 권한 범위에 `read`가 없거나 프록시가 다른 사이트의 `Origin` 헤더를 붙이는 경우입니다. 도구 호출이 "Not allowed"로 답하면 키 주인의 역할이나 프로젝트 권한이 모자라거나 읽기 전용 키입니다. |
+| MCP 키로 API를 부르면 403 "MCP 키는 MCP 주소(/mcp)와 스캔 업로드에만 쓸 수 있습니다" | 개인 MCP 키(`jsu_…`)는 `/mcp`와 업로드(`POST …/scans`, `POST …/scan-jobs`)에서만 받습니다. CI에는 프로젝트 API 토큰(`jsc_…`)을 쓰세요. |
 | 모든 쓰기 요청이 403(`csrf`) | 프록시가 `Origin`/`Host`를 바꾸고 있습니다. 브라우저가 접속한 호스트가 그대로 전달되어야 합니다. |
 | Harbor 웹훅이 401 | Harbor 웹훅의 Auth Header가 연결 생성 때 보인 Secret과 같은지 봅니다. Secret은 다시 볼 수 없으니, 잊었으면 연결을 새로 만드세요. |
 | 알림이 오지 않음 | **관리 → 알림 채널**의 시험 발송, SMTP 설정, 프로젝트 **설정 → 알림**에서 채널과 이벤트를 골랐는지 확인합니다. 전송은 실패하면 1분, 5분, 30분 뒤에 다시 시도하고 4번째 실패에서 멈춥니다. |

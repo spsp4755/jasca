@@ -1,43 +1,41 @@
-# JASCA v1.1.2
+# JASCA v1.2.0
 
-**`jasca.yaml` 하나로 사내 PostgreSQL에 설치**할 수 있게 한 릴리스입니다. DB 담당자에게 받은 Host, Port, Database, User, Schema, Password를 `jasca.yaml`에 그대로 적으면 되고, `postgres.yaml`은 사내 DB가 없을 때만 씁니다. 화면과 기능은 v1.1.1과 같습니다.
+**사용자별 MCP**를 넣은 릴리스입니다. 사용자가 자기 **MCP 키**를 발급해 AI 에이전트를 연결하면, 에이전트는 그 사용자의 권한으로 JASCA를 씁니다: 조회뿐 아니라 프로젝트 만들기, 보고서 올리기, 담당자·기한 지정, 예외 요청까지 합니다. 역할에 따라 쓸 수 있는 도구가 달라져 보안 담당은 예외 승인, 관리자는 시스템 상태·서버 로그·사용자 관리 같은 **운영 도구**를 함께 씁니다. **이미지만 바꾸면 됩니다.** DB 스키마는 앱이 시작할 때 자동으로 올립니다.
 
 ## 새로 생긴 것
 
-- **DB 접속 정보를 항목별로 적습니다.**
+- **MCP 키**(오른쪽 위 사용자 메뉴 → MCP 키): 이름, **조회·변경** 또는 **읽기 전용**, 만료일(최대 1년)을 정해 만듭니다. 키 값(`jsu_…`)은 만들 때 한 번만 보이고, 키가 채워진 MCP 클라이언트 설정을 바로 복사할 수 있습니다. 같은 화면에 내 역할로 쓸 수 있는 도구가 모두 나옵니다.
+  - 에이전트는 **지금의 내 권한**으로 일합니다. 역할이나 프로젝트 멤버 구성이 바뀌면 키를 다시 만들지 않아도 다음 요청부터 반영되고, 계정이 비활성화되면 키도 멈춥니다. 화면에서 할 수 없는 일은 에이전트도 할 수 없습니다.
+  - 키로 한 변경은 감사 로그에 **그 사용자 이름**으로 남고 행위자 옆에 **MCP** 표시가 붙습니다.
+  - 키는 계정당 20개까지. MCP 주소(`/mcp`)와 스캔 업로드에서만 받아들이고 그 밖의 API는 거부합니다.
+- **역할에 따라 달라지는 도구** (모든 사용자: 조회 17개, 변경 12개):
 
-  | 받은 값 | `jasca.yaml`의 항목 |
+  | 누가 | 쓸 수 있는 도구 |
   |---|---|
-  | Host | `JASCA_DB_HOST` |
-  | Port | `JASCA_DB_PORT` |
-  | Database | `JASCA_DB_DATABASE` |
-  | User | `JASCA_DB_USER` |
-  | Schema | `JASCA_DB_SCHEMA` |
-  | Password | `JASCA_DB_PASSWORD` (Secret `jasca-secrets`) |
+  | 모든 사용자 | 조회: `whoami`, `list_projects`, 기존 조회 도구 10개(`project_summary`, `list_findings`, `list_fixes` 등), `list_members`, `find_users`, `list_audit_log`, `list_advisories`, `upload_commands`. 변경: `create_project`, `update_project`, `set_member`, `set_policy`, `upload_report`, `cancel_scan`, `update_finding`, `assign_findings`, `request_exception`, `revoke_exception`, `rename_target`, `delete_target` |
+  | 보안 담당 | 위 + `decide_exception`(예외 승인·반려), `create_advisory`(사내 Advisory 등록) |
+  | 관리자 | 위 + `system_status`, `get_server_logs`, `list_all_scans`, `list_notifications`, `list_users`, `update_user`, `list_mcp_keys`, `revoke_mcp_key`, `get_settings`, `run_keycloak_sync`, `start_recheck`, `list_harbor_unmapped`, `assign_harbor_image` |
 
-  비밀번호는 받은 그대로 적습니다(URL 인코딩 불필요). 접속 암호화는 `JASCA_DB_SSLMODE`(기본 `prefer`), 최대 연결 수는 `JASCA_DB_MAX_CONNS`(기본 20)로 정합니다.
-- **스키마 지정**: 테이블은 앱이 시작할 때 `JASCA_DB_SCHEMA` 안에만 자동으로 만들고, 다른 스키마(`public` 포함)는 건드리지 않습니다. 스키마는 미리 만들어져 있어야 하고, 계정에는 그 스키마의 USAGE, CREATE 권한만 있으면 됩니다. 슈퍼유저 권한이나 확장(extension)은 필요 없습니다.
-- **시작 로그**에 접속한 DB가 한 줄로 나옵니다(`database <Host>:<Port>/<Database> as <User>, schema <Schema>`). 스키마가 없거나 권한이 모자라면 무엇이 문제인지 로그로 알려 줍니다.
-- PostgreSQL 13~17에서 테스트했습니다.
-
-## 사내 DB에 들어가는 것과 아닌 것
-
-- 사내 DB: 프로젝트, 스캔 결과와 원본 보고서, 패키지 목록, 사용자, 설정, 감사 로그.
-- PVC `jasca-data`: Trivy 취약점 DB와 Java DB, 대기 중인 스캔 업로드. DB를 바꿔도 Trivy DB는 다시 올릴 필요가 없습니다.
+  - `list_findings`, `list_exceptions`, `search_packages`, `get_vulnerability`는 프로젝트를 생략하면 내가 볼 수 있는 모든 프로젝트에서 찾습니다. "내 담당 중 기한 지난 것"은 `list_findings`에 `assignee: "me"`, `overdue: true`입니다.
+  - 권한이 없는 도구를 부르면 에이전트가 어느 역할이 필요한지 안내를 받습니다. 읽기 전용 키는 변경 도구를 쓰지 못합니다.
+- **운영을 MCP로**(관리자): `system_status`가 버전, DB, 데이터 볼륨 남은 공간, Trivy DB 경과 일수, 스캔 대기·실패, 재평가, Keycloak 동기화, 알림 전송 상태를 한 번에 주고 조치가 필요한 것을 `problems`에 문장으로 알려 줍니다. `get_server_logs`는 서버 로그(마지막 시작 이후 최근 2,000줄)에서 검색어와 시간으로 찾습니다. `get_settings`는 설정을 비밀값 없이 보여 줍니다.
+- **파일 올리기**: 소스 묶음·이미지 파일은 에이전트가 `curl`로 올립니다(`upload_commands` 도구가 명령을 줍니다. 에이전트 실행 환경에 같은 키를 `JASCA_MCP_KEY`로 넣어 둡니다). 작은 스캐너 보고서(약 4MB까지)는 `upload_report` 도구로 바로 올립니다.
+- **관리 → 사용자·역할**에 전체 사용자의 **MCP 키** 표가 생겼습니다. 유출된 키를 관리자가 바로 폐기할 수 있습니다.
 
 ## 바뀐 동작
 
-- 새 `jasca.yaml`은 `jasca-postgres-secrets` Secret을 참조하지 않습니다.
-- v1.1.1까지의 `jasca.yaml`(`JASCA_DATABASE_URL`, `PGPASSWORD`)은 그대로 동작합니다. 두 방식을 한 파일에 함께 적으면 앱이 시작하지 않고 로그로 알려 줍니다.
+- 프로젝트 **설정 → MCP 연동**은 개인 MCP 키를 먼저 안내하고, 프로젝트 API 토큰으로 연결하는 방법은 접힌 칸으로 옮겼습니다. **프로젝트 API 토큰의 MCP(조회 도구 10개)는 그대로 동작합니다.**
+- 기존 조회 도구에 더해진 것: `list_findings`의 `assignee` 필터, `project_summary`의 기한 지난 결과 수(`overdue`).
+- 도구 결과의 글에서 `<`, `>`, `&`를 `<`처럼 바꿔 적지 않습니다(에이전트가 명령을 그대로 읽습니다).
+- 설정 변경(SSO, SMTP, 알림 채널, AI, Harbor 연결, Trivy DB 올리기, 조치 기한, 보존 기간)과 프로젝트 삭제는 MCP에 넣지 않았습니다. 화면에서 합니다.
 
 ## 업그레이드 안내
 
-DB 스키마는 바뀌지 않았습니다. `DEPLOY-OFFLINE.md`를 따르세요.
+DB 스키마가 바뀝니다(`mcp_keys` 테이블 추가). 앱이 시작할 때 자동으로 적용되고, 기존 데이터는 바뀌지 않습니다. DB 계정에는 v1.1.2와 같은 권한(스키마의 USAGE, CREATE)이면 됩니다. `DEPLOY-OFFLINE.md`의 "업그레이드"를 따르세요.
 
-- **DB를 그대로 쓸 때**: `jasca-v1.1.2.tar.gz`를 워커에 반입하고, 쓰던 `jasca.yaml`의 이미지 태그만 `jasca:v1.1.2`로 바꿔 적용합니다.
-- **사내 DB로 바꾸면서 새로 시작할 때**: 새 `jasca.yaml`에 DB 접속 정보와 쓰던 값(관리자 비밀번호, Ingress 주소 등)을 적어 적용합니다. 빈 스키마에서 시작하므로 `admin` 계정이 `JASCA_BOOTSTRAP_PASSWORD`로 새로 만들어집니다.
-- **사내 DB로 바꾸면서 데이터를 옮길 때**: `DEPLOY-OFFLINE.md`의 "전용 PostgreSQL에서 사내 DB로 옮기기"를 따릅니다. 옮긴 뒤 프로젝트와 결과 수를 확인하고 나서 옛 DB를 정리하세요.
+1. DB를 백업합니다.
+2. `jasca-v1.2.0.tar.gz`를 워커에 반입합니다.
+3. 쓰던 `jasca.yaml`의 이미지 태그만 `jasca:v1.2.0`으로 바꿔 적용합니다. 다른 값은 그대로 둡니다.
+4. 로그인 화면 아래에 `JASCA v1.2.0`이 보이면 새 버전입니다. 사용자 메뉴에 **MCP 키**가 보이는지 확인합니다.
 
-로그인 화면 아래에 `JASCA v1.1.2`가 보이면 새 버전입니다.
-
-첨부한 `db.tar.gz`, `javadb.tar.gz`는 2026-11-09에 만들어진 Trivy DB입니다(v1.1.1 첨부와 같은 파일).
+첨부한 `db.tar.gz`, `javadb.tar.gz`는 2026-11-09에 만들어진 Trivy DB입니다(v1.1.2 첨부와 같은 파일).

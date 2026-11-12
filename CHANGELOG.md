@@ -1,5 +1,24 @@
 # 변경 이력
 
+## v1.2.0 - 2026-11-12
+
+AI 에이전트가 **사용자의 권한으로** JASCA를 쓰는 사용자별 MCP를 넣은 릴리스입니다. **이미지만 바꾸면 됩니다.** DB 스키마(`mcp_keys` 테이블)는 앱이 시작할 때 자동으로 올립니다.
+
+### 새로 생긴 것
+
+- **MCP 키**(사용자 메뉴 → MCP 키): 사용자가 자기 키(`jsu_…`)를 발급해 에이전트를 연결합니다. 조회·변경 또는 읽기 전용, 만료 최대 1년, 계정당 20개. 키 값은 만들 때 한 번만 보이고 키가 채워진 클라이언트 설정을 바로 복사합니다. 에이전트는 호출하는 순간의 그 사용자 권한으로 동작하며, 계정이 비활성화되면 키도 멈춥니다. 키로 한 변경은 감사 로그에 그 사용자 이름과 **MCP** 표시로 남습니다.
+- **역할별 도구**: 모든 사용자는 조회 17개와 변경 12개(프로젝트 만들기·수정, 멤버, 정책, 보고서 올리기, 스캔 취소, 담당자·기한, 예외 요청·철회, 대상 이름 변경·삭제), 보안 담당은 예외 승인·반려와 사내 Advisory 등록, 관리자는 운영 도구 13개(`system_status`, `get_server_logs`, `list_all_scans`, `list_notifications`, `list_users`, `update_user`, `list_mcp_keys`, `revoke_mcp_key`, `get_settings`, `run_keycloak_sync`, `start_recheck`, `list_harbor_unmapped`, `assign_harbor_image`)를 더 씁니다. 모든 변경 도구는 화면과 같은 권한 규칙을 거칩니다.
+- **여러 프로젝트 조회**: 개인 키의 `list_findings`, `list_exceptions`, `search_packages`, `get_vulnerability`는 프로젝트를 생략하면 볼 수 있는 모든 프로젝트에서 찾습니다. `list_findings`에 담당자 필터(`assignee`: 아이디, `me`, `none`)가 생겼습니다.
+- **운영 조회**: `system_status`가 서비스 상태와 조치가 필요한 문제를 한 번에 알려 주고, `get_server_logs`가 서버 로그(마지막 시작 이후 최근 2,000줄)에서 찾습니다.
+- **MCP 키로 업로드**: 개인 키는 `/mcp` 외에 스캔 업로드(`POST /projects/{key}/scans`, `POST /projects/{key}/scan-jobs`)에서만 받습니다. `upload_commands` 도구가 에이전트에게 `curl` 명령을 줍니다.
+- **관리 → 사용자·역할**에 전체 사용자의 MCP 키 표와 폐기 버튼. API는 `GET`·`POST /api/v1/me/mcp-keys`, `DELETE /api/v1/me/mcp-keys/{id}`, `GET /api/v1/me/mcp-tools`, `GET /api/v1/admin/mcp-keys`, `DELETE /api/v1/admin/mcp-keys/{id}`입니다.
+
+### 바뀐 동작
+
+- 프로젝트 **설정 → MCP 연동**이 개인 MCP 키를 먼저 안내합니다. 프로젝트 API 토큰의 MCP(조회 도구 10개)는 그대로 동작합니다.
+- `project_summary`에 기한 지난 결과 수(`overdue`)가 더해졌습니다.
+- 도구 결과의 글에서 `<`, `>`, `&`를 유니코드 이스케이프로 바꿔 적지 않습니다.
+
 ## v1.1.2 - 2026-11-11
 
 ### 새로 생긴 것
