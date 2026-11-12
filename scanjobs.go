@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -71,6 +72,19 @@ func (s *server) handleScanJobCreate(w http.ResponseWriter, r *http.Request, c *
 		return
 	}
 	max := s.cfg.MaxScanUploadMB << 20
+	// Uploads wait on the data volume until their turn (scans run one at a time), so ten large files are ten files
+	// on disk. Refused while there is no room for this one plus one unpacked archive: a full volume fails the scan
+	// that is running and the next Trivy DB install, not just this upload.
+	var fs syscall.Statfs_t
+	if size := r.ContentLength; syscall.Statfs(s.cfg.DataDir, &fs) == nil && fs.Blocks > 0 {
+		if size < 0 || size > max {
+			size = max
+		}
+		if int64(fs.Bavail)*int64(fs.Bsize) < size+s.cfg.MaxExtractMB<<20 {
+			writeErr(w, 507, "no_space", "서버 저장 공간이 부족해 지금은 파일을 받을 수 없습니다. 대기 중인 스캔이 끝나면 공간이 비니 잠시 뒤 다시 올리세요. 계속되면 관리자에게 데이터 볼륨(jasca-data) 확장을 요청하세요.")
+			return
+		}
+	}
 	tooLarge := func() {
 		writeErr(w, 413, "too_large", fmt.Sprintf("파일은 %dMB 이하만 올릴 수 있습니다.", s.cfg.MaxScanUploadMB))
 	}

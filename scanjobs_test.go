@@ -251,6 +251,14 @@ func TestScanJobUploadRules(t *testing.T) {
 			}
 		})
 	}
+	// no room on the data volume for the file plus one unpacked archive: refused before the body is read
+	extract := s.cfg.MaxExtractMB
+	s.cfg.MaxExtractMB = 1 << 30 // a petabyte
+	rec := postScanJob(t, s, ck, "web", map[string]string{"target": "t", "kind": "fs"}, zip)
+	if rec.Code != 507 || errCode(t, rec) != "no_space" {
+		t.Fatalf("full volume: %d %s", rec.Code, rec.Body.String())
+	}
+	s.cfg.MaxExtractMB = extract
 	if n := qInt(t, s, `select count(*) from scans`) + qInt(t, s, `select count(*) from jobs`); n != 0 {
 		t.Fatalf("rows left behind: %d", n)
 	}

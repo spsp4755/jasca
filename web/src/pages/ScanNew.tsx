@@ -96,6 +96,14 @@ function useElapsed(on: boolean, since: number) {
   return Math.max(0, Math.floor((Date.now() - since) / 1000));
 }
 
+/** A scan by id, polled until it is done, failed or canceled. */
+const useScan = (id: number | null) => useApi<ScanDetail>(id ? `/scans/${id}` : null,
+  { refetchInterval: (query) => (query.state.data && DONE.includes(query.state.data.status) ? false : 2000), staleTime: 0 });
+
+/** One of several files picked at once: each becomes its own scan of its own target. */
+type Item = { file: File; target: string; ref: string; kind: Kind };
+const CANCELED = "업로드를 취소했습니다.";
+
 /** startedAt: when the upload finished and the wait for the server began (the upload has its own percentage). */
 type Run = { file: string; target: string; projectKey: string; projectName: string; pct: number; scanId: number | null; startedAt: number; error?: string };
 
@@ -103,7 +111,7 @@ type Run = { file: string; target: string; projectKey: string; projectName: stri
 function ScanRun({ run, onCancelUpload, onAgain, onEdit }: { run: Run; onCancelUpload: () => void; onAgain: () => void; onEdit: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const q = useApi<ScanDetail>(run.scanId ? `/scans/${run.scanId}` : null, { refetchInterval: (query) => (query.state.data && DONE.includes(query.state.data.status) ? false : 2000), staleTime: 0 });
+  const q = useScan(run.scanId);
   const cancel = useMutation<void, ApiError>({
     mutationFn: () => api.post<void>(`/scans/${run.scanId}/cancel`),
     onSuccess: () => qc.invalidateQueries({ queryKey: [`/scans/${run.scanId}`] }),
@@ -203,6 +211,61 @@ function ScanRun({ run, onCancelUpload, onAgain, onEdit }: { run: Run; onCancelU
   );
 }
 
+/** One file of a batch: waiting its turn, going up, then the scan's own status and counts. */
+function BatchRow({ run, waiting }: { run: Run; waiting: boolean }) {
+  const qc = useQueryClient();
+  const q = useScan(run.scanId);
+  const s = q.data;
+  useEffect(() => { if (s?.status === "done") qc.invalidateQueries({ queryKey: ["/projects"] }); }, [s?.status, qc]);
+  const failed = run.error || (s?.status === "failed" ? s.error || "스캔에 실패했습니다." : q.error?.message);
+  const warning = s?.status === "done" ? s.summary.warnings?.[0] : undefined; // "없음" must not hide what was not examined
+  return (
+    <li>
+      <span className="scan-batch-name">
+        <strong>{run.target}</strong>
+        <span className="muted">{run.file}</span>
+        {failed && failed !== CANCELED && <span className="field-err">{failed}</span>}
+        {warning && <span className="scan-batch-warn">{warning}</span>}
+      </span>
+      {run.error ? <StatusBadge status={run.error === CANCELED ? "canceled" : "failed"} />
+        : waiting ? <span className="muted nw">차례를 기다리는 중</span>
+        : !run.scanId ? <><span className="muted num nw">올리는 중 {run.pct}%</span><div className="progress" role="progressbar" aria-label={`${run.file} 업로드 진행률`} aria-valuenow={run.pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${run.pct}%` }} /></div></>
+        : s?.status === "done" ? <SummaryCell s={s.summary} /> : <StatusBadge status={s?.status ?? "queued"} />}
+      {run.scanId && <Link className="btn btn-secondary btn-sm" to={`/scans/${run.scanId}`} aria-label={`${run.target} ${s?.status === "done" ? "결과 보기" : "스캔 기록"}`}>{s?.status === "done" ? "결과 보기" : "스캔 기록"}</Link>}
+    </li>
+  );
+}
+
+/** Several files: they go up one after another, and each row then follows its own scan. */
+function BatchRun({ runs, active, onCancel, onAgain, onRetry }: { runs: Run[]; active: number; onCancel: () => void; onAgain: () => void; onRetry: () => void }) {
+  const up = active >= 0;
+  const sent = runs.filter((r) => r.scanId).length, lost = runs.filter((r) => r.error).length;
+  return (
+    <section className="panel scan-run" aria-labelledby="h-run">
+      <div className="panel-head">
+        <h2 id="h-run">파일 {runs.length}개 스캔</h2>
+        <span className="panel-meta">{runs[0].projectName} 프로젝트에 저장</span>
+      </div>
+      <ul className="scan-batch-runs">{runs.map((r, i) => <BatchRow key={i} run={r} waiting={up && i > active} />)}</ul>
+      <div className="panel-body stack">
+        <p className="muted" role="status" style={{ margin: 0 }}>
+          {up ? `파일을 차례로 올리고 있습니다(${active + 1}/${runs.length}). 올리는 동안 이 화면을 닫지 마세요.`
+            : `${runs.length}개 중 ${sent}개를 올렸습니다${lost ? `(${lost}개는 올리지 못했습니다)` : ""}. 서버가 차례로 검사하며, 화면을 떠나도 검사는 계속됩니다.`}
+        </p>
+        <div className="row-gap">
+          {up ? <Button onClick={onCancel}>남은 업로드 취소</Button> : (
+            <>
+              <Link className="btn btn-primary" to={`/projects/${runs[0].projectKey}/scans`}>프로젝트 스캔 기록</Link>
+              {lost > 0 && <Button onClick={onRetry}>올리지 못한 파일 다시 시도</Button>}
+              <Button onClick={onAgain}>다른 파일 스캔</Button>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean }) {
   const qc = useQueryClient();
   const [sp] = useSearchParams();
@@ -220,7 +283,9 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   const [over, setOver] = useState(false);
   const [tried, setTried] = useState(false);
   const [conflict, setConflict] = useState(false);
-  const [run, setRun] = useState<Run | null>(null);
+  const [batch, setBatch] = useState<Item[]>([]); // filled instead of `file` when several files are picked
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [active, setActive] = useState(-1); // the run going up now
   const [editing, setEditing] = useState(true);
   const xhr = useRef<XMLHttpRequest | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -231,7 +296,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   useEffect(() => { if (noDb) void cfg.refetch(); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- cached for the session: the admin may have uploaded the DB since
   useEffect(() => () => xhr.current?.abort(), []);
   // leaving now would throw the upload away: the browser asks on reload/close, the router on a move inside the app
-  const uploading = !!run && !editing && run.scanId === null && !run.error;
+  const uploading = active >= 0;
   useUnloadGuard(uploading);
   const blocker = useBlocker(uploading);
   useEffect(() => {
@@ -258,30 +323,50 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
   // the same service under another version's name: scanning it as a new target would leave the old findings open
   const similar = !rescan && target.trim() ? known.find((t) => stem(t.name) === stem(target)) : undefined;
 
-  const pick = async (f?: File | null) => {
-    if (!f) return;
+  const multi = batch.length > 0;
+  const pick = async (list?: FileList | null) => {
+    const all = Array.from(list ?? []);
+    if (input.current) input.current.value = ""; // the same file can be chosen again
+    if (!all.length) return;
     // refused here, not after the whole file went up
-    const bad = f.size === 0 ? "빈 파일입니다. 내용이 있는 파일을 고르세요."
+    const why = (f: File) => f.size === 0 ? "빈 파일입니다. 내용이 있는 파일을 고르세요."
       : maxMB && f.size > maxMB * 2 ** 20 ? `파일이 너무 큽니다(${fmtSize(f.size)}). 이 서버는 ${fmtLimit(maxMB)}까지 받습니다.` : "";
-    setFileErr(bad);
-    if (bad) { setFile(null); if (input.current) input.current.value = ""; return; }
-    setFile(f);
-    const [name, version] = splitVersion(baseName(f.name));
-    if (!targetEdited) setTarget(name);
-    if (!refEdited) setRef(version);
-    setKind(await sniffKind(f));
+    if (all.length === 1 && !multi) {
+      const f = all[0], bad = why(f);
+      setFileErr(bad);
+      if (bad) { setFile(null); return; }
+      setFile(f);
+      const [name, version] = splitVersion(baseName(f.name));
+      if (!targetEdited) setTarget(name);
+      if (!refEdited) setRef(version);
+      setKind(await sniffKind(f));
+      return;
+    }
+    // several at once (or more onto a list): one row each, one scan each
+    const good = all.filter((f) => !why(f)), bad = all.filter(why);
+    setFileErr(bad.length ? `비어 있거나${maxMB ? ` ${fmtLimit(maxMB)}를 넘어` : " 너무 커"} 뺀 파일: ${bad.map((f) => f.name).join(", ")}` : "");
+    const kinds = await Promise.all(good.map(sniffKind));
+    setFile(null);
+    setBatch((b) => [...b, ...good.map((f, i) => { const [name, version] = splitVersion(baseName(f.name)); return { file: f, target: name, ref: version, kind: kinds[i] }; })]);
   };
-  const drop = (e: DragEvent) => { e.preventDefault(); setOver(false); void pick(e.dataTransfer.files[0]); };
+  const drop = (e: DragEvent) => { e.preventDefault(); setOver(false); void pick(e.dataTransfer.files); };
+  const setRow = (i: number, p: Partial<Item>) => setBatch((b) => b.map((x, j) => (j === i ? { ...x, ...p } : x)));
+  // Two files onto one target in one go would leave it at whichever scan happens to finish last.
+  const names = batch.map((b) => `${b.kind}:${b.target.trim()}`);
+  const rowBad = (i: number) => !batch[i].target.trim() || names.indexOf(names[i]) !== names.lastIndexOf(names[i]);
+  const batchErr = batch.some((b) => !b.target.trim()) ? "대상 이름이 빈 파일이 있습니다. 모두 채우세요."
+    : batch.some((_, i) => rowBad(i)) ? "같은 대상 이름이 두 번 있습니다. 한 대상에는 한 번에 파일 하나만 검사합니다. 이름을 바꾸거나 한 파일을 빼세요." : "";
 
   const nameErr = isNew && !newName.trim() ? "프로젝트 이름을 입력하세요." : newName.trim().length > 100 ? "이름은 100자 이하로 입력하세요." : "";
   const keyErr = !isNew ? "" : conflict ? "이미 쓰는 키입니다. 다른 키를 입력하세요." : !newKey ? "키를 입력하세요." : !KEY_RE.test(newKey) ? "영문 소문자, 숫자, 하이픈(-)으로 2~40자. 첫 글자는 영문 소문자나 숫자여야 합니다." : "";
-  const errs = { file: file ? "" : "검사할 파일을 고르세요.", project: key ? "" : "프로젝트를 고르세요.", name: nameErr, key: keyErr, target: target.trim() ? "" : "대상 이름을 입력하세요." };
+  const errs = { file: file || multi ? "" : "검사할 파일을 고르세요.", batch: batchErr, project: key ? "" : "프로젝트를 고르세요.", name: nameErr, key: keyErr, target: multi || target.trim() ? "" : "대상 이름을 입력하세요." };
 
   const submit = async () => {
     setTried(true);
-    if (!file || Object.values(errs).some(Boolean)) return;
+    const list: Item[] = multi ? batch : file ? [{ file, target, ref, kind }] : [];
+    if (!list.length || Object.values(errs).some(Boolean)) return;
     let projectKey = key, projectName = writable.find((p) => p.key === key)?.name ?? key;
-    const base: Run = { file: file.name, target: target.trim(), projectKey, projectName, pct: 0, scanId: null, startedAt: Date.now() };
+    const mk = (): Run[] => list.map((it) => ({ file: it.file.name, target: it.target.trim(), projectKey, projectName, pct: 0, scanId: null, startedAt: Date.now() }));
     if (isNew) {
       try {
         const p = await api.post<Project>("/projects", { key: newKey, name: newName.trim(), description: "" });
@@ -290,38 +375,51 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
         setKey(p.key); setNewName(""); setNewKey(""); setKeyEdited(false); // a retry reuses it instead of creating another
       } catch (e) {
         if ((e as ApiError).status === 409) { setConflict(true); return; }
-        setEditing(false); setRun({ ...base, projectName: newName.trim(), error: `프로젝트를 만들지 못했습니다. ${(e as ApiError).message}` });
+        setEditing(false); setRuns([{ ...mk()[0], projectName: newName.trim(), error: `프로젝트를 만들지 못했습니다. ${(e as ApiError).message}` }]);
         return;
       }
     }
     try { localStorage.setItem(LAST_PROJECT, projectKey); } catch { /* storage blocked */ }
-    const fd = new FormData();
-    fd.set("target", base.target); fd.set("kind", kind);
-    if (ref.trim()) fd.set("ref", ref.trim());
-    fd.set("file", file); // last: the server reads the fields before the file
-    const cur: Run = { ...base, projectKey, projectName };
-    setEditing(false); setRun(cur);
-    try {
-      const { scan_id } = await uploadJob(projectKey, fd, (pct) => setRun((r) => r && { ...r, pct }), xhr);
-      setRun((r) => r && { ...r, pct: 100, scanId: scan_id, startedAt: Date.now() });
-    } catch (e) {
-      if ((e as ApiError).code === "aborted") { setEditing(true); setRun(null); } else setRun((r) => r && { ...r, error: (e as ApiError).message });
-    } finally { xhr.current = null; }
+    const patch = (i: number, p: Partial<Run>) => setRuns((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)));
+    setEditing(false); setRuns(mk());
+    for (let i = 0; i < list.length; i++) { // one at a time: the server takes one file per request and queues the scans
+      const it = list[i], fd = new FormData();
+      fd.set("target", it.target.trim()); fd.set("kind", it.kind);
+      if (it.ref.trim()) fd.set("ref", it.ref.trim());
+      fd.set("file", it.file); // last: the server reads the fields before the file
+      setActive(i);
+      try {
+        const { scan_id } = await uploadJob(projectKey, fd, (pct) => patch(i, { pct }), xhr);
+        patch(i, { pct: 100, scanId: scan_id, startedAt: Date.now() });
+      } catch (e) {
+        const { code, message } = e as ApiError;
+        if (code !== "aborted" && code !== "no_space") { patch(i, { error: message }); continue; }
+        // canceled, or the server's disk is full until the queued scans are through: the files still waiting stop too
+        if (code === "aborted" && list.length === 1) { setEditing(true); setRuns([]); }
+        else setRuns((rs) => rs.map((r, j) => (j >= i ? { ...r, error: code === "aborted" ? CANCELED : message } : r)));
+        break;
+      }
+    }
+    xhr.current = null; setActive(-1);
   };
-  const again = () => { setRun(null); setEditing(true); setFile(null); setFileErr(""); setTarget(""); setTargetEdited(false); setRef(""); setRefEdited(false); setTried(false); if (input.current) input.current.value = ""; };
+  const again = () => { setRuns([]); setEditing(true); setFile(null); setBatch([]); setFileErr(""); setTarget(""); setTargetEdited(false); setRef(""); setRefEdited(false); setTried(false); };
+  // batch rows and runs share their order; what went up is dropped, the rest is back in the form
+  const retry = () => { setBatch(batch.filter((_, i) => runs[i]?.error)); setRuns([]); setEditing(true); setTried(false); };
 
   // a recent scan's project and target, ready for the next file
   const reuse = (projectKey: string, name: string) => {
     setKey(projectKey); setConflict(false); setTarget(name); setTargetEdited(true);
     try { localStorage.setItem(LAST_PROJECT, projectKey); } catch { /* storage blocked */ }
-    (file ? document.querySelector<HTMLElement>(".scan-submit button") : document.querySelector<HTMLElement>(".dropzone"))?.focus();
+    (file || multi ? document.querySelector<HTMLElement>(".scan-submit button") : document.querySelector<HTMLElement>(".dropzone"))?.focus();
   };
-  const running = !!run && !editing;
+  const running = runs.length > 0 && !editing;
 
   return (
     <div className="scan-layout">
       <div className="scan-main">
-        {running ? <ScanRun run={run} onCancelUpload={() => xhr.current?.abort()} onAgain={again} onEdit={() => setEditing(true)} /> : form()}
+        {!running ? form()
+          : runs.length > 1 ? <BatchRun runs={runs} active={active} onCancel={() => xhr.current?.abort()} onAgain={again} onRetry={retry} />
+          : <ScanRun run={runs[0]} onCancelUpload={() => xhr.current?.abort()} onAgain={again} onEdit={() => setEditing(true)} />}
       </div>
       <ScanAside canReuse={(k) => !running && writable.some((p) => p.key === k)} onReuse={reuse} />
     </div>
@@ -331,15 +429,40 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
     <form className="panel scan-form" noValidate onSubmit={(e) => { e.preventDefault(); if (!noDb && loaded) void submit(); }}>
       <section className="scan-part" aria-labelledby="h-file">
         <h2 id="h-file"><span className="scan-part-n" aria-hidden="true">1</span>검사할 파일</h2>
-        <div className={`dropzone${over ? " over" : ""}${file ? " has-file" : ""}`} role="button" tabIndex={0} aria-label={file ? `고른 파일 ${file.name}. 눌러서 바꾸기` : "검사할 파일 선택"}
+        <div className={`dropzone${over ? " over" : ""}${file || multi ? " has-file" : ""}`} role="button" tabIndex={0}
+          aria-label={multi ? `고른 파일 ${batch.length}개. 눌러서 더 추가` : file ? `고른 파일 ${file.name}. 눌러서 바꾸기` : "검사할 파일 선택"}
           aria-describedby={fileErr || (tried && errs.file) ? "scan-file-err" : undefined}
           onClick={() => input.current?.click()} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), input.current?.click())}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={drop}>
-          {file ? <><Icon name="fileText" size={20} /><span><strong>{file.name}</strong> <span className="muted num">{fmtSize(file.size)}</span></span><span className="dropzone-change">바꾸기</span></>
-            : <><strong>파일을 여기에 끌어다 놓거나 눌러서 고르세요</strong><span className="muted">프로젝트 폴더를 압축한 zip·tar·tar.gz 또는 docker save로 만든 이미지 tar{maxMB ? ` · 최대 ${fmtLimit(maxMB)}` : ""}</span></>}
-          <input ref={input} type="file" hidden aria-hidden="true" tabIndex={-1} onChange={(e) => void pick(e.target.files?.[0])} />
+          {multi ? <><Icon name="fileText" size={20} /><span><strong>파일 {batch.length}개</strong> <span className="muted num">{fmtSize(batch.reduce((n, b) => n + b.file.size, 0))}</span></span><span className="dropzone-change">더 추가</span></>
+            : file ? <><Icon name="fileText" size={20} /><span><strong>{file.name}</strong> <span className="muted num">{fmtSize(file.size)}</span></span><span className="dropzone-change">바꾸기</span></>
+            : <><strong>파일을 여기에 끌어다 놓거나 눌러서 고르세요</strong><span className="muted">프로젝트 폴더를 압축한 zip·tar·tar.gz 또는 docker save로 만든 이미지 tar{maxMB ? ` · 최대 ${fmtLimit(maxMB)}` : ""}</span>
+                <span className="muted">여러 개를 한 번에 고르면 파일마다 따로 검사합니다</span></>}
+          <input ref={input} type="file" multiple hidden aria-hidden="true" tabIndex={-1} onChange={(e) => void pick(e.target.files)} />
         </div>
         {(fileErr || (tried && errs.file)) && <p id="scan-file-err" className="field-err" role="alert">{fileErr || errs.file}</p>}
+        {multi && (
+          <>
+            <ul className="scan-batch" aria-label="검사할 파일 목록">
+              <li className="scan-batch-head" aria-hidden="true"><span>파일</span><span>파일 종류</span><span>대상 이름</span><span>버전</span><span /></li>
+              {batch.map((b, i) => (
+                <li key={i}>
+                  <span className="scan-batch-name" title={b.file.name}><strong>{b.file.name}</strong><span className="muted num">{fmtSize(b.file.size)}</span></span>
+                  <select className="input" aria-label={`${b.file.name} 파일 종류`} value={b.kind} onChange={(e) => setRow(i, { kind: e.target.value as Kind })}>
+                    {(Object.keys(KIND_TEXT) as Kind[]).map((k) => <option key={k} value={k}>{KIND_TEXT[k][0]}</option>)}
+                  </select>
+                  <input className="input" aria-label={`${b.file.name} 대상 이름`} aria-invalid={(tried && rowBad(i)) || undefined} value={b.target} maxLength={200} placeholder="대상 이름"
+                    onChange={(e) => setRow(i, { target: e.target.value })} />
+                  <input className="input mono" aria-label={`${b.file.name} 버전`} value={b.ref} maxLength={200} placeholder="선택" spellCheck={false}
+                    onChange={(e) => setRow(i, { ref: e.target.value })} />
+                  <Button size="sm" variant="ghost" icon="x" aria-label={`${b.file.name} 빼기`} title="빼기" onClick={() => setBatch(batch.filter((_, j) => j !== i))} />
+                </li>
+              ))}
+            </ul>
+            {tried && errs.batch ? <p className="field-err" role="alert">{errs.batch}</p>
+              : <p className="field-hint">파일마다 대상 하나로 따로 검사합니다. 파일 종류, 대상 이름, 버전은 파일을 보고 채웠습니다. 같은 서비스는 지난번과 같은 대상 이름으로 두어야 고친 취약점이 조치됨으로 바뀝니다.</p>}
+          </>
+        )}
         {file && (
           <fieldset className="seg" aria-describedby="scan-kind-hint">
             <legend>파일 종류</legend>
@@ -376,7 +499,7 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
             </Field>
           </div>
         )}
-        <div className="scan-target-row">
+        {!multi && <div className="scan-target-row">
           <Field label="대상 이름" required error={tried ? errs.target || undefined : undefined}
             hint={!target.trim() ? "서비스나 이미지 이름을 쓰세요(예: web-app). 버전은 옆 칸에 쓰세요. 같은 이름으로 다시 스캔해야 고친 취약점이 조치됨으로 바뀝니다."
               : rescan ? "이미 있는 대상입니다. 이전 스캔과 비교해, 사라진 취약점은 조치됨으로 바꿉니다." : "새 대상으로 등록됩니다. 다음 버전도 이 이름으로 스캔하세요."}>
@@ -387,8 +510,8 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
             <input className="input mono" value={ref} maxLength={200} placeholder="예: 1.4.2" spellCheck={false}
               onChange={(e) => { setRef(e.target.value); setRefEdited(true); }} />
           </Field>
-        </div>
-        {similar && (
+        </div>}
+        {!multi && similar && (
           <div className="alert alert-warn scan-similar" role="status">
             <Icon name="alert" />
             <span>비슷한 대상 <b className="mono">{similar.name}</b>이(가) 있습니다. 같은 서비스의 다른 버전이면 그 대상으로 스캔하세요. 이름이 다르면 다른 대상으로 따로 쌓여, 이전 취약점이 열린 채 남습니다.</span>
@@ -399,8 +522,8 @@ function UploadTab({ projects, loaded }: { projects: Project[]; loaded: boolean 
       </section>
 
       <div className="scan-submit">
-        <Button type="submit" variant="primary" icon="scan" disabled={noDb || !loaded}>스캔 시작</Button>
-        {run?.error && <span className="muted">이전 시도: {run.error}</span>}
+        <Button type="submit" variant="primary" icon="scan" disabled={noDb || !loaded}>{multi ? `${batch.length}개 스캔 시작` : "스캔 시작"}</Button>
+        {runs.length === 1 && runs[0].error && <span className="muted">이전 시도: {runs[0].error}</span>}
       </div>
     </form>
   ); }

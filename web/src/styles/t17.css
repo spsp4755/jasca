@@ -61,4 +61,24 @@
 .scan-policy { display: flex; gap: 8px; align-items: center; margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); font-size: 13.5px; }
 .scan-policy-pass { background: var(--ok-bg); color: var(--ok); }
 .scan-policy-fail { background: var(--danger-bg); color: var(--danger); }
-@media (max-width: 640px) { .scan-new-project, .scan-target-row { grid-template-columns: 1fr; } }
+/* several files at once: a row per file in the form, then a row per upload */
+.scan-batch, .scan-batch-runs { list-style: none; margin: 0; padding: 0; }
+.scan-batch { display: flex; flex-direction: column; gap: 8px; }
+.scan-batch li { display: grid; grid-template-columns: minmax(0, 1.2fr) 156px minmax(0, 1fr) 104px 28px; gap: 8px; align-items: center; }
+.scan-batch-head { font-size: 12.5px; color: var(--muted); }
+.scan-batch-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13.5px; }
+.scan-batch-name strong, .scan-batch-name .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scan-batch-name .muted { font-size: 12.5px; }
+.scan-batch-warn { font-size: 12.5px; color: var(--warn); }
+.scan-batch-runs li { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.scan-batch-runs .scan-batch-name { flex: 1; }
+.scan-batch-runs .progress { flex: none; width: 96px; }
+@media (max-width: 640px) {
+  .scan-new-project, .scan-target-row { grid-template-columns: 1fr; }
+  .scan-batch .scan-batch-head { display: none; }
+  .scan-batch li { grid-template-columns: minmax(0, 1fr) 104px 28px; grid-template-areas: "file file x" "kind kind kind" "target ref ref"; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .scan-batch li > :nth-child(1) { grid-area: file; } .scan-batch li > :nth-child(2) { grid-area: kind; } .scan-batch li > :nth-child(3) { grid-area: target; }
+  .scan-batch li > :nth-child(4) { grid-area: ref; } .scan-batch li > :nth-child(5) { grid-area: x; }
+  .scan-batch-runs li { flex-wrap: wrap; }
+  .scan-batch-runs .scan-batch-name { flex-basis: 100%; }
+}

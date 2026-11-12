@@ -150,6 +150,30 @@ L.run(async () => {
   await dlg.getByRole("button", { name: "삭제" }).click();
   await page.getByText('대상 "relapp-web"을(를) 삭제했습니다.').waitFor();
   L.ok(!(await kim.api.get("/projects/e2e-scan/targets")).some((x) => x.id === r1.t.id) && await projOpen() === open0, "a target can be deleted, and the project's open count drops with it");
+  // several files at once: a row per file and a scan each; two files for one target are refused before anything goes up
+  await page.goto(L.BASE + "/scan");
+  await page.waitForFunction(() => document.querySelector(".scan-form select").value === "e2e-scan");
+  await page.locator('input[type="file"]').setInputFiles([pack("multi-a-2.0", [["package-lock.json", lock]]), pack("multi-b", [["package-lock.json", lock]])]);
+  const rows = page.getByRole("list", { name: "검사할 파일 목록" });
+  const rowB = rows.getByLabel("multi-b.tar.gz 대상 이름");
+  await rowB.waitFor();
+  L.ok(await rows.getByLabel("multi-a-2.0.tar.gz 대상 이름").inputValue() === "multi-a" && await rows.getByLabel("multi-a-2.0.tar.gz 버전").inputValue() === "2.0"
+    && await rows.getByLabel("multi-b.tar.gz 파일 종류").inputValue() === "fs" && await page.getByLabel(/^대상 이름/).count() === 0,
+    "two files picked at once get a row each, with kind, target and version filled in from the file");
+  await rowB.fill("multi-a");
+  await page.getByRole("button", { name: "2개 스캔 시작" }).click();
+  await page.getByText("같은 대상 이름이 두 번 있습니다").waitFor();
+  L.ok(await page.locator(".scan-run").count() === 0 && await rowB.getAttribute("aria-invalid") === "true", "two files for one target are refused before anything is uploaded");
+  await rowB.fill("multi-b");
+  await page.getByRole("button", { name: "2개 스캔 시작" }).click();
+  const many = page.locator(".scan-run");
+  for (const n of ["multi-a", "multi-b"]) await many.getByRole("link", { name: n + " 결과 보기" }).waitFor({ timeout: 120000 });
+  const mt = (await kim.api.get("/projects/e2e-scan/targets")).filter((x) => /^multi-[ab]$/.test(x.name));
+  const ma = mt.length === 2 ? (await kim.api.get(`/projects/e2e-scan/scans?target_id=${mt.find((x) => x.name === "multi-a").id}`)).items : [];
+  L.ok(mt.length === 2 && mt.every((x) => x.counts.open > 0) && ma.length === 1 && ma[0].status === "done" && ma[0].ref === "2.0"
+    && await many.getByText("2개 중 2개를 올렸습니다").count() === 1, "both files were uploaded one after another and scanned as two targets");
+  await L.shot(page, "scan-batch");
+  for (const x of mt) await kim.api.del(`/projects/e2e-scan/targets/${x.id}`); // the suites after this one count this project's findings
   await page.goto(L.BASE + "/scan");
   // the sidebar folds to icons (button and [ key), keeps link names for screen readers, and remembers it
   await page.getByRole("button", { name: "사이드바 접기" }).click();
