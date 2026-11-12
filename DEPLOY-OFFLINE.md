@@ -1,4 +1,4 @@
-# JASCA v1.2.0 — 폐쇄망 배포 / 데이터 보존
+# JASCA v1.2.1 — 폐쇄망 배포 / 데이터 보존
 
 ## 가장 중요한 점
 
@@ -17,7 +17,7 @@
 
 | 파일 | 용도 |
 |---|---|
-| jasca-v1.2.0.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.2.0`만 포함(Trivy 0.76.1 실행 파일 포함) |
+| jasca-v1.2.1.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.2.1`만 포함(Trivy 0.76.1 실행 파일 포함) |
 | postgres-v17.11-jasca1.tar.gz | 별도 선택 이미지 `postgres:v17.11-jasca1` (공식 17.11-bookworm 기반, 쓰지 않는 gosu·snakeoil 키 제거, root로 실행 불가) |
 | jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress. 사내 PostgreSQL 접속 정보까지 이 파일 하나에 적습니다 |
 | postgres.yaml | 사내 DB가 없을 때만 쓰는 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
@@ -34,16 +34,16 @@
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS # 이번에 반입한 파일 검증
-podman load -i jasca-v1.2.0.tar.gz
+podman load -i jasca-v1.2.1.tar.gz
 podman load -i postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
-podman image inspect jasca:v1.2.0 --format '{{.Os}}/{{.Architecture}}'
+podman image inspect jasca:v1.2.1 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 **Podman load만으로 Kubernetes containerd에 이미지가 등록되지는 않습니다.** 실행 가능한 모든 워커의 실제 CRI에 반입하세요.
 
 ```sh
 # 일반 containerd
-sudo ctr -n k8s.io images import jasca-v1.2.0.tar.gz
+sudo ctr -n k8s.io images import jasca-v1.2.1.tar.gz
 sudo ctr -n k8s.io images import postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
 # k3s는 sudo k3s ctr images import, RKE2는 해당 런타임의 socket/ctr 사용.
 ```
@@ -259,7 +259,7 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 
 - 평상시 요청은 200m CPU / 256Mi, 한도는 2 CPU / 2Gi입니다(`jasca.yaml`). Trivy가 스캔 중 메모리를 많이 쓰므로, 큰 이미지나 큰 저장소를 스캔하다 `OOMKilled`가 나면 메모리 한도를 늘리세요. 서버 스캔은 동시에 1건만 처리하고 나머지는 큐에서 기다립니다.
 - **replicas는 1이어야 합니다.** 스캔 큐, 재평가, 알림, 예외 만료, Keycloak 동기화가 프로세스 안에서 돌고 PVC도 ReadWriteOnce입니다. 늘리면 같은 작업이 중복됩니다.
-- 디스크: PVC `jasca-data` 30Gi(Trivy DB 1~2GB + 작업 폴더, 압축 해제 상한 4GiB), `/tmp` emptyDir 2Gi.
+- 디스크: PVC `jasca-data` 30Gi(Trivy DB 1~2GB + 작업 폴더, 압축 해제 상한 4GiB), `/tmp` emptyDir 2Gi. 스캔은 한 번에 하나씩 돌고, 올린 파일은 차례가 올 때까지 작업 폴더에서 기다렸다가 스캔이 끝나면 지워집니다. 큰 파일을 여러 개씩 올리는 환경이면 "기다리는 파일 크기의 합 + 4GiB"가 들어가도록 PVC를 늘리세요.
 - PostgreSQL PVC에는 스캔마다 원본 보고서(gzip으로 저장, 내려받을 때는 JSON)와 패키지 목록이 쌓입니다. **관리 → 보존 기간**의 두 조건(대상당 최근 N개, N일)을 모두 넘긴 스캔은 원본, 패키지 목록, 결과 연결이 지워지고 스캔 기록과 결과(취약점 이력)는 남습니다. 대상의 현재 인벤토리(패키지가 있는 가장 최근 스캔)는 재평가와 사내 권고 매칭에 쓰이므로 항상 남습니다.
 - 크기는 `대상 수 × max(최근 N개, 보존 일수 × 하루 업로드 수) × 스캔 1건`으로 잡으세요. 스캔 1건은 원본 0.1~1MB와 패키지 1,000개당 약 0.3MB입니다. 예: 대상 300개, CI가 하루 5번 올리고 보존 14일이면 300 × 70 × 약 0.8MB ≈ 17GB입니다. 기본값(90일)은 업로드가 잦은 곳에서 20Gi를 넘을 수 있으니 일수를 줄이거나 PVC를 늘리세요.
 - 검사 대상 수백 개 규모를 기준으로 설계했고 2,000개까지는 무리 없이 동작하도록 만들었습니다.
@@ -279,6 +279,7 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 | 부서가 비어 있음 | 위 "첫 로그인에서 부서가 비어 있을 때"를 보세요. |
 | 동기화 실패(관리 → Keycloak 동기화의 마지막 오류) | 서비스 계정 Secret, `view-users` 역할, Issuer URL에 `/realms/`가 있는지 확인하고 **지금 동기화**를 눌러 오류 문구를 봅니다. |
 | 서버 스캔이 "실패"로 끝남 | 스캔 상세의 원인 문구를 먼저 봅니다. "Trivy 실행에 실패했습니다"는 원인이 서버 로그(`server scan <번호>:` 줄)에 있습니다. 제한 시간(**관리 → Trivy DB → 스캔 옵션**에서 정하고, 비워 두면 `JASCA_SCAN_TIMEOUT_MIN`, 기본 15분), 메모리 한도(OOMKilled), 압축 파일 형식(zip, tar, tar.gz만)도 봅니다. |
+| 스캔 파일 업로드가 507 "서버 저장 공간이 부족해 지금은 파일을 받을 수 없습니다" | 데이터 볼륨(`jasca-data`)의 남은 공간이 "올리는 파일 + 압축 해제 상한(`JASCA_MAX_EXTRACT_MB`)"보다 적습니다. 대기 중인 스캔이 끝나면 파일이 지워져 공간이 비니 잠시 뒤 다시 올리면 됩니다. 자주 나오면 PVC를 늘리세요. 남은 공간은 관리자 MCP 도구 `system_status`의 `data_volume`에 나옵니다. |
 | 업로드가 413 | 보고서는 `JASCA_MAX_REPORT_MB`(기본 50), 스캔 파일은 `JASCA_MAX_SCAN_UPLOAD_MB`(기본 2048)가 상한입니다. Ingress `proxy-body-size`도 함께 봅니다. |
 | CI 업로드가 401 | 토큰이 만료·폐기됐거나, 다른 프로젝트의 토큰이거나, 권한 범위에 `upload`가 없습니다. 토큰은 해당 프로젝트 키의 경로에서만 쓸 수 있습니다. |
 | MCP 클라이언트가 `/mcp`에서 401·403 | 401은 MCP 키나 토큰이 틀렸거나 만료·폐기된 것, 또는 키 주인의 계정이 비활성화된 것입니다(클라이언트에 따라 OAuth 등록 오류로 보입니다). 403은 프로젝트 토큰의 권한 범위에 `read`가 없거나 프록시가 다른 사이트의 `Origin` 헤더를 붙이는 경우입니다. 도구 호출이 "Not allowed"로 답하면 키 주인의 역할이나 프로젝트 권한이 모자라거나 읽기 전용 키입니다. |
