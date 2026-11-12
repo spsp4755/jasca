@@ -22,6 +22,7 @@ const ACTION: Record<string, string> = {
   "finding.assign": "결과 담당자 지정", "finding.due": "결과 기한 변경",
   "project.create": "프로젝트 생성", "project.update": "프로젝트 수정", "project.delete": "프로젝트 삭제", "project.members": "프로젝트 멤버 변경",
   "policy.update": "프로젝트 정책 변경", "notify.update": "알림 구독 변경", "token.create": "API 토큰 생성", "token.revoke": "API 토큰 폐기",
+  "mcpkey.create": "MCP 키 생성", "mcpkey.revoke": "MCP 키 폐기",
   "target.rename": "대상 이름 변경", "target.delete": "대상 삭제", "scan.upload": "CI 업로드", "scan.job": "파일 업로드 스캔", "scan.cancel": "스캔 취소", "recheck.start": "재평가 시작",
   "exception.request": "예외 요청", "exception.approve": "예외 승인", "exception.reject": "예외 반려", "exception.revoke": "예외 철회·취소", "exception.expire": "예외 만료",
   "advisory.create": "Advisory 등록", "advisory.update": "Advisory 수정", "advisory.delete": "Advisory 삭제", "advisory.import": "Advisory 가져오기",
@@ -44,6 +45,7 @@ const DETAIL: Record<string, string> = {
   version: "버전", updated_at: "갱신 시각", groups: "그룹 수", users: "사용자 수", principal_kind: "구분", principal: "대상", role: "역할", channel_id: "채널 번호", events: "이벤트",
   role_from_sso: "Keycloak 역할 따름", added: "추가", removed: "제거", changed: "역할 변경", member_count: "멤버 수",
   from: "이전 이름", open: "열린 결과", // target.rename, target.delete
+  key_id: "키 번호", read_only: "읽기 전용", owner: "키 주인", // mcpkey.create, mcpkey.revoke
   // finding.assign, finding.due, sla.update
   finding_id: "결과 번호", finding_ids: "결과 번호", count: "건수", assignee: "담당자", unassigned: "지정 해제", due_at: "기한", auto: "정책 기한으로 되돌림",
   days: "심각도별 기한(일)", recalculated: "기한이 바뀐 결과",
@@ -77,7 +79,7 @@ function targetText(e: AuditEntry): string {
 }
 const code = (k: string, v: unknown) => (typeof v !== "string" ? String(v) : k === "was" ? statusLabel(v) : CODE[k]?.[v] ?? v);
 const MEMBER_LISTS = new Set(["added", "removed", "changed"]); // project.members: [{name, role, from?}]
-const HIDDEN = new Set(["project_key", "added_more", "removed_more", "changed_more"]); // its own column; folded into the lists
+const HIDDEN = new Set(["project_key", "mcp_key", "added_more", "removed_more", "changed_more"]); // their own column; folded into the lists
 // The server logs that a secret changed, never its value. Should a value ever arrive under such a key, it is not shown.
 const SECRET_KEY = /(secret|password|token|api_?key|credential)$/i;
 
@@ -131,7 +133,10 @@ export default function Audit() {
         <Table<AuditEntry> dense rowKey={(e) => e.id} rows={rows} loading={q.isLoading} caption="감사 로그" empty={<span className="muted">조건에 맞는 기록이 없습니다.</span>}
           columns={[
             { key: "at", header: "시각", nowrap: true, render: (e) => fmtDateTime(e.at) },
-            { key: "who", header: "행위자", nowrap: true, render: who },
+            { key: "who", header: "행위자", nowrap: true, render: (e) => {
+              const key = e.details?.mcp_key; // done by the person's agent through this MCP key
+              return typeof key === "string" ? <span className="member">{who(e)}<span className="tag tag-quiet" title={`MCP 키 "${key}"로 에이전트가 실행했습니다`}>MCP</span></span> : who(e);
+            } },
             { key: "action", header: "동작", nowrap: true, render: (e) => <span title={e.action}>{ACTION[e.action] ?? e.action}</span> },
             { key: "project", header: "프로젝트", nowrap: true, render: (e) => e.project_key || "-" },
             { key: "target", header: "대상", render: (e) => { const t = targetText(e); return t ? <span className="audit-target" title={t}>{t}</span> : "-"; } },

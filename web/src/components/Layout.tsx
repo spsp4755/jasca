@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthConfig, useLogout, useMe } from "../api/hooks";
 import type { Me } from "../api/types";
 import { SYSTEM_ROLE_LABEL, fmtDept } from "../lib/format";
@@ -182,6 +182,9 @@ function UserMenu({ me }: { me: Me }) {
               {me.depts.filter((d) => !me.depts.some((o) => o.startsWith(`${d}/`))).slice(0, 2).map((d) => <span key={d} className="tag tag-quiet">{fmtDept(d)}</span>)}
             </p>
           </div>
+          <Link to="/account/mcp" className="menu-item" onClick={() => setOpen(false)}>
+            <Icon name="plug" />MCP 키
+          </Link>
           {me.source === "local" && (
             <button type="button" className="menu-item" onClick={() => { setOpen(false); setPw(true); }}>
               <Icon name="key" />비밀번호 바꾸기

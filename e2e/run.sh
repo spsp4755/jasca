@@ -11,7 +11,7 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 case "$JASCA_E2E_PG_DB" in *e2e*) ;; *) echo "JASCA_E2E_PG_DB($JASCA_E2E_PG_DB)에 e2e가 들어 있지 않습니다. 실행할 때마다 이 DB를 지우므로 시험용 DB만 쓰세요." >&2; exit 1;; esac
 DOCKER=${JASCA_E2E_DOCKER:-docker}
 ADDR=${JASCA_E2E_ADDR:-127.0.0.1:18301}
-SUITES=${*:-login projects ingest mcp exceptions advisory scan trivydb admin fixes packages due a11y console}
+SUITES=${*:-login projects ingest mcp mcpkey exceptions advisory scan trivydb admin fixes packages due a11y console}
 [ -d node_modules/axe-core ] || (npm install --no-audit --no-fund >/dev/null)
 [ -z "${JASCA_E2E_LD_LIBRARY_PATH:-}" ] || export LD_LIBRARY_PATH="$JASCA_E2E_LD_LIBRARY_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export JASCA_E2E_BASE="${JASCA_E2E_BASE:-http://localhost:${ADDR##*:}}"

@@ -124,11 +124,16 @@ func (s *server) tokenAuth(ctx context.Context, plain string) (*apiToken, error)
 	return t, nil
 }
 
-// authenticate fills c.User or c.Token. A Bearer header means token auth only; the cookie is then ignored.
-// An invalid credential leaves both nil, and authorize answers 401 on non-public routes.
+// authenticate fills c.User (with c.Key for a personal MCP key) or c.Token. A Bearer header means token or key auth
+// only; the cookie is then ignored. An invalid credential leaves them nil, and authorize answers 401 on non-public
+// routes.
 func (s *server) authenticate(r *http.Request, c *reqCtx) (err error) {
 	if plain, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
-		c.Token, err = s.tokenAuth(r.Context(), strings.TrimSpace(plain))
+		if plain = strings.TrimSpace(plain); strings.HasPrefix(plain, mcpKeyPrefix) {
+			c.User, c.Key, err = s.keyAuth(r.Context(), plain)
+			return err
+		}
+		c.Token, err = s.tokenAuth(r.Context(), plain)
 		return err
 	}
 	if ck, e := r.Cookie(sessionCookie); e == nil {

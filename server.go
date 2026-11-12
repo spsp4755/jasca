@@ -40,9 +40,11 @@ type server struct {
 // reqCtx is what the middleware learned about the caller. User and Token are never both set.
 type reqCtx struct {
 	User    *user     // nil for token and anonymous requests
-	Token   *apiToken // set for Bearer requests
+	Token   *apiToken // set for Bearer requests with a project API token
+	Key     *mcpKey   // set, with User, for Bearer requests with a personal MCP key
 	Project *project  // set by proj, upload and obj perms
 	Role    string    // the user's role on Project ("" for tokens)
+	Scope   int64     // MCP only: the one project this tool call may see (callerProjectsSQL); 0 = whatever User sees
 	IP      string
 }
 
@@ -127,7 +129,7 @@ func (s *server) handle(pattern string, p perm, h func(w http.ResponseWriter, r 
 	if err := p.validate(); err != nil {
 		panic(fmt.Sprintf("route %q: %v", pattern, err))
 	}
-	s.routes = append(s.routes, routeInfo{pattern, p})
+	s.routes = append(s.routes, routeInfo{pattern, p, h})
 	s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		c := &reqCtx{IP: clientIP(r)}
 		if err := s.authenticate(r, c); err != nil {
@@ -136,9 +138,19 @@ func (s *server) handle(pattern string, p perm, h func(w http.ResponseWriter, r 
 			return
 		}
 		safe := r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS"
-		if !safe && c.Token == nil && !sameOrigin(r, c.User != nil) {
+		if !safe && c.Token == nil && c.Key == nil && !sameOrigin(r, c.User != nil) {
 			writeErr(w, 403, "csrf", "다른 사이트에서 보낸 요청은 처리하지 않습니다.")
 			return
+		}
+		if c.Key != nil && p.kind != "public" { // a personal key is for /mcp; over REST it only uploads
+			if !p.key {
+				writeErr(w, 403, "forbidden", "MCP 키는 MCP 주소(/mcp)와 스캔 업로드에만 쓸 수 있습니다.")
+				return
+			}
+			if c.Key.ReadOnly {
+				writeErr(w, 403, "forbidden", "읽기 전용 MCP 키로는 올릴 수 없습니다. 읽기 전용이 아닌 키를 쓰세요.")
+				return
+			}
 		}
 		if !s.authorize(w, r, p, c) {
 			return

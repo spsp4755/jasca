@@ -19,14 +19,16 @@ type perm struct {
 	kind string // public user admin security proj upload obj
 	role string // proj and obj: viewer member owner
 	obj  string // obj: the object kind, resolved by a registerObj resolver from the {id} path value
+	key  bool   // a personal MCP key may call this route over REST (the uploads); everything else it does through /mcp
 }
 
 var (
 	permPublic   = perm{kind: "public"}
 	permUser     = perm{kind: "user"}
 	permAdmin    = perm{kind: "admin"}
-	permSecurity = perm{kind: "security"} // security or admin
-	permUpload   = perm{kind: "upload"}   // proj:member, or an API token with upload scope for the {key} project
+	permSecurity = perm{kind: "security"}          // security or admin
+	permUpload   = perm{kind: "upload", key: true} // proj:member, or an API token with upload scope for the {key} project
+	permScanJob  = perm{kind: "proj", role: "member", key: true}
 )
 
 func permProj(role string) perm      { return perm{kind: "proj", role: role} }
@@ -51,6 +53,7 @@ func (p perm) validate() error {
 type routeInfo struct {
 	pattern string
 	perm    perm
+	h       func(w http.ResponseWriter, r *http.Request, c *reqCtx) // run in-process by the MCP tools (mcpCall.api)
 }
 
 type user struct {
@@ -155,17 +158,17 @@ func (s *server) visibleProjectsSQL(u *user, alias string, argN int) (cond strin
 		memberMatchSQL(fmt.Sprintf("$%d::bigint", argN)) + ")", []any{u.ID}
 }
 
-// callerProjectsSQL is visibleProjectsSQL for the caller of a handler that the MCP tools also run (mcp.go): there the
-// caller is an API token, which sees exactly its own project. Over REST these handlers never see a token, because
-// their permUser refuses one.
+// callerProjectsSQL is visibleProjectsSQL for the caller of a handler that the MCP tools also run (mcp.go): a tool
+// call about one project (c.Scope: an API token's own project, or the project argument of a personal key's call)
+// sees exactly that project. Over REST Scope is never set.
 func (s *server) callerProjectsSQL(c *reqCtx, alias string, argN int) (cond string, args []any) {
-	if c.Token == nil {
+	if c.Scope == 0 {
 		return s.visibleProjectsSQL(c.User, alias, argN)
 	}
 	if !sqlAliasRe.MatchString(alias) {
 		panic("callerProjectsSQL: bad alias " + alias)
 	}
-	return fmt.Sprintf("%s.project_id = $%d", alias, argN), []any{c.Token.ProjectID}
+	return fmt.Sprintf("%s.project_id = $%d", alias, argN), []any{c.Scope}
 }
 
 func rankRole(r string) int {

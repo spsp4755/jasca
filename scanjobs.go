@@ -24,7 +24,7 @@ func init() { routeRegistrars = append(routeRegistrars, (*server).scanJobRoutes)
 
 func (s *server) scanJobRoutes() {
 	s.registerJob("server_scan", s.runServerScan)
-	s.handle("POST /api/v1/projects/{key}/scan-jobs", permProj("member"), s.handleScanJobCreate)
+	s.handle("POST /api/v1/projects/{key}/scan-jobs", permScanJob, s.handleScanJobCreate)
 	s.handle("POST /api/v1/scans/{id}/cancel", permObj("scan", "member"), s.handleScanCancel)
 }
 

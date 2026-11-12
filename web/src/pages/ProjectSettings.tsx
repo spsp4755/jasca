@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, type ApiError } from "../api/client";
 import { useApi } from "../api/hooks";
 import { SEVERITIES, type ApiToken, type Channel, type Member, type NotifySub, type Policy, type Project, type ProjectRole, type Severity } from "../api/types";
@@ -173,10 +173,10 @@ function Tokens({ project }: { project: Project }) {
   );
 }
 
-// What the server's MCP tools do (mcp.go), one line each for the person setting up an agent.
+// What the server's MCP tools do for a project API token (mcp.go), one line each for the person setting up an agent.
 const MCP_TOOLS: [string, string][] = [
-  ["project_summary", "프로젝트 요약: 심각도별 열린 결과 수, 대상 수, 마지막 스캔 시각, 정책 기준"],
-  ["list_findings", "결과 목록. 심각도·상태·종류·대상·검색어·조치 버전 유무로 거릅니다"],
+  ["project_summary", "프로젝트 요약: 심각도별 열린 결과 수, 기한 지난 결과 수, 대상 수, 마지막 스캔 시각, 정책 기준"],
+  ["list_findings", "결과 목록. 심각도·상태·종류·대상·담당자·검색어·조치 버전 유무로 거릅니다"],
   ["list_fixes", "조치 계획: 어떤 패키지를 어느 버전으로 올리면 열린 취약점 몇 건이 해결되는지"],
   ["get_finding", "결과 한 건의 상세: 위치, 설치·조치 버전, 예외 상태"],
   ["get_vulnerability", "취약점(CVE) 설명, CVSS, 참고 링크와 이 프로젝트에서 영향받는 대상"],
@@ -193,30 +193,41 @@ function Mcp({ project, owner }: { project: Project; owner: boolean }) {
   const config = JSON.stringify({ mcpServers: { [`jasca-${project.key}`]: { type: "http", url, headers: { Authorization: "Bearer <토큰>" } } } }, null, 2);
   const copy = async (text: string, what: string) => toast((await copyText(text)) ? `${what} 복사했습니다.` : "복사하지 못했습니다. 직접 선택해 복사하세요.", "info");
   return (
-    <Section id="mcp" title="MCP 연동" meta="AI 에이전트가 이 프로젝트를 조회하는 주소">
+    <Section id="mcp" title="MCP 연동" meta="AI 에이전트가 JASCA를 쓰는 두 가지 방법">
       <div className="ci">
-        <p className="mcp-lead">
-          AI 코딩·보안 에이전트를 MCP(Model Context Protocol)로 연결하면 에이전트가 이 프로젝트의 결과, 대상, 스캔, 예외, 패키지 목록을 직접 조회합니다.
-          조회만 할 수 있으며, <b>읽기</b> 권한이 있는 {owner ? <a href="#tokens">API 토큰</a> : "API 토큰"}이 필요합니다{!owner && "(프로젝트 소유자가 만듭니다)"}.
-        </p>
-        <div className="secret-box">
-          <code className="mono">{url}</code>
-          <Button size="sm" icon="copy" onClick={() => copy(url, "주소를")}>주소 복사</Button>
+        <div className="mcp-way">
+          <h3>내 MCP 키로 연결 <span className="tag">권장</span></h3>
+          <p className="mcp-lead">
+            에이전트가 <b>내 권한</b>으로 일합니다. 이 프로젝트뿐 아니라 내가 볼 수 있는 모든 프로젝트를 조회하고, 내 역할이 허용하는 범위에서
+            스캔 업로드, 담당자·기한 지정, 예외 요청, 멤버 관리까지 할 수 있습니다. 키로 한 일은 감사 기록에 내 이름으로 남습니다.
+          </p>
+          <div><Link to="/account/mcp" className="btn btn-secondary btn-sm"><Icon name="plug" />MCP 키 만들기·연결 방법</Link></div>
         </div>
-        <div className="ci-code">
-          <pre aria-label="MCP 클라이언트 설정"><code>{config}</code></pre>
-          <Button size="sm" icon="copy" className="ci-copy" onClick={() => copy(config, "설정을")}>복사</Button>
-        </div>
-        <ul className="ci-notes">
-          <li>Streamable HTTP(<code>type: "http"</code>)를 지원하는 MCP 클라이언트의 설정 파일에 넣고, <code>&lt;토큰&gt;</code>을 토큰 값으로 바꾸세요.</li>
-          <li>토큰이 속한 프로젝트만 보입니다. 다른 프로젝트는 그 프로젝트의 토큰으로 따로 연결하세요.</li>
-        </ul>
+        <details className="mcp-way">
+          <summary>프로젝트 API 토큰으로 연결 (이 프로젝트만 조회)</summary>
+          <p className="mcp-lead">
+            사람 계정과 묶이지 않는 봇이나 CI에 씁니다. <b>읽기</b> 권한이 있는 {owner ? <a href="#tokens">API 토큰</a> : "API 토큰"}으로
+            이 프로젝트의 결과, 대상, 스캔, 예외, 패키지 목록을 조회만 합니다{!owner && "(토큰은 프로젝트 소유자가 만듭니다)"}.
+          </p>
+          <div className="secret-box">
+            <code className="mono">{url}</code>
+            <Button size="sm" icon="copy" onClick={() => copy(url, "주소를")}>주소 복사</Button>
+          </div>
+          <div className="ci-code">
+            <pre aria-label="MCP 클라이언트 설정"><code>{config}</code></pre>
+            <Button size="sm" icon="copy" className="ci-copy" onClick={() => copy(config, "설정을")}>복사</Button>
+          </div>
+          <ul className="ci-notes">
+            <li>Streamable HTTP(<code>type: "http"</code>)를 지원하는 MCP 클라이언트의 설정 파일에 넣고, <code>&lt;토큰&gt;</code>을 토큰 값으로 바꾸세요.</li>
+            <li>토큰이 속한 프로젝트만 보입니다. 다른 프로젝트는 그 프로젝트의 토큰으로 따로 연결하세요.</li>
+          </ul>
+          <Table<[string, string]> caption="프로젝트 토큰의 MCP 도구" rows={MCP_TOOLS} rowKey={(t) => t[0]} dense
+            columns={[
+              { key: "name", header: "도구", width: 190, mono: true, render: (t) => t[0] },
+              { key: "desc", header: "에이전트가 할 수 있는 일", render: (t) => t[1] },
+            ]} />
+        </details>
       </div>
-      <Table<[string, string]> caption="MCP 도구" rows={MCP_TOOLS} rowKey={(t) => t[0]} dense
-        columns={[
-          { key: "name", header: "도구", width: 190, mono: true, render: (t) => t[0] },
-          { key: "desc", header: "에이전트가 할 수 있는 일", render: (t) => t[1] },
-        ]} />
     </Section>
   );
 }

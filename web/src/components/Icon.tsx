@@ -32,6 +32,7 @@ const PATHS = {
   table: "M3.5 5h17v14h-17zM3.5 10h17M3.5 14.5h17M9.5 10v9",
   chart: "M4 4v16h16M7.5 15l3.5-4 3 2.5 5-6.5",
   key: "M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM12 12v9M12 17h3M12 20h2",
+  plug: "M9 3v5M15 3v5M6.5 8h11v3.5a5.5 5.5 0 0 1-11 0zM12 17v4",
 } as const;
 
 export type IconName = keyof typeof PATHS;

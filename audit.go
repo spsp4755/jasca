@@ -110,6 +110,9 @@ func (s *server) audit(ctx context.Context, c *reqCtx, action string, projectID 
 	if details == nil {
 		details = map[string]any{}
 	}
+	if c != nil && c.Key != nil { // done by the person's agent, not by the person in the browser
+		details["mcp_key"] = c.Key.Name
+	}
 	_, err := s.db.Exec(context.WithoutCancel(ctx), `insert into audit_log(actor_user, actor_token, ip, action, project_id, target, details)
 		values($1, $2, $3, $4, $5, $6, $7::jsonb || coalesce((select jsonb_build_object('project_key', key) from projects where id = $5), '{}'))`,
 		userID, tokenID, ip, action, projectID, target, details)

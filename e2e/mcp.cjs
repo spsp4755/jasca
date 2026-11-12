@@ -7,15 +7,17 @@ L.run(async () => {
   const page = kim.page;
   const key = "e2e-proj";
 
-  // project settings: endpoint, client config, tool list
+  // project settings: the personal key comes first, the project token's endpoint, client config and tool list are folded below it
   await page.goto(`${L.BASE}/projects/${key}/settings`);
   const sec = page.locator("#mcp");
   await sec.getByRole("heading", { name: "MCP 연동" }).waitFor();
+  L.ok(await sec.getByRole("link", { name: /MCP 키 만들기/ }).getAttribute("href") === "/account/mcp", "the section leads to the personal MCP keys first");
+  await sec.locator("summary").click();
   const url = (await sec.locator(".secret-box code").innerText()).trim();
   L.ok(url === L.BASE + "/mcp", `settings show the MCP endpoint (${url})`);
   const server = JSON.parse(await sec.locator("pre").innerText()).mcpServers[`jasca-${key}`];
   L.ok(server.type === "http" && server.url === url && server.headers.Authorization === "Bearer <토큰>", "client config names the project, the endpoint and the token header");
-  const shown = await sec.getByRole("table", { name: "MCP 도구" }).locator("tbody tr td:first-child").allInnerTexts();
+  const shown = await sec.getByRole("table", { name: "프로젝트 토큰의 MCP 도구" }).locator("tbody tr td:first-child").allInnerTexts();
   await sec.getByRole("link", { name: "API 토큰" }).click();
   L.ok(new URL(page.url()).hash === "#tokens", "the token link goes to the API token section");
   await L.shot(page, "mcp-settings");

@@ -51,6 +51,17 @@ export interface ApiToken {
 export interface TokenCreate { name: string; scopes: TokenScope[]; expires_at: string }
 /** `token` is plaintext and only ever returned here. */
 export interface TokenCreated { id: number; token: string }
+/** A personal MCP key: the agent that presents it acts as its user. */
+export interface McpKey {
+  id: number; user_id: number; name: string; prefix: string; read_only: boolean; expires_at: string; last_used_at: string | null;
+  created_at: string; revoked_at: string | null;
+}
+/** The administrator's view of everyone's keys. */
+export interface AdminMcpKey extends McpKey { username: string; user_name: string; user_active: boolean }
+/** `key` is plaintext and only ever returned here. */
+export interface McpKeyCreated { id: number; key: string }
+/** One MCP tool as the key page lists it; disabled = not for the signed-in person's role. */
+export interface McpToolInfo { name: string; title: string; group: "user" | "security" | "admin"; write: boolean; disabled: boolean }
 export interface Policy { enabled: boolean; min_severity: Severity; max_count: number; new_only: boolean; fixable_only: boolean }
 export interface NotifySub { channel_id: number; events: string[] }
 export interface Target {

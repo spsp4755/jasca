@@ -3,8 +3,9 @@ import PageHeader from "../../components/PageHeader";
 import Table from "../../components/Table";
 import { useApi, useMe } from "../../api/hooks";
 import { api } from "../../api/client";
-import { SYSTEM_ROLE_LABEL, fmtDept, fmtRelative } from "../../lib/format";
-import type { AdminUser, AdminUserPatch, SystemRole } from "../../api/types";
+import Button from "../../components/Button";
+import { SYSTEM_ROLE_LABEL, fmtDate, fmtDateTime, fmtDept, fmtRelative } from "../../lib/format";
+import type { AdminMcpKey, AdminUser, AdminUserPatch, SystemRole } from "../../api/types";
 import { Loading, useSave } from "./parts";
 
 export default function Users() {
@@ -50,6 +51,37 @@ export default function Users() {
                 onChange={(e) => patch.mutate({ id: u.id, active: e.target.checked })} />) },
           ]} />
       </div>
+      <McpKeys filter={f} />
     </>
+  );
+}
+
+/** Everyone's personal MCP keys: who has an agent connected, and the way to cut one off. The user search narrows it too. */
+function McpKeys({ filter }: { filter: string }) {
+  const q = useApi<AdminMcpKey[]>("/admin/mcp-keys");
+  const revoke = useSave((id: number) => api.del(`/admin/mcp-keys/${id}`), { ok: "키를 폐기했습니다.", invalidate: ["/admin/mcp-keys"] });
+  const now = Date.now();
+  const state = (k: AdminMcpKey) => (k.revoked_at ? "폐기됨" : new Date(k.expires_at).getTime() <= now ? "만료됨" : !k.user_active ? "계정 비활성" : "");
+  const rows = (q.data ?? []).filter((k) => !filter || [k.username, k.user_name, k.name].some((s) => s?.toLowerCase().includes(filter)))
+    .sort((a, b) => Number(!!state(a)) - Number(!!state(b)) || b.id - a.id);
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h2>MCP 키 {q.data ? `(${rows.length})` : ""}</h2>
+        <span className="panel-meta">사용자가 AI 에이전트 연결용으로 만든 개인 키입니다. 키는 그 사용자의 권한으로 동작하고, 계정을 비활성화하면 함께 멈춥니다.</span>
+      </div>
+      <Loading q={q} />
+      <Table<AdminMcpKey> dense rowKey={(k) => k.id} rows={rows} loading={q.isLoading} caption="전체 사용자의 MCP 키" empty={<span className="muted">만들어진 키가 없습니다.</span>}
+        columns={[
+          { key: "user", header: "사용자", render: (k) => <><b>{k.user_name || k.username}</b><div className="muted">{k.username}</div></> },
+          { key: "name", header: "키", render: (k) => <span className="token-name"><b>{k.name}</b><span className="mono muted">{k.prefix}…</span></span> },
+          { key: "kind", header: "종류", nowrap: true, render: (k) => <span className={`tag${k.read_only ? " tag-quiet" : ""}`}>{k.read_only ? "읽기 전용" : "조회·변경"}</span> },
+          { key: "used", header: "마지막 사용", nowrap: true, render: (k) => (k.last_used_at ? <span title={fmtDateTime(k.last_used_at)}>{fmtRelative(k.last_used_at)}</span> : <span className="muted">없음</span>) },
+          { key: "exp", header: "만료", nowrap: true, render: (k) => (state(k) ? <span className="muted">{state(k)}</span> : fmtDate(k.expires_at)) },
+          { key: "act", header: <span className="sr-only">폐기</span>, align: "right", render: (k) => (!k.revoked_at && new Date(k.expires_at).getTime() > now && (
+            <Button size="sm" variant="ghost" loading={revoke.isPending && revoke.variables === k.id}
+              onClick={() => confirm(`${k.user_name || k.username}(${k.username}) 사용자의 "${k.name}" 키를 폐기할까요? 이 키를 쓰는 에이전트는 바로 연결이 끊깁니다.`) && revoke.mutate(k.id)}>폐기</Button>)) },
+        ]} />
+    </div>
   );
 }

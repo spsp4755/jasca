@@ -153,42 +153,74 @@ Harbor에서 스캔이 끝나면 자동으로 들어옵니다(관리자가 연�
 - **취약점 상세 → 내 프로젝트 기준 안내 받기**: 이 취약점의 요약과, 내가 볼 수 있는 프로젝트의 패키지·버전에 맞춘 조치 순서를 만듭니다. 일반 설명은 취약점별로 저장되고 "내 프로젝트" 부분은 요청할 때마다 내 권한 범위로 새로 만듭니다.
 - AI는 사내 LLM만 사용하고 결과를 자동으로 반영하지 않습니다. 내용은 사람이 확인하세요.
 
-## MCP로 조회하기
+## MCP로 에이전트 연결하기
 
-AI 코딩·보안 에이전트(MCP 클라이언트)를 JASCA에 연결하면 에이전트가 프로젝트의 결과, 조치 계획, 대상, 스캔 기록, 예외, 패키지 목록을 직접 조회합니다. 예를 들어 에이전트에게 "이 프로젝트의 열린 CRITICAL 취약점과 조치 버전을 정리해 줘"나 "무엇부터 올리면 되는지 알려 줘"라고 시킬 수 있습니다. **조회만** 할 수 있고, 토큰이 속한 **프로젝트 하나만** 보입니다.
+AI 코딩·보안 에이전트(MCP 클라이언트)를 JASCA에 연결하면 에이전트가 JASCA를 직접 씁니다. 예를 들어 "내 담당 중에 기한 지난 것부터 정리해 줘", "이 프로젝트에서 무엇부터 올리면 되는지 알려 줘", "방금 빌드한 보고서를 올리고 정책을 통과했는지 봐 줘"라고 시킬 수 있습니다. 연결 방법은 두 가지입니다.
 
-1. 프로젝트 **설정 → API 토큰**에서 **읽기**(`read`) 권한 토큰을 만듭니다(소유자). 업로드 권한만 있는 CI 토큰으로는 연결되지 않습니다.
-2. **설정 → MCP 연동**에서 주소(`https://<접속 주소>/mcp`)나 설정 예시를 복사해 MCP 클라이언트 설정에 넣고 `<토큰>`을 토큰 값으로 바꿉니다.
+| | 내 MCP 키 (권장) | 프로젝트 API 토큰 |
+|---|---|---|
+| 누구로 동작하나 | **나** (지금의 내 권한 그대로) | 사람과 무관한 토큰 |
+| 보이는 범위 | 내가 볼 수 있는 모든 프로젝트 | 그 프로젝트 하나 |
+| 할 수 있는 일 | 조회, 프로젝트 만들기, 업로드, 담당자·기한, 예외 요청 등. 역할에 따라 예외 승인과 운영 도구까지 | 조회만 (도구 10개) |
+| 만드는 곳 | 오른쪽 위 사용자 메뉴 → **MCP 키** | 프로젝트 **설정 → API 토큰** (소유자) |
+
+### 내 MCP 키로 연결
+
+1. 오른쪽 위 사용자 메뉴에서 **MCP 키**를 열고 **키 만들기**를 누릅니다. 이름(어느 에이전트·기기에서 쓰는지), **조회·변경** 또는 **읽기 전용**, 만료일(최대 1년)을 정합니다.
+2. 키 값(`jsu_…`)은 **만들 때 한 번만** 보입니다. 같은 창에 키가 채워진 MCP 클라이언트 설정이 함께 나오니 복사해 에이전트의 설정 파일에 넣습니다.
 
 ```json
 {
   "mcpServers": {
-    "jasca-<키>": {
+    "jasca": {
       "type": "http",
       "url": "https://jasca.example.internal/mcp",
-      "headers": { "Authorization": "Bearer <토큰>" }
+      "headers": { "Authorization": "Bearer <MCP 키>" }
     }
   }
 }
 ```
 
-| 도구 | 에이전트가 할 수 있는 일 |
-|---|---|
-| `project_summary` | 프로젝트 요약: 심각도별 열린 결과 수, 대상 수, 마지막 스캔 시각, 정책 기준 |
-| `list_findings` | 결과 목록. 심각도, 상태, 종류, 대상, 검색어, 조치 버전 유무, 기한 지남(`overdue`)으로 거릅니다. 담당자와 기한이 함께 나옵니다 |
-| `list_fixes` | 조치 계획: 어떤 패키지를 어느 버전으로 올리면 열린 취약점 몇 건이 해결되는지, 조치 버전이 아직 없는 패키지 |
-| `get_finding` | 결과 한 건의 상세: 위치, 설치·조치 버전, 담당자와 기한, 예외 상태 |
-| `get_vulnerability` | 취약점(CVE) 설명, CVSS, 참고 링크와 이 프로젝트에서 영향받는 대상 |
-| `list_targets` | 대상 목록: 종류, 마지막 스캔 시각, 심각도별 열린 결과 수 |
-| `list_scans` | 최근 스캔: 상태, 결과 수, 정책 통과·실패와 그 이유 |
-| `get_scan` | 스캔 한 건과 직전 스캔 대비 새 결과·해결·그대로인 결과 수 |
-| `list_exceptions` | 예외 목록: 범위, 처리 방식, 상태, 요청자, 만료일 |
-| `search_packages` | 패키지 찾기: 이름과 버전 조건으로 대상별 최신 패키지 목록에서 찾고, 패키지별 열린 취약점 수를 알려 줍니다 |
+- 에이전트는 **지금의 내 권한**으로 일합니다. 내 역할이나 프로젝트 멤버 구성이 바뀌면 키를 다시 만들지 않아도 다음 요청부터 반영되고, 계정이 비활성화되면 키도 멈춥니다. 화면에서 내가 할 수 없는 일은 에이전트도 할 수 없습니다.
+- **읽기 전용** 키는 조회 도구만 씁니다. 처음 써 보는 에이전트나 조회만 필요한 곳에는 이 키를 쓰세요.
+- 키로 한 일은 감사 로그에 **내 이름**으로 남고, 어느 키로 했는지도 함께 기록됩니다. 조회는 기록하지 않고 키 목록의 **마지막 사용**에 나타납니다.
+- 키는 계정당 20개까지 쓸 수 있습니다. 에이전트마다 따로 만들면 하나만 폐기할 수 있습니다. 유출이 의심되면 **MCP 키** 화면에서 바로 폐기하세요(관리자도 폐기할 수 있습니다).
+- 키는 MCP 주소(`/mcp`)와 스캔 업로드에만 쓸 수 있고, 그 밖의 API에서는 거부됩니다.
+
+**MCP 키** 화면 아래의 표에 내 역할로 쓸 수 있는 도구가 모두 나옵니다. 묶어 보면 이렇습니다.
+
+| 누가 | 조회 | 변경 (읽기 전용 키는 못 씀) |
+|---|---|---|
+| 모든 사용자 | `whoami`, `list_projects`, `project_summary`, `list_findings`, `list_fixes`, `get_finding`, `get_vulnerability`, `list_targets`, `list_scans`, `get_scan`, `list_exceptions`, `search_packages`, `list_members`, `find_users`, `list_audit_log`(소유한 프로젝트), `list_advisories`, `upload_commands` | `create_project`, `update_project`, `set_member`, `set_policy`, `rename_target`, `delete_target`, `upload_report`, `cancel_scan`, `update_finding`, `assign_findings`, `request_exception`, `revoke_exception` |
+| 보안 담당 | 위와 같음 (모든 프로젝트가 보임) | 위 + `decide_exception`(예외 승인·반려), `create_advisory`(사내 Advisory 등록) |
+| 관리자 | 위 + `system_status`, `get_server_logs`, `list_all_scans`, `list_notifications`, `list_users`, `list_mcp_keys`, `get_settings`, `list_harbor_unmapped` | 위 + `update_user`, `revoke_mcp_key`, `run_keycloak_sync`, `start_recheck`, `assign_harbor_image` |
+
+- 프로젝트를 다루는 도구는 `project`(프로젝트 키)를 받습니다. `list_findings`, `list_exceptions`, `search_packages`, `get_vulnerability`는 `project`를 생략하면 내가 볼 수 있는 모든 프로젝트에서 찾습니다. `list_findings`에 `assignee: "me"`와 `overdue: true`를 주면 "내 담당 중 기한 지난 것"입니다.
+- 소유자만 할 수 있는 일(`update_project`, `set_member`, `set_policy`, `rename_target`, `delete_target`)과 멤버 이상만 할 수 있는 일(업로드, 담당자·기한)은 화면과 같은 규칙으로 막힙니다. 막히면 에이전트가 이유를 한국어 안내와 함께 받습니다.
+- `delete_target`은 되돌릴 수 없습니다. 에이전트의 도구 승인 설정을 켜 두고, 삭제는 직접 확인한 뒤 승인하세요.
+
+**파일 올리기**: 소스 묶음이나 이미지 파일은 MCP로 보낼 수 없어 에이전트가 `curl`로 올립니다. 에이전트를 실행하는 환경에 같은 키를 `JASCA_MCP_KEY` 환경 변수로 넣어 두면, 에이전트가 `upload_commands` 도구로 명령을 받아 실행합니다. 작은 스캐너 보고서(약 4MB까지)는 `upload_report` 도구로 바로 올릴 수 있습니다.
+
+```sh
+# 소스 묶음을 서버에서 스캔 (upload_commands가 알려 주는 명령)
+curl -fsS -H "Authorization: Bearer $JASCA_MCP_KEY" -F kind=fs -F target=app -F ref=1.2 -F file=@app.tar.gz \
+  https://jasca.example.internal/api/v1/projects/<키>/scan-jobs
+```
+
+### 프로젝트 API 토큰으로 연결
+
+사람 계정과 묶이지 않는 봇이나 CI가 프로젝트 하나를 **조회만** 할 때 씁니다.
+
+1. 프로젝트 **설정 → API 토큰**에서 **읽기**(`read`) 권한 토큰을 만듭니다(소유자). 업로드 권한만 있는 CI 토큰으로는 연결되지 않습니다.
+2. **설정 → MCP 연동 → 프로젝트 API 토큰으로 연결**을 펼쳐 주소(`https://<접속 주소>/mcp`)나 설정 예시를 복사하고 `<토큰>`을 토큰 값으로 바꿉니다. 설정 형식은 위와 같고 `Authorization`에 토큰(`jsc_…`)을 넣습니다.
+
+쓸 수 있는 도구는 `project_summary`, `list_findings`, `list_fixes`, `get_finding`, `get_vulnerability`, `list_targets`, `list_scans`, `get_scan`, `list_exceptions`, `search_packages` 열 개이고 `project` 인자가 없습니다(토큰의 프로젝트만 보입니다). 다른 프로젝트의 결과나 스캔 번호를 물으면 "없음"으로 답합니다.
+
+### 공통
 
 - 전송 방식은 Streamable HTTP입니다(요청마다 JSON으로 한 번 응답, SSE와 OAuth 로그인은 쓰지 않음). MCP 규격 2026-07-28과 그 이전의 2025-11-25, 2025-06-18, 2025-03-26 클라이언트를 모두 받습니다.
-- 여러 프로젝트를 보려면 프로젝트마다 토큰을 만들어 따로 연결합니다. 다른 프로젝트의 결과나 스캔 번호를 물으면 "없음"으로 답합니다.
-- 에이전트의 조회는 화면 조회와 마찬가지로 감사 로그에 남지 않고, 토큰 목록의 **마지막 사용**에 나타납니다. 토큰 하나는 1분에 300번까지 요청할 수 있습니다.
-- 취약점 설명과 제목은 스캐너 보고서에서 온 글입니다. 에이전트가 그 글을 지시로 받아들이지 않도록 에이전트 쪽의 도구 승인 설정을 켜 두세요.
+- 키나 토큰 하나는 1분에 300번까지 요청할 수 있습니다.
+- 취약점 설명과 제목은 스캐너 보고서에서 온 글입니다. 에이전트가 그 글을 지시로 받아들이지 않도록 에이전트 쪽의 도구 승인 설정을 켜 두세요. 변경 도구를 쓸 수 있는 키라면 더 그렇습니다.
 
 ## 알림 받기
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -109,7 +110,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	time.Local = time.UTC // pgx returns timestamptz in time.Local; JSON times must be UTC (display zone is cfg.Loc)
+	time.Local = time.UTC                                // pgx returns timestamptz in time.Local; JSON times must be UTC (display zone is cfg.Loc)
+	log.SetOutput(io.MultiWriter(os.Stderr, &serverLog)) // the administrator's get_server_logs tool reads the copy
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	db, err := openDB(ctx, cfg.DatabaseURL, cfg.DBSchema)

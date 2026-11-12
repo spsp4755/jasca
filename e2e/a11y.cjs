@@ -57,6 +57,11 @@ L.run(async () => {
   await both(p, "assign dialog");
   await visit(p, "/findings?assignee=me&due=overdue&sort=due", "findings by assignee and deadline");
   await visit(p, "/packages", "packages");
+  await visit(p, "/account/mcp", "MCP keys", () => p.getByRole("table", { name: "MCP 도구" }).locator("tbody tr").first().waitFor());
+  await p.getByRole("button", { name: "키 만들기" }).first().click();
+  await p.getByRole("dialog", { name: "MCP 키 만들기" }).waitFor();
+  await both(p, "MCP key dialog");
+  await p.keyboard.press("Escape");
   await visit(p, "/packages?q=ssl&version=%3C99", "package search result", () => p.getByRole("table", { name: "찾은 패키지" }).waitFor());
   await visit(p, "/vulns/CVE-2022-37434", "vuln");
   await visit(p, "/scan", "scan upload");

@@ -28,6 +28,7 @@ import ProjectReport from "./pages/ProjectReport";
 import Reports from "./pages/Reports";
 import ScanNew from "./pages/ScanNew";
 import Login from "./pages/Login";
+import McpKeys from "./pages/McpKeys";
 import NotFound from "./pages/NotFound";
 import Packages from "./pages/Packages";
 
@@ -48,6 +49,7 @@ export const pages: RouteObject[] = [
   { path: "advisories/:id", element: <AdvisoryEdit /> },
   { path: "reports", element: <Reports /> },
   { path: "reports/:key", element: <ProjectReport /> },
+  { path: "account/mcp", element: <McpKeys /> }, // not /mcp: that is the MCP endpoint itself
   // admin
   {
     path: "admin", element: <AdminLayout />,
