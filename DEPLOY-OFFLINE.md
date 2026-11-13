@@ -1,4 +1,4 @@
-# JASCA v1.2.1 — 폐쇄망 배포 / 데이터 보존
+# JASCA v1.2.2 — 폐쇄망 배포 / 데이터 보존
 
 ## 가장 중요한 점
 
@@ -17,7 +17,7 @@
 
 | 파일 | 용도 |
 |---|---|
-| jasca-v1.2.1.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.2.1`만 포함(Trivy 0.76.1 실행 파일 포함) |
+| jasca-v1.2.2.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.2.2`만 포함(Trivy 0.76.2 실행 파일 포함) |
 | postgres-v17.11-jasca1.tar.gz | 별도 선택 이미지 `postgres:v17.11-jasca1` (공식 17.11-bookworm 기반, 쓰지 않는 gosu·snakeoil 키 제거, root로 실행 불가) |
 | jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress. 사내 PostgreSQL 접속 정보까지 이 파일 하나에 적습니다 |
 | postgres.yaml | 사내 DB가 없을 때만 쓰는 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
@@ -34,16 +34,16 @@
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS # 이번에 반입한 파일 검증
-podman load -i jasca-v1.2.1.tar.gz
+podman load -i jasca-v1.2.2.tar.gz
 podman load -i postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
-podman image inspect jasca:v1.2.1 --format '{{.Os}}/{{.Architecture}}'
+podman image inspect jasca:v1.2.2 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 **Podman load만으로 Kubernetes containerd에 이미지가 등록되지는 않습니다.** 실행 가능한 모든 워커의 실제 CRI에 반입하세요.
 
 ```sh
 # 일반 containerd
-sudo ctr -n k8s.io images import jasca-v1.2.1.tar.gz
+sudo ctr -n k8s.io images import jasca-v1.2.2.tar.gz
 sudo ctr -n k8s.io images import postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
 # k3s는 sudo k3s ctr images import, RKE2는 해당 런타임의 socket/ctr 사용.
 ```
@@ -293,4 +293,4 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 
 ## 서드파티 라이선스
 
-이미지의 `/licenses/`에 Go 모듈과 npm 패키지의 라이선스, Pretendard(OFL)가 들어 있습니다. 포함된 Trivy 0.76.1(Aqua Security, Apache License 2.0)은 공식 이미지에 LICENSE 파일이 없어 `/licenses/Trivy-NOTICE.txt`에 고지문을 둡니다. 원문: https://github.com/aquasecurity/trivy/blob/main/LICENSE
+이미지의 `/licenses/`에 Go 모듈과 npm 패키지의 라이선스, Pretendard(OFL)가 들어 있습니다. 포함된 Trivy 0.76.2(Aqua Security, Apache License 2.0)는 그 릴리스의 소스에서 직접 빌드한 것입니다(`golang.org/x/crypto`만 v0.59.0으로 올림). 라이선스 원문은 `/licenses/Trivy-LICENSE`, 고지문은 `/licenses/Trivy-NOTICE.txt`에 있습니다.
