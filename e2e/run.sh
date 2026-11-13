@@ -27,7 +27,7 @@ echo "== trivy"
 KEEP=.out/keep; TRIVY=
 if command -v "$DOCKER" >/dev/null 2>&1; then
   if [ ! -x $KEEP/trivy ]; then
-    c=$("$DOCKER" create "${JASCA_E2E_TRIVY_IMAGE:-aquasec/trivy:0.76.1}") && "$DOCKER" cp "$c:/usr/local/bin/trivy" $KEEP/trivy >/dev/null; "$DOCKER" rm "$c" >/dev/null 2>&1 || true
+    c=$("$DOCKER" create "${JASCA_E2E_TRIVY_IMAGE:-aquasec/trivy:0.76.2}") && "$DOCKER" cp "$c:/usr/local/bin/trivy" $KEEP/trivy >/dev/null; "$DOCKER" rm "$c" >/dev/null 2>&1 || true
   fi
   if [ ! -f $KEEP/db/trivy.db ]; then
     c=$("$DOCKER" create -v "${JASCA_E2E_TRIVY_VOLUME:-trivy-cache}:/c" alpine true) && "$DOCKER" cp "$c:/c/db" $KEEP/db >/dev/null; "$DOCKER" rm "$c" >/dev/null 2>&1 || true

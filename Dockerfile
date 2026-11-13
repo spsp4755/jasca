@@ -11,13 +11,26 @@ RUN npm run build \
        true; \
     done
 
-FROM golang:1.26.10-alpine@sha256:87c65a688975c0b1d4585d204874c45ca78354670e3a5f11368c5a492303d696 AS build
+# Trivy is built from its release tag instead of copied from the official image: the official 0.76.2 binary still carries
+# golang.org/x/crypto v0.58.0 (GO-2026-5932) and an older Go standard library. Same build flags as upstream's goreleaser.yml.
+FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS trivy
+ARG TRIVY_VERSION=0.76.2
+ARG TRIVY_COMMIT=3f6334d223b52188324af3b9923b4249cd206652
+WORKDIR /src
+RUN apk add --no-cache git \
+    && git clone -q --depth 1 --branch "v${TRIVY_VERSION}" https://github.com/aquasecurity/trivy . \
+    && [ "$(git rev-parse HEAD)" = "$TRIVY_COMMIT" ] \
+    && go get golang.org/x/crypto@v0.59.0 \
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -extldflags '-static' -X github.com/aquasecurity/trivy/pkg/version/app.ver=${TRIVY_VERSION}" -o /trivy ./cmd/trivy \
+    && /trivy --version
+
+FROM golang:1.26.11-alpine@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /src/web/dist ./web/dist
-ARG VERSION=1.2.1
+ARG VERSION=1.2.2
 # DB-backed tests need JASCA_TEST_DATABASE_URL and are skipped here; they run against PostgreSQL before release.
 RUN go vet ./... && go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/jasca . \
     && mkdir -p /out/tmp /out/licenses && chmod 1777 /out/tmp && cp /usr/local/go/LICENSE /out/licenses/Go-LICENSE \
@@ -25,15 +38,16 @@ RUN go vet ./... && go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="
        [ -n "$dir" ] || continue; \
        find "$dir" -maxdepth 1 -type f \( -iname 'LICENSE*' -o -iname 'NOTICE*' \) | while read -r f; do cp "$f" "/out/licenses/$(echo "$name" | tr / _)-$(basename "$f")"; done; \
     done
-# The Trivy image ships no LICENSE file, so record the notice here (Apache-2.0, https://github.com/aquasecurity/trivy).
-RUN printf 'Trivy 0.76.1 (c) Aqua Security Software Ltd., licensed under the Apache License 2.0.\nhttps://github.com/aquasecurity/trivy/blob/main/LICENSE\n' > /out/licenses/Trivy-NOTICE.txt
+# Apache-2.0 asks for the license text and a note of what was changed.
+COPY --from=trivy /src/LICENSE /out/licenses/Trivy-LICENSE
+RUN printf 'Trivy 0.76.2 (c) Aqua Security Software Ltd., licensed under the Apache License 2.0 (Trivy-LICENSE).\nBuilt from the source of that release (https://github.com/aquasecurity/trivy) with one change: golang.org/x/crypto raised to v0.59.0.\n' > /out/licenses/Trivy-NOTICE.txt
 # npm packages shipped in the bundle
 COPY --from=web /lic/ /out/licenses/
 COPY --from=web /src/web/node_modules/pretendard/dist/LICENSE.txt /out/licenses/Pretendard-OFL.txt
-COPY --from=aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c /usr/local/bin/trivy /out/usr/local/bin/trivy
+COPY --from=trivy /trivy /out/usr/local/bin/trivy
 
 FROM scratch
-ARG VERSION=1.2.1
+ARG VERSION=1.2.2
 LABEL org.opencontainers.image.title="jasca" org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.source="https://github.com/spsp4755/jasca"
 COPY --from=build /out/ /

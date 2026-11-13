@@ -47,7 +47,7 @@ func TestArgsNoShell(t *testing.T) {
 			t.Fatalf("missing %s", f)
 		}
 	}
-	// trivy 0.76.1 sbom has no misconfig checks and rejects --skip-check-update ("unknown flag")
+	// trivy 0.76.2 sbom has no misconfig checks and rejects --skip-check-update ("unknown flag")
 	if slices.Contains(sb, "--skip-check-update") || !slices.Contains(sb, "--offline-scan") {
 		t.Fatalf("sbom flags: %v", sb)
 	}
@@ -84,7 +84,7 @@ func allOptions() Options {
 		DetectionPriority: "comprehensive", SkipDirs: []string{"-rf", "a,b"}, SkipFiles: []string{"**/*.min.js", `we"ird`}}
 }
 
-// Each option reaches exactly the subcommands that accept its flag in Trivy 0.76.1 (checked against --help;
+// Each option reaches exactly the subcommands that accept its flag in Trivy 0.76.2 (checked against --help;
 // TestRunRealTrivyAllOptions proves it with the binary).
 func TestArgsOptions(t *testing.T) {
 	kinds := []string{"fs", "image", "sbom"}
@@ -174,7 +174,7 @@ func dockerArchive(t *testing.T, files map[string][]byte) []byte {
 	return tarOf(map[string][]byte{"manifest.json": man, "config.json": cfg, "layer.tar": layer})
 }
 
-// Trivy 0.76.1 fails an image scan that meets a JAR when no Java DB is installed; with NoJavaDB it succeeds.
+// Trivy 0.76.2 fails an image scan that meets a JAR when no Java DB is installed; with NoJavaDB it succeeds.
 func TestRunRealTrivyJarWithoutJavaDB(t *testing.T) {
 	if os.Getenv("JASCA_TEST_TRIVY") != "1" {
 		t.Skip("set JASCA_TEST_TRIVY=1 (and JASCA_TRIVY_BIN, JASCA_TRIVY_CACHE)")
@@ -405,7 +405,7 @@ func TestRunRealTrivy(t *testing.T) {
 }
 
 // A failure the user can act on (not an image) and one the server can work around (no Java DB) are told apart from
-// every other failure by what Trivy 0.76.1 prints.
+// every other failure by what Trivy 0.76.2 prints.
 func TestRunClassifiesFailures(t *testing.T) {
 	for text, want := range map[string]error{
 		"FATAL run error: image scan error: unable to initialize artifact: unable to initialize archive image: 2 errors occurred": ErrInput,

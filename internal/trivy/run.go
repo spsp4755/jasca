@@ -22,7 +22,7 @@ type Options struct {
 	Bin, CacheDir string
 	Scanners      []string
 	Timeout       time.Duration
-	NoJavaDB      bool // skip Java archives: without a java-db Trivy 0.76.1 fails an image scan at the first JAR (ErrNoJavaDB)
+	NoJavaDB      bool // skip Java archives: without a java-db Trivy 0.76.2 fails an image scan at the first JAR (ErrNoJavaDB)
 	// Chosen by the admin; a zero value adds no flag. The caller validates the values.
 	IgnoreUnfixed, IncludeDevDeps bool
 	Severities, PkgTypes          []string
@@ -41,7 +41,7 @@ func listArg(flag, v string) string {
 }
 
 // Args builds the argv (without the binary). Every flag and value is its own element or one --flag=value element; no
-// shell is involved. Only flags the subcommand has in Trivy 0.76.1 are passed (sbom has no files to skip and no
+// shell is involved. Only flags the subcommand has in Trivy 0.76.2 are passed (sbom has no files to skip and no
 // misconfig checks; only fs has --include-dev-deps). fs reads lock files and never opens a JAR; rootfs and image read
 // built artifacts (JAR/WAR/EAR, node_modules, site-packages, Go binaries) and no lock files.
 func Args(kind, input string, o Options) []string {
@@ -94,7 +94,7 @@ func Args(kind, input string, o Options) []string {
 
 var errTooBig = errors.New("trivy output exceeds 512MB")
 
-// What Trivy 0.76.1 says on stderr, as errors a caller can tell apart from every other failure.
+// What Trivy 0.76.2 says on stderr, as errors a caller can tell apart from every other failure.
 var (
 	ErrInput    = errors.New("trivy cannot read the file as a container image") // "unable to initialize archive image"
 	ErrNoJavaDB = errors.New("a Java archive was met and no Java DB is installed")
