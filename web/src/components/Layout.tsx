@@ -43,6 +43,9 @@ export default function Layout() {
   const signedOut = cfg.data?.signed_in === false;
   const me = useMe(!cfg.isPending && !signedOut); // signed out: straight to the login page, no /me that 401s
   useEffect(() => { if (signedOut) location.assign(loginUrl()); }, [signedOut]);
+  // /me carries the notice only once (the first answer after a login), so it is kept here until the user closes it
+  const [notice, setNotice] = useState<Me["session_notice"]>();
+  useEffect(() => { if (me.data?.session_notice) setNotice(me.data.session_notice); }, [me.data]);
   const navigate = useNavigate();
   const loc = useLocation();
   const [help, setHelp] = useState(false);
@@ -131,6 +134,21 @@ export default function Layout() {
             <UserMenu me={me.data} />
           </div>
         </header>
+        {notice && (
+          <div className="alert alert-warn shell-alert no-print" role="alert"><Icon name="alert" />
+            <span>
+              {notice.ended > 0 && `같은 계정으로 접속 중이던 다른 접속 ${notice.ended}건을 종료했습니다. `}
+              {notice.active > 0 && `이 계정은 다른 곳에서도 접속 중입니다(${notice.active}건). `}
+              본인이 접속한 것이 아니었다면 보안 담당자에게 알리세요.
+            </span>
+            <Button className="alert-action" onClick={() => setNotice(undefined)}>확인</Button>
+          </div>
+        )}
+        {me.data.source === "local" && (
+          <div className="alert alert-info shell-alert no-print" role="note"><Icon name="info" />
+            <span>공용 관리자 계정(admin)으로 접속 중입니다. 처음 설정할 때와 비상시에만 쓰고, 평소에는 관리자 역할을 받은 개인 계정으로 로그인하세요.</span>
+          </div>
+        )}
         <main id="main" className="content">
           <Outlet />
         </main>

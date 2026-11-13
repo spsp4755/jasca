@@ -65,6 +65,13 @@ func (s *server) ssoRoutes() {
 		out := map[string]any{"sso_enabled": sso.Enabled && sso.Issuer != "" && sso.ClientID != "", "tz": s.cfg.Loc.String(),
 			"signed_in": c.User != nil, // lets the web skip a /me that would only 401 (a console error) when signed out
 			"version":   version}       // shown on the login page, so an operator can tell which release is running
+		if out["local_login"], err = s.localLoginOpen(r.Context()); err != nil { // false: the login page offers no local form
+			writeInternal(w, "auth config", err)
+			return
+		}
+		if c.Ended != "" { // the login page says why this browser was signed out
+			out["session_ended"] = c.Ended
+		}
 		if c.User != nil { // what the screens need to know up front; a signed-out caller learns only the version
 			ai, err := s.aiConf(r.Context())
 			if err != nil {

@@ -21,6 +21,7 @@ const ERRORS: Record<string, string> = {
   sso: "Keycloak에 연결하지 못했습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.",
   sso_disabled: "Keycloak 로그인이 설정되지 않았습니다.",
   expired: "로그인 시간이 지나 다시 로그인해야 합니다.", // set by loginUrl() when a signed-in page got a 401
+  local_disabled: "로컬 관리자(admin) 계정이 꺼져 있습니다. 관리자 역할을 받은 개인 계정(Keycloak)으로 로그인하세요.",
   state: "로그인 요청을 확인하지 못했습니다. 다시 로그인하세요.",
   forbidden: "이 서비스를 사용할 권한이 없습니다. 관리자에게 문의하세요.",
   conflict: "같은 아이디의 로컬 계정이 있어 Keycloak으로 로그인할 수 없습니다. 관리자에게 문의하세요.",
@@ -40,11 +41,16 @@ export default function Login() {
   const next = safeNext(params.get("next"));
   const wantLocal = params.get("local") === "1";
   // Without SSO configured the local form is the only way in (first start, bootstrap admin).
-  const showLocal = wantLocal || (cfg.isSuccess && !cfg.data.sso_enabled);
-  const urlError = params.get("error");
+  const localOff = cfg.data?.local_login === false; // an administrator switched the shared admin account off
+  const showLocal = !localOff && (wantLocal || (cfg.isSuccess && !cfg.data.sso_enabled));
+  const noWay = localOff && cfg.data?.sso_enabled === false; // SSO was switched off afterwards; the page says how to get out of it
+  const replaced = cfg.data?.session_ended === "replaced";
+  const urlError = replaced && params.get("error") === "expired" ? null : params.get("error"); // "expired" would be the wrong reason
   const error = login.isError ? errorText(login.error.code, login.error.message)
     : urlError ? errorText(urlError)
-    : cfg.isError ? cfg.error.message : null;
+    : cfg.isError ? cfg.error.message
+    : noWay ? "로그인할 방법이 없습니다. admin 계정이 꺼져 있고 Keycloak 로그인도 설정되지 않았습니다. 운영자에게 서버에서 admin 계정을 다시 켜 달라고 요청하세요(관리자 가이드의 \"비상시 admin 다시 켜기\")."
+    : localOff && wantLocal ? errorText("local_disabled") : null;
 
   useEffect(() => { document.title = "로그인 · JASCA"; }, []);
 
@@ -81,8 +87,13 @@ export default function Login() {
       <main className="login-main">
         <div className="login-panel">
           <h1>로그인</h1>
-          <p className="login-sub">{showLocal ? "로컬 계정으로 로그인합니다. 비상용입니다." : "회사 계정(Keycloak)으로 로그인합니다."}</p>
+          <p className="login-sub">{showLocal ? "로컬 계정으로 로그인합니다. 비상용입니다." : noWay ? "지금은 로그인할 수 없습니다." : "회사 계정(Keycloak)으로 로그인합니다."}</p>
 
+          {replaced && (
+            <div className="alert alert-warn" role="alert"><Icon name="alert" />
+              <span>같은 계정으로 다른 곳에서 로그인해 이 브라우저의 접속이 종료되었습니다. 본인이 한 것이 아니라면 보안 담당자에게 알리세요.</span>
+            </div>
+          )}
           {error && (!login.isError && urlError === "expired" // not a failure: the session simply ran out
             ? <div className="alert alert-info" role="status"><Icon name="info" />{error}</div>
             : <div className="alert alert-danger" role="alert"><Icon name="alert" />{error}</div>)}
@@ -100,7 +111,7 @@ export default function Login() {
               <Button type="submit" variant="primary" className="btn-block btn-lg" loading={login.isPending}>로그인</Button>
               {cfg.data?.sso_enabled && <Link className="login-switch" to={`/login?next=${encodeURIComponent(next)}`}>Keycloak 로그인으로 돌아가기</Link>}
             </form>
-          ) : (
+          ) : noWay ? null : (
             <div className="login-form">
               <a className="btn btn-primary btn-block btn-lg" href={`${API_BASE}/auth/sso/start?next=${encodeURIComponent(next)}`}>
                 <Icon name="key" />Keycloak으로 로그인

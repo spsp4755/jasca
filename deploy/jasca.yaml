@@ -1,4 +1,4 @@
-# JASCA v1.2.2 — namespace jasca(미리 생성되어 있어야 함)에 설치합니다.
+# JASCA v1.3.0 — namespace jasca(미리 생성되어 있어야 함)에 설치합니다.
 # 이 파일 하나로 설치합니다. PostgreSQL은 사내 DB를 쓰며, DB 담당자에게 받은 값을 아래 JASCA_DB_* 에 적습니다.
 # (DB를 클러스터 안에 따로 띄울 때만 postgres.yaml을 먼저 적용합니다.)
 # 신규 설치: JASCA_BOOTSTRAP_PASSWORD, JASCA_DB_* 값, Ingress host를 수정하세요.
@@ -37,7 +37,8 @@ data:
   # 접속 암호화: prefer(되면 TLS, 안 되면 평문) / require(TLS만) / disable(평문만) / verify-full(인증서 검증, PGSSLROOTCERT로 CA 지정)
   JASCA_DB_SSLMODE: "prefer"
   JASCA_DB_MAX_CONNS: "20" # 앱이 DB에 여는 최대 연결 수. DB 계정의 연결 한도 안에서 조정하세요.
-  JASCA_MAX_SESSIONS: "3" # 계정당 동시 접속 수. 넘으면 가장 오래 쓰지 않은 접속을 끊습니다. 0이면 제한 없음.
+  # 계정당 동시 접속 수. 1이면 같은 계정으로 다른 곳에서 로그인할 때 먼저 접속해 있던 쪽이 로그아웃되고, 양쪽에 안내가 표시됩니다. 0이면 제한 없음.
+  JASCA_MAX_SESSIONS: "1"
   JASCA_SESSION_IDLE_MIN: "30" # 이 시간(분) 동안 브라우저 요청이 없으면 세션을 끝냅니다. 0이면 끕니다.
   JASCA_MAX_REPORT_MB: "50" # 스캔 결과 보고서(JSON/SARIF 등) 업로드 상한
   JASCA_MAX_SCAN_UPLOAD_MB: "2048" # Trivy 스캔용 파일/이미지 업로드 상한. Ingress proxy-body-size와 함께 조정하세요.
@@ -89,7 +90,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: jasca
-          image: jasca:v1.2.2 # 레지스트리를 쓰면 경로 변경
+          image: jasca:v1.3.0 # 레지스트리를 쓰면 경로 변경
           imagePullPolicy: IfNotPresent
           ports:
             - { name: http, containerPort: 8080 }

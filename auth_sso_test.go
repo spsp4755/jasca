@@ -279,7 +279,7 @@ func TestAuthConfigInstanceFields(t *testing.T) {
 	}
 	kim := loginAs(t, s, mkUser(t, s, "kim", ""))
 	out := get(kim)
-	if out["ai_enabled"] != true || out["max_scan_upload_mb"] != float64(s.cfg.MaxScanUploadMB) || len(out) != 7 {
+	if out["ai_enabled"] != true || out["max_scan_upload_mb"] != float64(s.cfg.MaxScanUploadMB) || len(out) != 8 {
 		t.Fatalf("signed in, AI on: %v", out)
 	}
 	if err := s.putSetting(context.Background(), "ai", aiSettings{BaseURL: "http://ai.example.test/v1", Enabled: false}); err != nil {

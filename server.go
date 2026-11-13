@@ -46,6 +46,7 @@ type reqCtx struct {
 	Role    string    // the user's role on Project ("" for tokens)
 	Scope   int64     // MCP only: the one project this tool call may see (callerProjectsSQL); 0 = whatever User sees
 	IP      string
+	Ended   string // why the cookie's session no longer signs anyone in ("replaced" by a newer login), else ""
 }
 
 func newServer(ctx context.Context, cfg config, db *pgxpool.Pool) (*server, error) {

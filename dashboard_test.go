@@ -307,12 +307,12 @@ func TestProjectReport(t *testing.T) {
 	}
 }
 
-// The built-in local admin is the way back in when Keycloak is down: nobody may deactivate or demote it.
+// The built-in local admin keeps its role whatever anyone asks; switching it off and on is in sessions_test.go.
 func TestLocalAdminProtected(t *testing.T) {
 	s := testServer(t)
 	ck := loginAs(t, s, mkUser(t, s, "adm", "admin"))
 	local := qint64(t, s, `select id from users where source='local' and username='admin'`)
-	for _, body := range []map[string]any{{"active": false}, {"system_role": ""}, {"system_role": "security"}} {
+	for _, body := range []map[string]any{{"system_role": ""}, {"system_role": "security"}, {"role_from_sso": true}} {
 		rec := do(t, s, "PATCH", "/api/v1/admin/users/"+itoa(local), body, ck)
 		if rec.Code != 400 || !strings.Contains(rec.Body.String(), "비상용") {
 			t.Errorf("%v: %d %s", body, rec.Code, rec.Body.String())

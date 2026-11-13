@@ -49,6 +49,7 @@ func testServer(t *testing.T) *server {
 		t.Fatal(err)
 	}
 	cfg.BootstrapPassword = testBootstrapPassword
+	cfg.MaxSessions = 0 // tests sign the same user in many times; sessions_test.go sets the limit it checks
 	cfg.DataDir = t.TempDir()
 	s, err := newServer(ctx, cfg, db)
 	if err != nil {

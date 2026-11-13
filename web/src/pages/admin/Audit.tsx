@@ -15,7 +15,7 @@ const LIMIT = 50;
 
 // Every action code the server writes (the s.audit calls in the Go files). A code missing here is shown as it is.
 const ACTION: Record<string, string> = {
-  "auth.login": "로그인", "auth.login_failed": "로그인 실패", "auth.logout": "로그아웃",
+  "auth.login": "로그인", "auth.login_failed": "로그인 실패", "auth.logout": "로그아웃", "auth.session_end": "다른 접속 종료",
   "auth.password_change": "비밀번호 변경", "auth.password_change_failed": "비밀번호 변경 실패",
   "user.update": "사용자 역할·상태 변경", "settings.update": "연동 설정 변경", "smtp.update": "메일(SMTP) 설정 변경",
   "retention.update": "보존 기간 변경", "default_policy.update": "기본 정책 변경", "sla.update": "조치 기한 정책 변경",
@@ -58,11 +58,12 @@ const CODE: Record<string, Record<string, string>> = {
   system_role: SYSTEM_ROLE_LABEL, before: SYSTEM_ROLE_LABEL, after: SYSTEM_ROLE_LABEL, role: ROLE_LABEL, from: ROLE_LABEL,
   resolution: RESOLUTION_LABEL, scope: SCOPE_LABEL, scanners: KIND_LABEL, events: Object.fromEntries(NOTIFY_EVENTS),
   scopes: { upload: "업로드", read: "읽기" }, kind: { mattermost: "Mattermost", email: "이메일" },
-  method: { local: "로컬 계정", sso: "Keycloak" }, op: { sso_role: "Keycloak 역할 반영" },
+  method: { local: "로컬 계정", sso: "Keycloak" }, op: { sso_role: "Keycloak 역할 반영", server_command: "서버 명령으로 다시 켬" },
   tls: { starttls: "STARTTLS", tls: "TLS", none: "사용 안 함" }, pkg_types: { os: "OS 패키지", library: "언어 라이브러리" }, detection_priority: { precise: "정확하게", comprehensive: "빠짐없이" },
   reason: { // auth.login_failed
     bad_credentials: "아이디 또는 비밀번호가 틀림", locked: "잠긴 계정", disabled: "비활성화된 계정", state: "로그인 요청을 확인하지 못함",
     sso: "Keycloak 연결 또는 처리 실패", conflict: "같은 아이디의 로컬 계정이 있음", identity: "같은 아이디의 다른 Keycloak 계정이 있음",
+    local_disabled: "admin 계정이 꺼져 있음", replaced: "같은 계정의 새 로그인", // replaced: auth.session_end
   },
   step: {
     start: "로그인 시작", state: "요청 확인", settings: "SSO 설정 읽기", discovery: "Keycloak 주소 확인", exchange: "토큰 받기", verify: "토큰 검증",

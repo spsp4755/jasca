@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -34,8 +36,30 @@ func (s *server) authLocalRoutes() {
 			writeInternal(w, "me", err)
 			return
 		}
-		writeJSON(w, 200, u)
+		out := struct {
+			user
+			Notice json.RawMessage `json:"session_notice,omitempty"` // {"ended":n,"active":m}, in the first /me after a login
+		}{user: u}
+		if ck, e := r.Cookie(sessionCookie); e == nil && c.Key == nil {
+			out.Notice = s.takeNotice(r.Context(), ck.Value)
+		}
+		writeJSON(w, 200, out)
 	})
+}
+
+// localLoginOpen: whether the shared local admin may sign in. An administrator switches it off in 관리 → 사용자·역할
+// once people administer with their own Keycloak accounts.
+func (s *server) localLoginOpen(ctx context.Context) (open bool, err error) {
+	err = s.db.QueryRow(ctx, `select exists(select 1 from users where source='local' and active)`).Scan(&open)
+	return open, err
+}
+
+// enableLocalAdmin is the way back in when the local admin is switched off and nobody can sign in through Keycloak:
+// `kubectl -n jasca exec deploy/jasca -- /jasca --enable-local-admin`. The password stays what it was.
+func enableLocalAdmin(ctx context.Context, db *pgxpool.Pool) error {
+	_, err := db.Exec(ctx, `with u as (update users set active=true, failed_logins=0, locked_until=null where source='local' returning username)
+		insert into audit_log(action, target, details) select 'user.update', username, '{"active": true, "op": "server_command"}' from u`)
+	return err
 }
 
 // bootstrapAdmin creates the local admin on an empty database. A later start never changes its password.
@@ -68,6 +92,14 @@ func (s *server) handleLocalLogin(w http.ResponseWriter, r *http.Request, c *req
 		return
 	}
 	name := strings.TrimSpace(req.Username)
+	if open, err := s.localLoginOpen(ctx); err != nil {
+		writeInternal(w, "login", err)
+		return
+	} else if !open {
+		s.audit(ctx, c, "auth.login_failed", nil, name, map[string]any{"method": "local", "reason": "local_disabled"})
+		writeErr(w, 403, "local_disabled", "로컬 관리자(admin) 계정이 꺼져 있습니다. 관리자 역할을 받은 개인 계정(Keycloak)으로 로그인하세요.")
+		return
+	}
 	var id int64
 	var source string
 	var hash *string

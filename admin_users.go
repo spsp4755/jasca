@@ -77,7 +77,9 @@ func (s *server) handleAdminUserPatch(w http.ResponseWriter, r *http.Request, c 
 		if err := tx.QueryRow(ctx, `select username, source from users where id = $1 for update`, id).Scan(&name, &source); err != nil {
 			return err
 		}
-		if source == "local" && (lowers || in.RoleFromSSO != nil) { // the only local account is the bootstrap admin
+		// The only local account is the bootstrap admin, shared by whoever knows its password. Its role is fixed. Another
+		// administrator may switch it off and on, in the browser only: an agent must not close or open the emergency door.
+		if source == "local" && (in.SystemRole != nil && *in.SystemRole != "admin" || in.RoleFromSSO != nil || in.Active != nil && c.Key != nil) {
 			return errLocalAdmin
 		}
 		if in.RoleFromSSO != nil {
@@ -106,7 +108,7 @@ func (s *server) handleAdminUserPatch(w http.ResponseWriter, r *http.Request, c 
 		return
 	}
 	if errors.Is(err, errLocalAdmin) {
-		badRequest(w, "로컬 관리자(admin)는 Keycloak에 문제가 생겼을 때 쓰는 비상용 계정이라 비활성화하거나 역할을 바꿀 수 없습니다.")
+		badRequest(w, "로컬 관리자(admin)는 Keycloak에 문제가 생겼을 때 쓰는 비상용 공용 계정이라 역할을 바꿀 수 없습니다. 켜고 끄기는 다른 관리자가 관리 → 사용자·역할 화면에서 합니다.")
 		return
 	}
 	if err != nil {
@@ -124,7 +126,7 @@ func (s *server) handleAdminUserPatch(w http.ResponseWriter, r *http.Request, c 
 	writeJSON(w, 200, u[0])
 }
 
-var errLocalAdmin = errors.New("the local admin account cannot be disabled or demoted")
+var errLocalAdmin = errors.New("the local admin account cannot be demoted, nor switched by an agent")
 
 // --- retention (read by trimRaw in ingest.go, and trimmed daily for every target) ---
 

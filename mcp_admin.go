@@ -117,7 +117,7 @@ func mcpAdminTools() []mcpTool {
 		writeTool(mcpAdmin, false, "update_user", "사용자 역할 변경·비활성화",
 			"Change a user's system role or deactivate/reactivate the account. role keycloak hands the role back to "+
 				"Keycloak from the user's next sign-in. Deactivating ends the user's sessions and stops their MCP keys. "+
-				"You cannot lower or deactivate yourself, nor the local emergency account admin.",
+				"You cannot lower or deactivate yourself, nor change the local shared account admin (an administrator switches it in the browser).",
 			`{"type": "object", "additionalProperties": false, "required": ["username"], "properties": {
 				"username": {"type": "string", "description": "The account's exact username, from list_users."},
 				"role": {"type": "string", "enum": ["user", "security", "administrator", "keycloak"], "description": "user: no system role. keycloak: follow the Keycloak role mapping again."},

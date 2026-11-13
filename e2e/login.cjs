@@ -22,6 +22,8 @@ L.run(async () => {
   await page.getByRole("button", { name: "로그인" }).click();
   await page.locator(".sidebar").waitFor();
   L.ok(await page.getByRole("link", { name: "관리" }).isVisible(), "local admin signed in, 관리 in the sidebar");
+  L.ok(await page.getByText("공용 관리자 계정(admin)으로 접속 중입니다").isVisible() && await page.getByText("다른 곳에서도 접속 중").count() === 0,
+    "the shared admin account is told it is shared; a first sign-in has no multi-login warning");
 
   // the session ends under the user: the login page says why, and signing in returns to the same page and #section
   await page.goto(L.BASE + "/projects#recent");
@@ -37,6 +39,11 @@ L.run(async () => {
   await page.getByLabel("비밀번호").fill(L.ADMIN);
   await page.getByRole("button", { name: "로그인" }).click();
   await page.waitForURL(/\/projects#recent$/);
+  // the cookie was dropped but that session is still open on the server (the suites run without a session limit)
+  await page.getByRole("alert").filter({ hasText: "이 계정은 다른 곳에서도 접속 중입니다(1건)." }).waitFor();
+  await L.shot(page, "login-multi-warning");
+  await page.getByRole("alert").getByRole("button", { name: "확인" }).click();
+  L.ok(await page.getByText("다른 곳에서도 접속 중").count() === 0, "a sign-in while the account is open elsewhere shows a warning until it is acknowledged");
   L.ok(true, "after the session ended the login page says so, and signing in returns to /projects#recent");
 
   // SSO settings through the UI
@@ -107,14 +114,40 @@ L.run(async () => {
   await setRole("admin");
   const park2 = await L.sso(browser, "park");
   L.ok((await park2.api.get("/me")).system_role === "admin", "park keeps the role set in JASCA after a Keycloak login");
-  // the local admin is the emergency way in: another admin can neither switch it off nor demote it
+  // the local admin is a shared account: its role is fixed, and another admin switches it off once people use their own accounts
   await park2.page.goto(L.BASE + "/admin/users");
   const localRow = park2.page.getByRole("table", { name: "사용자 목록" }).getByRole("row", { name: /로컬/ });
-  await localRow.getByText("비상용 계정이라 바꿀 수 없습니다").waitFor();
-  L.ok(await park2.page.getByLabel("admin 역할").isDisabled() && await park2.page.getByLabel("admin 활성").isDisabled(), "the local admin's role and state are locked for another admin");
+  await localRow.getByText("비상용 공용 계정이라 역할은 바꿀 수 없습니다").waitFor();
+  const localActive = park2.page.getByLabel("admin 활성");
+  L.ok(await park2.page.getByLabel("admin 역할").isDisabled() && await localActive.isEnabled(), "the local admin's role is locked; another admin can switch the account off");
   const localId = (await park2.api.get("/admin/users")).find((u) => u.source === "local").id;
-  const off = await park2.api("PATCH", `/admin/users/${localId}`, { active: false });
-  L.ok(off.status === 400 && /비상용/.test(off.body.message), "the API refuses to deactivate the local admin (400)");
+  const demote = await park2.api("PATCH", `/admin/users/${localId}`, { system_role: "" });
+  L.ok(demote.status === 400 && /비상용/.test(demote.body.message), "the API refuses to demote the local admin (400)");
+  const said = [];
+  const toggle = (answer) => {
+    park2.page.once("dialog", (d) => { said.push(d.message()); d[answer](); });
+    return Promise.all([
+      answer === "accept" && park2.page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes("/admin/users/") && r.ok()),
+      localActive.click(),
+    ]);
+  };
+  await toggle("dismiss");
+  L.ok(/공용 admin 계정을 끕니다/.test(said[0]) && await localActive.isChecked(), "switching the shared admin off asks first; cancelling changes nothing");
+  await toggle("accept");
+  await L.until(async () => !(await localActive.isChecked()), "the shared admin is switched off from the users screen");
+  const closed = await (await L.context(browser, "anon")).newPage();
+  await closed.goto(L.BASE + "/login?local=1");
+  await closed.getByText("로컬 관리자(admin) 계정이 꺼져 있습니다.").waitFor();
+  L.ok(await closed.getByLabel("비밀번호").count() === 0 && await closed.getByRole("link", { name: /Keycloak으로 로그인/ }).isVisible(),
+    "with the shared admin off, /login?local=1 has no password form, only the Keycloak button and the reason");
+  await L.shot(closed, "login-local-off");
+  L.ok((await L.api(ctx)("GET", "/me")).status === 401, "the admin session that was open ended at once");
+  await toggle("accept");
+  await L.until(async () => await localActive.isChecked(), "and switched on again the same way");
+  L.ok(/다시 켭니다/.test(said[2]), "switching it on is confirmed too");
+  const back = await ctx.request.post(L.BASE + "/api/v1/auth/local", { headers: { Origin: L.BASE }, data: { username: "admin", password: L.ADMIN } });
+  L.ok(back.ok(), "admin signs in again with the same password");
+  await page.goto(L.BASE + "/admin/users");
   await setRole("sso"); // back to Keycloak: decided again at park's next Keycloak login
   L.ok(/Keycloak 역할 따름/.test(asked[2]), "handing the role back is confirmed too");
   await page.getByRole("table", { name: "사용자 목록" }).getByRole("row", { name: /park/ }).getByText("다음 Keycloak 로그인 때 다시 정해집니다").waitFor();

@@ -1,4 +1,4 @@
-# JASCA v1.2.2 — 폐쇄망 배포 / 데이터 보존
+# JASCA v1.3.0 — 폐쇄망 배포 / 데이터 보존
 
 ## 가장 중요한 점
 
@@ -17,7 +17,7 @@
 
 | 파일 | 용도 |
 |---|---|
-| jasca-v1.2.2.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.2.2`만 포함(Trivy 0.76.2 실행 파일 포함) |
+| jasca-v1.3.0.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.3.0`만 포함(Trivy 0.76.2 실행 파일 포함) |
 | postgres-v17.11-jasca1.tar.gz | 별도 선택 이미지 `postgres:v17.11-jasca1` (공식 17.11-bookworm 기반, 쓰지 않는 gosu·snakeoil 키 제거, root로 실행 불가) |
 | jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress. 사내 PostgreSQL 접속 정보까지 이 파일 하나에 적습니다 |
 | postgres.yaml | 사내 DB가 없을 때만 쓰는 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
@@ -34,16 +34,16 @@
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS # 이번에 반입한 파일 검증
-podman load -i jasca-v1.2.2.tar.gz
+podman load -i jasca-v1.3.0.tar.gz
 podman load -i postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
-podman image inspect jasca:v1.2.2 --format '{{.Os}}/{{.Architecture}}'
+podman image inspect jasca:v1.3.0 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 **Podman load만으로 Kubernetes containerd에 이미지가 등록되지는 않습니다.** 실행 가능한 모든 워커의 실제 CRI에 반입하세요.
 
 ```sh
 # 일반 containerd
-sudo ctr -n k8s.io images import jasca-v1.2.2.tar.gz
+sudo ctr -n k8s.io images import jasca-v1.3.0.tar.gz
 sudo ctr -n k8s.io images import postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
 # k3s는 sudo k3s ctr images import, RKE2는 해당 런타임의 socket/ctr 사용.
 ```
@@ -158,6 +158,7 @@ SSO로 **처음 로그인하는 순간** 부서는 다음 중 하나가 맞을 �
 2. 로그인 5회 실패하면 15분간 잠기고, IP별 요청 제한도 있습니다.
 3. **관리 → Trivy DB**에서 DB를 올립니다(다음 절). Keycloak을 쓰면 위 절차로 SSO를 설정합니다.
 4. 처음 관리자는 SSO 역할 매핑으로 정하는 것을 권장합니다. 이미 로그인(또는 동기화)된 사용자는 **관리 → 사용자·역할**에서 역할을 지정할 수도 있습니다(여기서 바꾼 역할은 JASCA 안에서만 적용되고, **Keycloak 역할 따름**으로 되돌리기 전까지 Keycloak과 관계없이 유지됩니다).
+5. SSO 설정이 끝나고 개인 계정에 관리자 역할을 준 뒤에는, 그 개인 계정으로 로그인해 **관리 → 사용자·역할**에서 공용 `admin` 계정의 **활성** 체크를 꺼 둡니다. Keycloak 장애로 아무도 로그인할 수 없을 때는 `kubectl -n jasca exec deploy/jasca -- /jasca --enable-local-admin`으로 다시 켭니다. 자세한 순서는 관리자 가이드의 "관리자는 개인 계정으로"에 있습니다.
 
 ## Trivy DB 오프라인 갱신
 

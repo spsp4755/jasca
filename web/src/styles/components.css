@@ -151,6 +151,7 @@ ol.steps { margin: 6px 0 0 20px; list-style: decimal; display: flex; flex-direct
 .alert-warn { background: var(--warn-bg); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 25%, transparent); }
 .alert-info { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
 .alert-action { margin-left: auto; }
+.shell-alert { margin: 12px 32px 0; } /* above the page, for the whole signed-in shell */
 
 /* ---- empty ---- */
 .empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 48px 24px; text-align: center; }

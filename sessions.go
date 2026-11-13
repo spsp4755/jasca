@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -30,11 +31,13 @@ func tokenHash(token string) []byte {
 }
 
 // startSession stores a new session for userID and returns the cookie value. The browser's previous session
-// ends, and with MAX_SESSIONS > 0 the oldest sessions beyond the limit are deleted.
+// ends, and with MAX_SESSIONS > 0 the oldest sessions beyond the limit end as 'replaced': those browsers are told
+// why on the login page, and the new session carries a notice for its own user (takeNotice).
 func (s *server) startSession(ctx context.Context, userID int64, r *http.Request) (string, error) {
 	b := make([]byte, 32)
 	rand.Read(b)
 	token := base64.RawURLEncoding.EncodeToString(b)
+	var live, ended int // the user's other open sessions before this login, and how many of them it ended
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		// two logins at once must not both slip under the limit
 		if _, err := tx.Exec(ctx, `select 1 from users where id=$1 for update`, userID); err != nil {
@@ -46,24 +49,47 @@ func (s *server) startSession(ctx context.Context, userID int64, r *http.Request
 			}
 		}
 		if _, err := tx.Exec(ctx, `delete from sessions where user_id=$1 and (expires_at <= now()
-			or ($2::float8 > 0 and last_seen_at < now() - make_interval(secs => $2::float8)))`, userID, s.cfg.SessionIdle.Seconds()); err != nil {
+			or (ended_reason = '' and $2::float8 > 0 and last_seen_at < now() - make_interval(secs => $2::float8)))`, userID, s.cfg.SessionIdle.Seconds()); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, `select count(*) from sessions where user_id=$1 and ended_reason = ''`, userID).Scan(&live); err != nil {
 			return err
 		}
 		if max := s.cfg.MaxSessions; max > 0 {
-			if _, err := tx.Exec(ctx, `delete from sessions where id in (select id from sessions where user_id=$1
-				order by created_at desc, id desc offset $2)`, userID, max-1); err != nil {
+			tag, err := tx.Exec(ctx, `update sessions set ended_reason='replaced' where id in (select id from sessions
+				where user_id=$1 and ended_reason = '' order by created_at desc, id desc offset $2)`, userID, max-1)
+			if err != nil {
 				return err
 			}
+			ended = int(tag.RowsAffected())
+		}
+		var notice any
+		if live > 0 {
+			notice = map[string]int{"ended": ended, "active": live - ended}
 		}
 		ua := r.UserAgent()
 		if len(ua) > 512 {
 			ua = ua[:512]
 		}
-		_, err := tx.Exec(ctx, `insert into sessions(token_hash, user_id, user_agent, ip, expires_at) values($1, $2, $3, $4, $5)`,
-			tokenHash(token), userID, ua, clientIP(r), time.Now().Add(sessionTTL))
+		_, err := tx.Exec(ctx, `insert into sessions(token_hash, user_id, user_agent, ip, expires_at, notice) values($1, $2, $3, $4, $5, $6)`,
+			tokenHash(token), userID, ua, clientIP(r), time.Now().Add(sessionTTL), notice)
 		return err
 	})
+	if err == nil && ended > 0 {
+		s.audit(ctx, &reqCtx{User: &user{ID: userID}, IP: clientIP(r)}, "auth.session_end", nil, "", map[string]any{"reason": "replaced", "count": ended})
+	}
 	return token, err
+}
+
+// takeNotice hands out, once, what the session's login had to tell its user. nil when there is nothing.
+func (s *server) takeNotice(ctx context.Context, token string) []byte {
+	var n []byte
+	err := s.db.QueryRow(ctx, `with old as (select id, notice from sessions where token_hash=$1 and notice is not null for update)
+		update sessions x set notice=null from old where x.id=old.id returning old.notice`, tokenHash(token)).Scan(&n)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		log.Printf("session notice: %v", err)
+	}
+	return n
 }
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
@@ -71,32 +97,37 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 		SameSite: http.SameSiteLaxMode, Secure: secure(r), MaxAge: int(sessionTTL.Seconds())})
 }
 
-// sessionUser resolves a cookie value to its active user, or nil when the session is unknown, expired, idle
-// or the user is inactive. last_seen_at is written at most once a minute.
-func (s *server) sessionUser(ctx context.Context, token string) (*user, error) {
+// sessionUser resolves a cookie value to its active user, or nil when the session is unknown, expired, idle,
+// ended or the user is inactive. ended says why for a session that a newer login ended ("replaced").
+// last_seen_at is written at most once a minute.
+func (s *server) sessionUser(ctx context.Context, token string) (u *user, ended string, err error) {
 	var id, uid int64
 	var dead, stale bool
-	err := s.db.QueryRow(ctx, `select s.id, s.user_id,
-			s.expires_at <= now() or ($2::float8 > 0 and s.last_seen_at < now() - make_interval(secs => $2::float8)),
+	err = s.db.QueryRow(ctx, `select s.id, s.user_id, s.ended_reason,
+			s.expires_at <= now() or (s.ended_reason = '' and $2::float8 > 0 and s.last_seen_at < now() - make_interval(secs => $2::float8)),
 			s.last_seen_at < now() - interval '1 minute'
 		from sessions s join users u on u.id = s.user_id and u.active where s.token_hash=$1`,
-		tokenHash(token), s.cfg.SessionIdle.Seconds()).Scan(&id, &uid, &dead, &stale)
+		tokenHash(token), s.cfg.SessionIdle.Seconds()).Scan(&id, &uid, &ended, &dead, &stale)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+		return nil, "", nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if dead {
 		_, err := s.db.Exec(ctx, `delete from sessions where id=$1`, id)
-		return nil, err
+		return nil, "", err
+	}
+	if ended != "" {
+		return nil, ended, nil
 	}
 	if stale {
 		if _, err := s.db.Exec(ctx, `update sessions set last_seen_at=now() where id=$1`, id); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
-	return s.loadUser(ctx, uid)
+	u, err = s.loadUser(ctx, uid)
+	return u, "", err
 }
 
 // tokenAuth resolves a Bearer value to a live API token, or nil when it is unknown, revoked or expired.
@@ -137,7 +168,7 @@ func (s *server) authenticate(r *http.Request, c *reqCtx) (err error) {
 		return err
 	}
 	if ck, e := r.Cookie(sessionCookie); e == nil {
-		c.User, err = s.sessionUser(r.Context(), ck.Value)
+		c.User, c.Ended, err = s.sessionUser(r.Context(), ck.Value)
 	}
 	return err
 }

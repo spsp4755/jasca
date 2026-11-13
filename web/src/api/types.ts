@@ -26,11 +26,14 @@ export interface Counts { critical: number; high: number; medium: number; low: n
 // --- auth / me ---
 /** tz: IANA zone from JASCA_TZ; the UI shows times in it. */
 /** ai_enabled, max_scan_upload_mb and trivy_db_ready (false: no vulnerability DB yet, scans are refused) come only when signed in. */
-export interface AuthConfig { sso_enabled: boolean; tz?: string; version?: string; signed_in?: boolean; ai_enabled?: boolean; max_scan_upload_mb?: number; trivy_db_ready?: boolean }
+/** session_ended: why this browser's session stopped working ("replaced" = the account signed in somewhere else). */
+export interface AuthConfig { sso_enabled: boolean; local_login?: boolean; session_ended?: string; tz?: string; version?: string; signed_in?: boolean; ai_enabled?: boolean; max_scan_upload_mb?: number; trivy_db_ready?: boolean }
 export interface LocalLoginRequest { username: string; password: string }
 export interface LocalLoginResponse { user: Me }
 export interface Me {
   id: number; username: string; name: string; email: string; system_role: SystemRole; source: "local" | "sso"; depts: string[]; groups: string[];
+  /** Only in the first /me after a login that found the account open elsewhere: sessions it ended, sessions still open. */
+  session_notice?: { ended: number; active: number };
 }
 export interface Principal { kind: "user" | "group"; principal: string; display: string }
 

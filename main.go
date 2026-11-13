@@ -57,7 +57,7 @@ func configFrom(getenv func(string) string) (config, error) {
 		TrivyBin:          str("TRIVY_BIN", "/usr/local/bin/trivy"),
 		SessionIdle:       time.Duration(num("SESSION_IDLE_MIN", 30)) * time.Minute,
 		ScanTimeout:       time.Duration(num("SCAN_TIMEOUT_MIN", 15)) * time.Minute,
-		MaxSessions:       num("MAX_SESSIONS", 3),
+		MaxSessions:       num("MAX_SESSIONS", 1),
 		MaxReportMB:       int64(num("MAX_REPORT_MB", 50)),
 		MaxScanUploadMB:   int64(num("MAX_SCAN_UPLOAD_MB", 2048)),
 		MaxExtractMB:      int64(num("MAX_EXTRACT_MB", 4096)),
@@ -119,6 +119,13 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 	defer db.Close()
+	if len(os.Args) > 1 && os.Args[1] == "--enable-local-admin" {
+		if err := enableLocalAdmin(ctx, db); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("로컬 admin 계정을 다시 켰습니다. /login?local=1 에서 쓰던 비밀번호로 로그인하세요.")
+		return
+	}
 	s, err := newServer(ctx, cfg, db)
 	if err != nil {
 		log.Fatal(err)
