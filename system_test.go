@@ -100,6 +100,10 @@ func TestSystemChecks(t *testing.T) {
 		in.LogCount, in.LogLines = 0, nil
 		return in
 	}
+	fresh := time.Now().Add(-24 * time.Hour) // the 악용 정보 row (intel.go) reads its dates against the real clock
+	if err := s.putSetting(ctx, "intel", intelStatus{KEV: intelSource{Date: &fresh, Count: 1, LoadedAt: &fresh}, EPSS: intelSource{Date: &fresh, Count: 1, LoadedAt: &fresh}}); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range s.systemChecks(ctx, base(), now) {
 		if c.State != "ok" || c.alert || c.Action != "" {
 			t.Errorf("healthy: %+v", c)

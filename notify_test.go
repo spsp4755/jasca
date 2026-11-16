@@ -434,7 +434,7 @@ https://jasca.example.internal/projects/web?kev=true`},
 			t.Errorf("%s subject: %s", c.event, m.subject())
 		}
 	}
-	if len(eventLabels) != 13 {
+	if len(eventLabels) != 14 {
 		t.Errorf("an event was added (%d): give it a message here", len(eventLabels))
 	}
 	// an operator alert has no project: its title says so, and the link is the status screen

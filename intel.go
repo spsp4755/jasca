@@ -414,3 +414,39 @@ func (s *server) handleIntelUpload(w http.ResponseWriter, r *http.Request, c *re
 		return
 	}
 }
+
+// intelStaleAfter: the files are carried in with the weekly Trivy DB, so two weeks means a round was missed.
+const intelStaleAfter = 14 * 24 * time.Hour
+
+// The 관리 → 시스템 상태 row: without the files, or with old ones, 악용 확인 marks are missing without anyone noticing.
+func init() {
+	sysChecks = append(sysChecks, func(ctx context.Context, s *server) sysCheck {
+		c := sysCheck{Key: "intel", Label: "악용 정보", State: "ok", Link: "/admin/trivy"}
+		st, err := s.intelState(ctx)
+		if err != nil {
+			c.State, c.Value, c.Action = "bad", "확인하지 못했습니다", "데이터베이스 상태를 확인하세요."
+			return c
+		}
+		var parts, todo []string
+		for _, src := range []struct {
+			name string
+			v    intelSource
+		}{{"KEV", st.KEV}, {"EPSS", st.EPSS}} {
+			switch {
+			case src.v.LoadedAt == nil || src.v.Date == nil:
+				parts, todo = append(parts, src.name+" 올리지 않음"), append(todo, src.name)
+			case time.Since(*src.v.Date) >= intelStaleAfter:
+				parts = append(parts, fmt.Sprintf("%s %s (%d일 전)", src.name, src.v.Date.In(s.cfg.Loc).Format("2006-01-02"), int(time.Since(*src.v.Date).Hours()/24)))
+				todo = append(todo, src.name)
+			default:
+				parts = append(parts, fmt.Sprintf("%s %s", src.name, src.v.Date.In(s.cfg.Loc).Format("2006-01-02")))
+			}
+		}
+		c.Value = strings.Join(parts, " · ")
+		if len(todo) > 0 {
+			c.State = "warn"
+			c.Action = strings.Join(todo, ", ") + " 파일을 인터넷 PC에서 새로 받아 관리 → Trivy DB의 악용 정보에 올리세요. 오래되면 최근에 악용이 확인된 취약점이 표시되지 않습니다."
+		}
+		return c
+	})
+}

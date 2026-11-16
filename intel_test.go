@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func intelFixture(t *testing.T, name string) []byte {
@@ -387,5 +388,37 @@ func TestIntelFixesAndMCP(t *testing.T) {
 	}](t, s, tok, "get_vulnerability", map[string]any{"id": "CVE-2099-10001"})
 	if v.KEV == nil || v.KEV.DateAdded != "2026-11-12" || v.EPSS == nil {
 		t.Errorf("get_vulnerability %+v", v)
+	}
+}
+
+// The 시스템 상태 row: missing or two-week-old files are a warning naming which file to bring.
+func TestIntelStatusRow(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	row := func() sysCheck {
+		for _, c := range s.systemChecks(ctx, &sysInfo{}, time.Now()) {
+			if c.Key == "intel" {
+				return c
+			}
+		}
+		t.Fatal("no intel row")
+		return sysCheck{}
+	}
+	if c := row(); c.State != "warn" || !strings.Contains(c.Action, "KEV, EPSS") {
+		t.Errorf("never uploaded: %+v", c)
+	}
+	fresh, old := time.Now().Add(-48*time.Hour), time.Now().Add(-15*24*time.Hour)
+	put := func(kev, epss time.Time) {
+		if err := s.putSetting(ctx, "intel", intelStatus{KEV: intelSource{Date: &kev, Count: 3, LoadedAt: &fresh}, EPSS: intelSource{Date: &epss, Count: 9, LoadedAt: &fresh}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(fresh, fresh)
+	if c := row(); c.State != "ok" || c.Action != "" {
+		t.Errorf("fresh: %+v", c)
+	}
+	put(old, fresh)
+	if c := row(); c.State != "warn" || !strings.HasPrefix(c.Action, "KEV 파일") || !strings.Contains(c.Value, "15일 전") {
+		t.Errorf("old KEV: %+v", c)
 	}
 }
