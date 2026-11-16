@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 )
@@ -192,4 +193,29 @@ func (s *server) secretsState(ctx context.Context) (mode string, total, undecryp
 		return nil
 	})
 	return
+}
+
+// The 관리 → 시스템 상태 row: unencrypted storage is a standing 주의, an unreadable secret is a 문제 the operators are told about.
+func init() {
+	sysChecks = append(sysChecks, func(ctx context.Context, s *server) sysCheck {
+		c := sysCheck{Key: "secrets", Label: "연동 비밀값 저장", State: "ok"}
+		mode, total, bad, err := s.secretsState(ctx)
+		switch {
+		case err != nil:
+			c.State, c.Value, c.Action = "bad", "확인하지 못했습니다", "데이터베이스 상태를 확인하세요."
+		case bad > 0:
+			c.State, c.alert = "bad", true
+			c.Value = fmt.Sprintf("%d개 중 %d개를 읽을 수 없습니다", total, bad)
+			c.Action = "JASCA_SECRET_KEY를 저장할 때 쓰던 값으로 되돌리거나, 해당 비밀값(SSO, 동기화, 메일, AI, 알림 채널)을 관리 화면에서 다시 입력하세요."
+		case mode == "plain" && total == 0: // nothing stored yet, nothing exposed
+			c.Value = "저장된 비밀값 없음"
+		case mode == "plain":
+			c.State = "warn"
+			c.Value = fmt.Sprintf("암호화하지 않음 (저장된 비밀값 %d개)", total)
+			c.Action = "배포 yaml의 Secret에 JASCA_SECRET_KEY(32자 이상)를 넣고 다시 시작하면 저장된 값까지 암호화합니다. 방법은 DEPLOY-OFFLINE.md의 업그레이드에 있습니다."
+		default:
+			c.Value = fmt.Sprintf("암호화해 저장 (%d개)", total)
+		}
+		return c
+	})
 }

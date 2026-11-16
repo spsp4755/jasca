@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testSecretKey = "0123456789abcdef0123456789abcdef-test"
@@ -267,5 +268,40 @@ func TestSecretsWrongKey(t *testing.T) {
 	s.aead = newAEAD(testSecretKey)
 	if got := readSecrets(t, s); got["ai"] != sec["ai"] || got["sso"] != "" {
 		t.Errorf("with the first key back: %v", got)
+	}
+}
+
+// The 시스템 상태 row: nothing stored is fine, plain storage is a warning, an unreadable secret is a problem that alerts.
+func TestSecretsStatusRow(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	row := func() sysCheck {
+		for _, c := range s.systemChecks(ctx, &sysInfo{}, time.Now()) {
+			if c.Key == "secrets" {
+				return c
+			}
+		}
+		t.Fatal("no secrets row")
+		return sysCheck{}
+	}
+	if c := row(); c.State != "ok" || c.Action != "" {
+		t.Errorf("nothing stored: %+v", c)
+	}
+	if err := s.mergeSetting(ctx, "smtp", map[string]string{"password": "pw-plain"}); err != nil {
+		t.Fatal(err)
+	}
+	if c := row(); c.State != "warn" || c.Action == "" || c.alert {
+		t.Errorf("stored plain: %+v", c)
+	}
+	s.aead = newAEAD(testSecretKey)
+	if err := s.encryptStored(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if c := row(); c.State != "ok" || c.Action != "" {
+		t.Errorf("encrypted: %+v", c)
+	}
+	s.aead = newAEAD(strings.Repeat("z", 40))
+	if c := row(); c.State != "bad" || c.Action == "" || !c.alert {
+		t.Errorf("another key: %+v", c)
 	}
 }
