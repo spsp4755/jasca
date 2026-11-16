@@ -9,6 +9,7 @@ export type FindingOrigin = "scan" | "recheck" | "advisory";
 export type SystemRole = "" | "admin" | "security";
 export type ProjectRole = "owner" | "member" | "viewer";
 export type TargetKind = "image" | "repo" | "fs" | "sbom";
+/** harbor: scans the Harbor integration (removed in v1.4.0) delivered; kept as history. */
 export type ScanSource = "upload" | "server" | "harbor" | "recheck";
 export type JobState = "queued" | "running" | "done" | "failed" | "canceled";
 export type ExceptionScope = "finding" | "project_vuln" | "global_vuln";
@@ -228,13 +229,6 @@ export interface TrivyUpload extends TrivyStatus { kind: "db" | "java-db"; reche
 export interface RecheckRun {
   id: number; reason: "trivydb" | "manual"; state: "running" | "done" | "failed" | "canceled"; total: number; done: number;
   new_findings: number; started_at: string; finished_at: string | null; error: string;
-}
-export interface HarborLink { id: number; name: string; base_url: string; robot_user: string; robot_secret_set: boolean; created_at: string }
-/** webhook_secret is shown once, right after creation. */
-export interface HarborLinkCreated { id: number; webhook_url: string; webhook_secret: string }
-export interface HarborMapping { harbor_project: string; repo_pattern: string; project_id: number }
-export interface HarborUnmapped {
-  id: number; link_id: number; harbor_project: string; repository: string; digest: string; tag: string; received_at: string;
 }
 export interface AISettings {
   base_url: string; model: string; api_key_set: boolean; timeout_sec: number; max_input_tokens: number; enabled: boolean;

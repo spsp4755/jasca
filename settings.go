@@ -10,6 +10,7 @@ import (
 )
 
 // getSetting decodes settings[key] into dst. It reports false (and leaves dst alone) when the key is unset.
+// Secret fields (secrets.go) come out decrypted and go in encrypted through putSetting and mergeSetting.
 func (s *server) getSetting(ctx context.Context, key string, dst any) (bool, error) {
 	var raw []byte
 	err := s.db.QueryRow(ctx, `select value from settings where key=$1`, key).Scan(&raw)
@@ -19,7 +20,7 @@ func (s *server) getSetting(ctx context.Context, key string, dst any) (bool, err
 	if err != nil {
 		return false, err
 	}
-	return true, json.Unmarshal(raw, dst)
+	return true, json.Unmarshal(s.openJSON(raw, key), dst)
 }
 
 func (s *server) putSetting(ctx context.Context, key string, v any) error {
@@ -28,7 +29,7 @@ func (s *server) putSetting(ctx context.Context, key string, v any) error {
 		return err
 	}
 	_, err = s.db.Exec(ctx, `insert into settings(key, value) values($1, $2)
-		on conflict (key) do update set value=excluded.value, updated_at=now()`, key, json.RawMessage(b))
+		on conflict (key) do update set value=excluded.value, updated_at=now()`, key, json.RawMessage(s.sealJSON(b, key)))
 	return err
 }
 
@@ -40,7 +41,7 @@ func (s *server) mergeSetting(ctx context.Context, key string, fields any) error
 		return err
 	}
 	_, err = s.db.Exec(ctx, `insert into settings(key, value) values($1, $2)
-		on conflict (key) do update set value=settings.value || excluded.value, updated_at=now()`, key, json.RawMessage(b))
+		on conflict (key) do update set value=settings.value || excluded.value, updated_at=now()`, key, json.RawMessage(s.sealJSON(b, key)))
 	return err
 }
 

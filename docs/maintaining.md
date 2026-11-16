@@ -113,6 +113,7 @@ cd web && npm ci && npm run build
 | ID로 직접 읽는 객체는 `{id}`를 프로젝트로 풀어 `permObj`로 검사 | `registerObj`로 종류별 resolver 등록 |
 | 부서가 Keycloak 그룹 경로와 겹치면 그룹 우선(부서가 그룹 권한을 만들지 못함) | `memberPathsSQL` |
 | API 토큰은 `{key}` 프로젝트의 업로드 경로에서만 유효(`permUpload`) | `access.go`, `tokens.go` |
+| 관리 화면에서 받는 연동 비밀값은 `JASCA_SECRET_KEY`로 암호화해 저장. `settings`의 값은 `getSetting`/`putSetting`/`mergeSetting`이, 알림 채널 설정은 `sealJSON`/`openJSON`이 처리 | `secrets.go`의 `secretFields` |
 
 테스트가 이 규칙을 강제합니다(`server_test.go`, `matrix_test.go`).
 - `TestEveryRouteDeclaresPerm`: 모든 라우트가 알려진 권한을 선언하고 `permObj`의 resolver가 등록돼 있는지.
@@ -120,4 +121,4 @@ cd web && npm ci && npm run build
 - `TestPermChecks`, `TestCSRF`, `TestTokenAuth`: 권한 부족 403, 교차 출처 쓰기 거부, 토큰 동작.
 - `TestCrossProjectMatrix`: 프로젝트 A의 소유자가 프로젝트 B의 키와 객체 ID를 모든 프로젝트 범위 라우트에 보내 **404**(데이터 없음)를 받는지, B의 데이터가 바뀌지 않는지. 새 라우트는 `matrixRoutes`에 사례를 추가하거나 이유와 함께 `matrixExempt`에 넣지 않으면 이 테스트가 실패합니다.
 
-새 라우트를 만들 때는: (1) `s.handle(패턴, 권한, 핸들러)`, (2) 프로젝트에 매달린 객체면 `registerObj`와 `permObj`, (3) 목록이면 `visibleProjectsSQL`, (4) 행렬 테스트 사례 추가, (5) 쓰기면 `s.audit(...)` 호출, (6) 비밀값은 응답에 담지 않기(설정됨 여부만).
+새 라우트를 만들 때는: (1) `s.handle(패턴, 권한, 핸들러)`, (2) 프로젝트에 매달린 객체면 `registerObj`와 `permObj`, (3) 목록이면 `visibleProjectsSQL`, (4) 행렬 테스트 사례 추가, (5) 쓰기면 `s.audit(...)` 호출, (6) 비밀값은 응답에 담지 않기(설정됨 여부만), (7) 새 비밀값 필드는 `secrets.go`의 `secretFields`에 이름을 추가하고 `secrets_test.go`의 `setAllSecrets`·`readSecrets`에 넣기(시작할 때 기존 평문도 자동으로 암호화됩니다).

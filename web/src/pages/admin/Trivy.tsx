@@ -144,7 +144,7 @@ function ScanOptions({ current, defaultTimeout }: { current: TrivyOptions; defau
 
   return (
     <Panel title="스캔 옵션">
-      <p className="muted">서버 스캔, SBOM(CycloneDX) 업로드 평가, 재평가처럼 서버가 Trivy를 직접 실행할 때 똑같이 적용되고, CI나 Harbor에서 올라온 보고서는 이미 검사가 끝난 결과라 바뀌지 않습니다.</p>
+      <p className="muted">서버 스캔, SBOM(CycloneDX) 업로드 평가, 재평가처럼 서버가 Trivy를 직접 실행할 때 똑같이 적용되고, CI에서 올라온 보고서는 이미 검사가 끝난 결과라 바뀌지 않습니다.</p>
       <form className="opt-form" onSubmit={(e) => { e.preventDefault(); if (changed && !problem) save.mutate(next); }}>
         <div className="opt-group">
           <h3>무엇을 검사할지</h3>

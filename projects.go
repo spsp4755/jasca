@@ -640,13 +640,8 @@ func (s *server) handleTargetRename(w http.ResponseWriter, r *http.Request, c *r
 		return
 	}
 	var kind, old string
-	var harbor bool
-	if err := s.db.QueryRow(ctx, `select kind, name, recheck_excluded from targets where id=$1 and project_id=$2`, id, c.Project.ID).Scan(&kind, &old, &harbor); err != nil {
+	if err := s.db.QueryRow(ctx, `select kind, name from targets where id=$1 and project_id=$2`, id, c.Project.ID).Scan(&kind, &old); err != nil {
 		writeErr(w, 404, "not_found", "대상을 찾을 수 없습니다.")
-		return
-	}
-	if harbor { // the next sync would bring the repository back under its own name
-		writeErr(w, 409, "conflict", "Harbor에서 받아 오는 대상은 이름을 바꿀 수 없습니다.")
 		return
 	}
 	if _, err := s.db.Exec(ctx, `update targets set name=$2 where id=$1`, id, name); isUniqueViolation(err) {

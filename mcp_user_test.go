@@ -849,7 +849,7 @@ func TestMCPAdminTools(t *testing.T) {
 		t.Errorf("get_settings: %s", text)
 	}
 	var settings map[string]json.RawMessage
-	if json.Unmarshal([]byte(text), &settings); len(settings) != 10 {
+	if json.Unmarshal([]byte(text), &settings); len(settings) != 9 {
 		t.Errorf("get_settings sections: %d", len(settings))
 	}
 
@@ -862,27 +862,6 @@ func TestMCPAdminTools(t *testing.T) {
 	}
 	if res, text := toolRaw(t, s, key, "start_recheck", nil); res["isError"] != true && !strings.Contains(text, "run_id") {
 		t.Errorf("start_recheck: %s", text)
-	}
-
-	// Harbor: an unmapped image goes to a project
-	link := qint64(t, s, `insert into harbor_links(name, base_url, robot_user, robot_secret, webhook_secret_hash)
-		values('사내 Harbor', 'https://harbor.example.internal', 'robot$jasca', 'x', '\x00') returning id`)
-	um := qint64(t, s, `insert into harbor_unmapped(link_id, harbor_project, repository, digest, tag) values($1, 'web', 'web/front', 'sha256:abc', '1.0') returning id`, link)
-	hu := callTool[struct {
-		Images []struct {
-			ID         int64  `json:"id"`
-			Connection string `json:"connection"`
-		} `json:"images"`
-	}](t, s, key, "list_harbor_unmapped", nil)
-	if len(hu.Images) != 1 || hu.Images[0].ID != um || hu.Images[0].Connection != "사내 Harbor" {
-		t.Errorf("list_harbor_unmapped: %+v", hu)
-	}
-	callTool[map[string]any](t, s, key, "assign_harbor_image", map[string]any{"id": um, "project": "shop"})
-	if n := qInt(t, s, `select count(*) from harbor_unmapped`); n != 0 {
-		t.Errorf("the image is still unmapped")
-	}
-	if msg := toolErr(t, s, key, "assign_harbor_image", map[string]any{"id": um, "project": "shop"}); !strings.Contains(msg, "not found") {
-		t.Errorf("assigning twice: %s", msg)
 	}
 
 	// the administrator owns every project through the user tools as well

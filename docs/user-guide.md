@@ -16,7 +16,7 @@ JASCA에서 하는 일상 작업을 순서대로 설명합니다. 화면 왼쪽 
 
 1. **프로젝트 → 새 프로젝트**에서 이름과 키를 입력합니다. 키는 영문 소문자, 숫자, 하이픈으로 2~40자이며 URL과 CI 업로드 주소에 쓰이고 나중에 바꿀 수 없다고 생각하고 정하세요. 만든 사람이 소유자가 됩니다.
 2. 프로젝트 화면의 탭은 **결과, 조치 계획, 대상, 스캔 기록, 예외, 설정**입니다. **설정**은 일반, 멤버, CI 연동, API 토큰, MCP 연동, 정책, 알림, 삭제로 나뉘며 소유자만 바꿀 수 있습니다.
-   - **대상** 탭에서 소유자는 대상의 **이름 변경**(스캔 기록과 결과는 그대로 따라갑니다. Harbor 대상은 바꿀 수 없습니다)과 **삭제**(그 대상의 스캔 기록과 결과가 모두 지워집니다)를 할 수 있습니다. CI가 예전 이름으로 올리고 있다면 CI의 `target`도 함께 바꾸세요.
+   - **대상** 탭에서 소유자는 대상의 **이름 변경**(스캔 기록과 결과는 그대로 따라갑니다)과 **삭제**(그 대상의 스캔 기록과 결과가 모두 지워집니다)를 할 수 있습니다. CI가 예전 이름으로 올리고 있다면 CI의 `target`도 함께 바꾸세요.
 3. **설정 → 멤버**에서 누구에게 어떤 권한을 줄지 정합니다.
 
 | 프로젝트 역할 | 할 수 있는 일 |
@@ -42,7 +42,7 @@ grep -q '"passed":true' jasca.json
 ```
 
    - `kind`: `image`, `repo`, `fs`, `sbom`. `ref`는 태그나 커밋 값입니다. 업로드 크기 한도는 기본 50MB이고, 큰 보고서는 `Content-Encoding: gzip`으로 보냅니다.
-   - 올릴 수 있는 형식: Trivy JSON, SARIF, Harbor 취약점 보고서, CycloneDX JSON(SBOM). 형식은 자동으로 알아봅니다.
+   - 올릴 수 있는 형식: Trivy JSON, SARIF, CycloneDX JSON(SBOM). 형식은 자동으로 알아봅니다.
    - CycloneDX SBOM은 올리는 즉시 서버의 Trivy DB로 평가해 취약점을 채웁니다. 서버에 Trivy DB가 아직 없으면 패키지 목록만 저장되고 정책 판정은 **실패**("Trivy DB가 없어 평가하지 못했습니다")로 나옵니다.
    - 응답의 `policy.passed`가 `false`이면 정책 실패입니다. 위 `grep` 때문에 CI 작업이 종료 코드 1로 끝납니다.
    - 같은 보고서를 10분 안에 같은 대상에 다시 올리면 새 스캔을 만들지 않고 기존 스캔을 돌려줍니다(재시도 안전).
@@ -66,11 +66,7 @@ grep -q '"passed":true' jasca.json
 
 - 업로드 상한은 기본 2GiB입니다(관리자가 조정). 상한을 넘는 파일과 빈 파일은 고를 때 바로 거부됩니다. 압축 안의 절대 경로, `..`, 밖을 가리키는 링크는 거부됩니다.
 - 스캔은 큐에 들어가 한 번에 한 건씩 처리됩니다(제한 시간 기본 15분). 진행은 스캔 상세 화면에서 보고, 요청한 사람, 프로젝트 소유자, 관리자는 **스캔 취소**를 할 수 있습니다. 끝나면 "정책 통과/실패"가 표시됩니다.
-- 서버 스캔은 Trivy DB를 관리자가 올려 둔 뒤에만 동작합니다. 그 전에는 스캔 화면에 안내가 나오고 **스캔 시작**이 꺼져 있으며, API(`POST /projects/{key}/scan-jobs`)는 파일을 받지 않고 409로 답합니다. 레지스트리에서 이미지를 끌어오는 기능은 없습니다(Harbor 연동이 그 역할).
-
-### Harbor
-
-Harbor에서 스캔이 끝나면 자동으로 들어옵니다(관리자가 연결). 보고서만 받아 오므로 Harbor 대상은 재평가와 사내 Advisory 매칭 대상이 아닙니다(**대상** 탭에 "재평가 제외"로 표시). 매핑이 없는 이미지는 관리자가 프로젝트를 지정해야 합니다.
+- 서버 스캔은 Trivy DB를 관리자가 올려 둔 뒤에만 동작합니다. 그 전에는 스캔 화면에 안내가 나오고 **스캔 시작**이 꺼져 있으며, API(`POST /projects/{key}/scan-jobs`)는 파일을 받지 않고 409로 답합니다. 레지스트리에서 이미지를 끌어오는 기능은 없습니다(`docker save`로 만든 이미지 tar를 올리거나 CI에서 보고서를 올리세요).
 
 ## 결과 읽기
 
@@ -104,7 +100,7 @@ Harbor에서 스캔이 끝나면 자동으로 들어옵니다(관리자가 연�
 - **맨 위 한 문장**: "패키지 8개를 올리면 열린 취약점 140건 중 97건이 해결됩니다." 그 아래에 올려도 남는 것 두 가지를 적습니다. **아직 조치 버전이 없는 취약점**과, 이 계획이 다루지 않는 **설정 오류·비밀값·코드 분석** 결과입니다. 숫자를 누르면 해당 결과 목록이 열립니다.
 - **올릴 패키지**: 한 줄이 "패키지 · 설치 버전 → 올릴 버전 이상"이고, 올리면 해결되는 건수(심각도별)와 설치된 대상 수가 붙습니다. 가장 심각한 것을 해결하는 패키지가 먼저, 같으면 많이 해결하는 패키지가 먼저 나옵니다. 같은 패키지라도 설치 버전이나 패키지 종류(npm, maven, debian 등)가 다르면 줄이 나뉩니다.
 - **올릴 버전을 정하는 방법**: 스캐너는 조치 버전을 버전 계열별로 여러 개 적습니다(예: `2.15.0, 2.12.2`). JASCA는 그 패키지의 모든 취약점에 적힌 조치 버전 가운데 **가장 높은 버전**을 권합니다. 그 버전 이상이면 계열과 상관없이 모두 해결되기 때문입니다. 더 낮은 같은 계열 버전으로도 해결될 수 있지만 그것은 줄을 펼쳐 취약점별 조치 버전을 보고 직접 판단하세요.
-- **비교 못 함**: 패키지 종류를 모르거나(예: Harbor에서 받아 온 보고서) 버전 형식을 읽지 못하면 버전을 하나로 고르지 않고 스캐너가 적은 조치 버전을 그대로 보여 줍니다.
+- **비교 못 함**: 패키지 종류를 모르거나 버전 형식을 읽지 못하면 버전을 하나로 고르지 않고 스캐너가 적은 조치 버전을 그대로 보여 줍니다.
 - 줄을 누르면 **설치된 대상**(파일 경로 포함)과 **취약점 목록**(취약점별 조치 버전)이 펼쳐집니다. 취약점을 누르면 결과의 세부 정보가 열립니다. "이 중 N건은 아직 조치 버전이 없어 올린 뒤에도 남습니다"라는 안내가 나오면 그 건들은 올려도 그대로입니다.
 - **조치 버전이 아직 없는 패키지**: 어떤 버전으로 올려도 해결되지 않는 패키지 목록입니다. 취약한 기능을 끄거나 막아 완화하고, 그대로 둘 것이면 예외를 요청하세요.
 - **복사**: **계획 전체 복사**는 계획 전부를, 펼친 줄의 **복사**는 그 패키지만 글로 복사합니다(패키지, 설치 버전 → 올릴 버전, 건수, 대상, CVE 번호). 티켓이나 메신저에 그대로 붙여 넣을 수 있습니다.
@@ -195,7 +191,7 @@ AI 코딩·보안 에이전트(MCP 클라이언트)를 JASCA에 연결하면 에
 |---|---|---|
 | 모든 사용자 | `whoami`, `list_projects`, `project_summary`, `list_findings`, `list_fixes`, `get_finding`, `get_vulnerability`, `list_targets`, `list_scans`, `get_scan`, `list_exceptions`, `search_packages`, `list_members`, `find_users`, `list_audit_log`(소유한 프로젝트), `list_advisories`, `upload_commands` | `create_project`, `update_project`, `set_member`, `set_policy`, `rename_target`, `delete_target`, `upload_report`, `cancel_scan`, `update_finding`, `assign_findings`, `request_exception`, `revoke_exception` |
 | 보안 담당 | 위와 같음 (모든 프로젝트가 보임) | 위 + `decide_exception`(예외 승인·반려), `create_advisory`(사내 Advisory 등록) |
-| 관리자 | 위 + `system_status`, `get_server_logs`, `list_all_scans`, `list_notifications`, `list_users`, `list_mcp_keys`, `get_settings`, `list_harbor_unmapped` | 위 + `update_user`, `revoke_mcp_key`, `run_keycloak_sync`, `start_recheck`, `assign_harbor_image` |
+| 관리자 | 위 + `system_status`, `get_server_logs`, `list_all_scans`, `list_notifications`, `list_users`, `list_mcp_keys`, `get_settings` | 위 + `update_user`, `revoke_mcp_key`, `run_keycloak_sync`, `start_recheck` |
 
 - 프로젝트를 다루는 도구는 `project`(프로젝트 키)를 받습니다. `list_findings`, `list_exceptions`, `search_packages`, `get_vulnerability`는 `project`를 생략하면 내가 볼 수 있는 모든 프로젝트에서 찾습니다. `list_findings`에 `assignee: "me"`와 `overdue: true`를 주면 "내 담당 중 기한 지난 것"입니다.
 - 소유자만 할 수 있는 일(`update_project`, `set_member`, `set_policy`, `rename_target`, `delete_target`)과 멤버 이상만 할 수 있는 일(업로드, 담당자·기한)은 화면과 같은 규칙으로 막힙니다. 막히면 에이전트가 이유를 한국어 안내와 함께 받습니다.

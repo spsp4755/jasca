@@ -21,6 +21,7 @@ var version = "dev"
 
 type config struct {
 	Addr, DatabaseURL, DBSchema, DataDir, BootstrapPassword, TrivyBin string
+	SecretKey                                                         string         // JASCA_SECRET_KEY: encrypts integration secrets at rest; "" = stored plain
 	Loc                                                               *time.Location // JASCA_TZ
 	SessionIdle, ScanTimeout                                          time.Duration  // 0 idle means sessions never idle out
 	MaxSessions                                                       int            // per user; 0 = unlimited
@@ -54,6 +55,7 @@ func configFrom(getenv func(string) string) (config, error) {
 		DBSchema:          getenv("JASCA_DB_SCHEMA"),
 		DataDir:           str("DATA_DIR", "/data"),
 		BootstrapPassword: getenv("JASCA_BOOTSTRAP_PASSWORD"),
+		SecretKey:         getenv("JASCA_SECRET_KEY"),
 		TrivyBin:          str("TRIVY_BIN", "/usr/local/bin/trivy"),
 		SessionIdle:       time.Duration(num("SESSION_IDLE_MIN", 30)) * time.Minute,
 		ScanTimeout:       time.Duration(num("SCAN_TIMEOUT_MIN", 15)) * time.Minute,
@@ -61,6 +63,9 @@ func configFrom(getenv func(string) string) (config, error) {
 		MaxReportMB:       int64(num("MAX_REPORT_MB", 50)),
 		MaxScanUploadMB:   int64(num("MAX_SCAN_UPLOAD_MB", 2048)),
 		MaxExtractMB:      int64(num("MAX_EXTRACT_MB", 4096)),
+	}
+	if n := len(c.SecretKey); n > 0 && n < 32 { // also catches a CHANGE_ME placeholder left in the yaml
+		errs = append(errs, errors.New("JASCA_SECRET_KEY must be 32 or more characters (make one with: openssl rand -base64 32), or left out to store integration secrets unencrypted"))
 	}
 	loc, err := time.LoadLocation(str("TZ", "Asia/Seoul"))
 	if err != nil {

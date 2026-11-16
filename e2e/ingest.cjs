@@ -29,7 +29,7 @@ L.run(async () => {
 
   // the other formats
   for (const [file, query] of [
-    ["trivy/fs-mixed.json", "?target=mixed&kind=fs"], ["harbor/report.json", "?target=harbor-img&kind=image"],
+    ["trivy/fs-mixed.json", "?target=mixed&kind=fs"],
     ["sarif/semgrep.sarif", "?target=semgrep&kind=repo"], ["sarif/checkov.sarif", "?target=checkov&kind=repo"], ["cyclonedx/image.json", "?target=sbom&kind=sbom"]]) {
     const r = await L.ingest(key, token, L.fixture(file), query);
     L.ok(r.status === 200 || r.status === 201, `${file} accepted (${r.status})`);
@@ -44,7 +44,7 @@ L.run(async () => {
   await kim.page.getByRole("table", { name: "결과 목록" }).getByText("CVE-2022-37434").first().waitFor();
   L.ok(true, "project results screen shows CVE-2022-37434");
   const scans = await kim.api.get(`/projects/${key}/scans`);
-  L.ok((scans.items ?? scans).length >= 7, "scan history has the uploads");
+  L.ok((scans.items ?? scans).length >= 6, "scan history has the uploads");
   await L.shot(kim.page, "ingest-results");
   // a scan that checks fewer kinds: what it could not see is neither "gone" nor, next time, "new"
   const d = await L.project(kim.api, "e2e-diff", "E2E Diff");

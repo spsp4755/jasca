@@ -1,4 +1,4 @@
-// Package formats parses scan reports (Trivy, SARIF, Harbor, CycloneDX) into a common Report.
+// Package formats parses scan reports (Trivy, SARIF, CycloneDX) into a common Report.
 package formats
 
 import (
@@ -13,7 +13,7 @@ import (
 )
 
 type Report struct {
-	Format     string // "trivy" | "sarif" | "harbor" | "cyclonedx"
+	Format     string // "trivy" | "sarif" | "cyclonedx"
 	TargetKind string // "image" | "repo" | "fs" | "sbom" ("" = unknown; caller decides)
 	TargetName string
 	Ref        string

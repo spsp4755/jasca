@@ -65,7 +65,6 @@ L.run(async () => {
   await visit(p, "/packages?q=ssl&version=%3C99", "package search result", () => p.getByRole("table", { name: "찾은 패키지" }).waitFor());
   await visit(p, "/vulns/CVE-2022-37434", "vuln");
   await visit(p, "/scan", "scan upload");
-  await visit(p, "/scan?tab=harbor", "scan harbor");
   await visit(p, "/exceptions", "exceptions");
   await visit(p, "/exceptions/approvals", "exception approvals");
   await visit(p, "/advisories", "advisories");
@@ -79,7 +78,7 @@ L.run(async () => {
   await both(p, "shortcut help");
 
   const admin = await L.local(browser);
-  for (const a of ["users", "sso", "sync", "default-policy", "trivy", "recheck", "harbor", "ai", "channels", "retention", "audit"]) await visit(admin.page, `/admin/${a}`, `admin ${a}`);
+  for (const a of ["users", "sso", "sync", "default-policy", "trivy", "recheck", "ai", "channels", "retention", "audit"]) await visit(admin.page, `/admin/${a}`, `admin ${a}`);
   await visit(admin.page, "/nonexistent", "not found");
 
   if (soft.length) console.log("minor/moderate (not failing):\n" + soft.map((s) => `  ${s.name}: ${s.id} (${s.impact}) x${s.n}`).join("\n"));

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../components/PageHeader";
-import Tabs from "../components/Tabs";
 import Field from "../components/Field";
 import Button from "../components/Button";
 import Icon from "../components/Icon";
@@ -14,7 +13,6 @@ import { copyText } from "../lib/clipboard";
 import { SEVERITY_LABEL, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
 import StatusBadge from "../components/StatusBadge";
 import { ProjectTarget, SummaryCell } from "./Home";
-import { Panel } from "./admin/parts";
 import { KEY_RE, suggestKey } from "./Projects";
 import "../styles/t17.css";
 
@@ -577,47 +575,23 @@ function ScanAside({ canReuse, onReuse }: { canReuse: (projectKey: string) => bo
   );
 }
 
-function HarborTab() {
-  const { data: me } = useMe();
-  return (
-    <Panel title="Harbor 연동">
-      <div className="stack">
-        <p>Harbor에 이미지를 푸시하면 Harbor가 웹훅으로 JASCA에 알리고, JASCA가 Harbor의 Trivy 보고서를 가져와 자동으로 등록합니다. 사용자가 따로 올릴 필요가 없습니다.</p>
-        <ol className="steps">
-          <li>관리자가 Harbor 연결(주소, 로봇 계정)을 등록하고 웹훅 주소와 비밀값을 Harbor에 설정합니다.</li>
-          <li>Harbor 프로젝트와 저장소 패턴을 JASCA 프로젝트에 매핑합니다.</li>
-          <li>매핑되지 않은 이미지는 관리자 화면의 &quot;매핑 안 된 이미지&quot; 목록에 쌓입니다.</li>
-        </ol>
-        {isAdmin(me) ? <div><Link className="btn btn-secondary btn-sm" to="/admin/harbor">Harbor 관리로 이동</Link></div>
-          : <p className="muted">연결 설정은 관리자만 할 수 있습니다. 필요하면 관리자에게 요청하세요.</p>}
-      </div>
-    </Panel>
-  );
-}
-
 export default function ScanNew() {
-  const [sp, setSp] = useSearchParams();
-  const tab = sp.get("tab") === "harbor" ? "harbor" : "upload";
   const projects = useApi<Project[]>("/projects");
   const list = projects.data ?? [];
   const { data: me } = useMe();
   const noDb = useAuthConfig().data?.trivy_db_ready === false; // no scan can run: say so before anyone picks a 2GB file
   return (
     <>
-      <PageHeader title="스캔하기" description="파일을 올리면 서버가 바로 검사합니다. Harbor를 쓰면 이미지를 푸시할 때 자동으로 등록할 수도 있습니다." />
+      <PageHeader title="스캔하기" description="파일을 올리면 서버가 바로 검사합니다." />
       <div className="page-narrow">
-        <Tabs label="스캔 방법" value={tab} onChange={(t) => setSp({ tab: t }, { replace: true })}
-          tabs={[{ id: "upload", label: "파일 올려서 검사" }, { id: "harbor", label: "Harbor에서 자동으로" }]} />
         {projects.error && <div className="alert alert-danger" role="alert">{projects.error.message}</div>}
-        {noDb && tab === "upload" && (
+        {noDb && (
           <div className="alert alert-warn" role="alert">
             <Icon name="alert" />
             <span><b>취약점 DB가 아직 설치되지 않아 스캔할 수 없습니다.</b> {isAdmin(me) ? <><Link to="/admin/trivy">관리 → Trivy DB</Link>에서 db.tar.gz를 올리세요.</> : "관리자에게 요청하세요."}</span>
           </div>
         )}
-        <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
-          {tab === "harbor" ? <div className="scan-main"><HarborTab /></div> : <UploadTab projects={list} loaded={projects.isSuccess} />}
-        </div>
+        <UploadTab projects={list} loaded={projects.isSuccess} />
       </div>
     </>
   );

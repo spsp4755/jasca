@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/cipher"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,7 +27,10 @@ type server struct {
 	secret  []byte      // settings['hmac_secret'], signs short-lived cookies
 	routes  []routeInfo // every registered route with its perm, for tests
 	objs    map[string]func(ctx context.Context, id string) (projectID int64, err error)
-	limiter *limiter // local login attempts per IP
+	limiter *limiter    // local login attempts per IP
+	aead    cipher.AEAD // secrets.go: from JASCA_SECRET_KEY, nil = integration secrets are stored plain
+	// secrets already logged as undecryptable (secrets.go)
+	undecryptable sync.Map
 
 	oidcMu     sync.Mutex
 	providers  map[string]*oidc.Provider // discovered Keycloak per issuer
@@ -57,10 +61,13 @@ func newServer(ctx context.Context, cfg config, db *pgxpool.Pool) (*server, erro
 		return nil, err
 	}
 	s := &server{db: db, cfg: cfg, mux: http.NewServeMux(), objs: map[string]func(context.Context, string) (int64, error){},
-		limiter: newLimiter(20, time.Minute)}
+		limiter: newLimiter(20, time.Minute), aead: newAEAD(cfg.SecretKey)}
 	var err error
 	if s.secret, err = s.loadSecret(ctx); err != nil {
 		return nil, err
+	}
+	if err := s.encryptStored(ctx); err != nil {
+		return nil, fmt.Errorf("secrets: %w", err)
 	}
 	if err := s.bootstrapAdmin(ctx, cfg.BootstrapPassword); err != nil {
 		return nil, fmt.Errorf("bootstrap admin: %w", err)

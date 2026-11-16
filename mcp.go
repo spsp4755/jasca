@@ -70,7 +70,7 @@ func init() { routeRegistrars = append(routeRegistrars, (*server).mcpRoutes) }
 
 func (s *server) mcpRoutes() {
 	s.mcpLimiter = newLimiter(300, time.Minute)
-	// permPublic in the route table only: handleMCP does its own token-only auth, as the Harbor hook does with its secret.
+	// permPublic in the route table only: handleMCP does its own token-only auth.
 	s.handle("POST /mcp", permPublic, s.handleMCP)
 	for _, m := range []string{"GET", "DELETE"} { // unregistered, GET would get the web app's index.html
 		s.handle(m+" /mcp", permPublic, func(w http.ResponseWriter, r *http.Request, c *reqCtx) {
@@ -1149,7 +1149,7 @@ var mcpTools = func() []mcpTool {
 				"filter of list_findings and list_scans takes.",
 			`{"type": "object", "additionalProperties": false, "properties": {"limit": `+limitSchema(100, 500)+`}}`, mcpListTargets),
 		tool("list_scans",
-			"List the project's scans, newest first: target, source (upload, server, harbor, recheck), status, ref (image "+
+			"List the project's scans, newest first: target, source (upload, server, recheck; harbor on scans from the removed Harbor integration), status, ref (image "+
 				"tag or commit), the target's open findings right after the scan, and whether the scan passed the policy, "+
 				"with the reasons when it failed. Pass next_cursor as cursor for older scans.",
 			`{"type": "object", "additionalProperties": false, "properties": {

@@ -13,7 +13,6 @@ var fixtures = map[string]string{
 	"testdata/trivy/fs-mixed.json":     "trivy",
 	"testdata/sarif/semgrep.sarif":     "sarif",
 	"testdata/sarif/checkov.sarif":     "sarif",
-	"testdata/harbor/report.json":      "harbor",
 	"testdata/cyclonedx/image.json":    "cyclonedx",
 }
 
@@ -175,20 +174,6 @@ func TestSARIFFingerprintIgnoresLine(t *testing.T) {
 	}
 	if bytes.Equal(a.Findings[0].Fingerprint, a.Findings[1].Fingerprint) {
 		t.Fatal("different findings share a fingerprint")
-	}
-}
-
-func TestHarbor(t *testing.T) {
-	r := parse(t, "harbor", "testdata/harbor/report.json")
-	if r.TargetKind != "image" || r.TargetName != "library/web" || r.Ref != "1.4.2" || len(r.Findings) != 3 || !r.Complete["vuln:trivy"] {
-		t.Fatalf("%+v", r)
-	}
-	f := r.Findings[0]
-	if f.Severity != "CRITICAL" || f.FixedVersion != "1.2.12-r2" || f.Vuln == nil || f.Vuln.CVSSScore == nil || *f.Vuln.CVSSScore != 9.8 {
-		t.Fatalf("%+v", f)
-	}
-	if r.Findings[2].Severity != "LOW" {
-		t.Fatalf("negligible -> %s", r.Findings[2].Severity)
 	}
 }
 

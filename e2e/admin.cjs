@@ -4,7 +4,6 @@ const L = require("./lib.cjs");
 const SECRETS = {
   "SSO client secret": L.KC_CLIENT_SECRET,
   "sync client secret": L.KC_SYNC_SECRET,
-  "Harbor robot secret": "robot-secret-e2e-7f3a91c4",
   "SMTP password": "smtp-pass-e2e-5b82d0e6",
   "AI API key": "sk-e2e-ai-key-c19d44a8",
 };
@@ -26,11 +25,9 @@ L.run(async () => {
   L.ok(r.status === 204, "SMTP password saved");
   r = await sweep("PUT", "/admin/ai", { base_url: "http://127.0.0.1:9/v1", model: "e2e", api_key: SECRETS["AI API key"], enabled: false });
   L.ok(r.status === 200, "AI key saved");
-  r = await sweep("POST", "/admin/harbor", { name: "e2e-harbor", base_url: "http://127.0.0.1:9", robot_user: "robot$e2e", robot_secret: SECRETS["Harbor robot secret"] });
-  L.ok(r.status < 300, "Harbor robot secret saved (" + r.status + ")");
 
   // read every admin route directly, then page through the admin screens as a browser does
-  for (const p of ["/admin/sso", "/admin/sync", "/admin/smtp", "/admin/ai", "/admin/ai/prompts", "/admin/harbor", "/admin/channels", "/admin/trivy",
+  for (const p of ["/admin/sso", "/admin/sync", "/admin/smtp", "/admin/ai", "/admin/ai/prompts", "/admin/channels", "/admin/trivy",
     "/admin/recheck", "/admin/retention", "/admin/default-policy", "/admin/users", "/admin/sync/logins", "/audit?limit=200", "/me"]) {
     const x = await sweep("GET", p);
     L.ok(x.status === 200, `GET ${p} readable`);
@@ -46,7 +43,7 @@ L.run(async () => {
     "empty AI prompts say the built-in prompt is used and show it");
   await page.getByRole("button", { name: "기본 프롬프트 불러오기" }).first().click();
   L.ok(/\[파트 2: 내 영향\]/.test(await guide.inputValue()), "the built-in prompt can be loaded into the field to edit");
-  for (const p of ["users", "sso", "sync", "default-policy", "trivy", "recheck", "harbor", "ai", "channels", "retention", "audit"]) {
+  for (const p of ["users", "sso", "sync", "default-policy", "trivy", "recheck", "ai", "channels", "retention", "audit"]) {
     await page.goto(`${L.BASE}/admin/${p}`);
     await page.locator(".admin-main h1, main h1").first().waitFor();
     await page.waitForLoadState("networkidle");

@@ -57,11 +57,10 @@ func (s *server) jobWake() chan struct{} {
 	return s.jobs.wake
 }
 
-// Job priorities, highest first. A recheck run yields to any queued job above prioRecheck, so new scans and
-// Harbor reports never wait for a whole run.
+// Job priorities, highest first. A recheck run yields to any queued job above prioRecheck, so new scans never
+// wait for a whole run.
 const (
 	prioScan    = 10 // server_scan
-	prioHarbor  = 10 // harbor_fetch
 	prioAI      = 5
 	prioRecheck = 0
 )

@@ -23,7 +23,7 @@ type ingestInput struct {
 	Report                              *formats.Report
 	Raw                                 []byte // the decoded upload; nil = nothing to keep and no duplicate check
 	UserID, TokenID                     *int64
-	ScanID                              *int64   // pre-created queued scan for server/harbor jobs: finished instead of inserted
+	ScanID                              *int64   // pre-created queued scan for server scan jobs: finished instead of inserted
 	Warnings                            []string // what the scan could not examine, in Korean (summary.warnings)
 	NotJudged                           string   // set: the policy fails with this reason whatever the counts are
 }
@@ -59,10 +59,11 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 		sum, gz = h[:], gzipBytes(in.Raw)
 	}
 	err := s.tx(ctx, func(tx pgx.Tx) error {
-		// the upsert locks the target row until commit, so ingests of one target run one after another
+		// the upsert locks the target row until commit, so ingests of one target run one after another. A target the
+		// removed Harbor integration left excluded from re-evaluation is included again once a report brings a package list.
 		if err := tx.QueryRow(ctx, `insert into targets(project_id, kind, name) values($1, $2, $3)
-			on conflict (project_id, kind, name) do update set kind = excluded.kind returning id`,
-			in.ProjectID, in.TargetKind, in.TargetName).Scan(&res.TargetID); err != nil {
+			on conflict (project_id, kind, name) do update set recheck_excluded = targets.recheck_excluded and not $4 returning id`,
+			in.ProjectID, in.TargetKind, in.TargetName, len(rep.Packages) > 0).Scan(&res.TargetID); err != nil {
 			return err
 		}
 		if sum != nil && in.ScanID == nil {

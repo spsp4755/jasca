@@ -66,7 +66,7 @@ export const daysUntil = (iso: string, now = Date.now()) => Math.ceil((new Date(
 
 // Severities keep the names scanners, CVE feeds and CI logs use; the other labels are Korean.
 export const SEVERITY_LABEL: Record<Severity, string> = { CRITICAL: "CRITICAL", HIGH: "HIGH", MEDIUM: "MEDIUM", LOW: "LOW", UNKNOWN: "UNKNOWN" };
-export const SOURCE_LABEL: Record<ScanSource, string> = { upload: "CI 업로드", server: "파일 업로드", harbor: "Harbor", recheck: "재평가" };
+export const SOURCE_LABEL: Record<ScanSource, string> = { upload: "CI 업로드", server: "파일 업로드", harbor: "Harbor(연동 종료)", recheck: "재평가" };
 export const ORIGIN_LABEL: Record<FindingOrigin, string> = { scan: "스캔", recheck: "재평가", advisory: "사내 Advisory" };
 export const SCOPE_LABEL: Record<ExceptionScope, string> = { finding: "결과", project_vuln: "프로젝트 전체", global_vuln: "전사" };
 export const RESOLUTION_LABEL: Record<ExceptionResolution, string> = { accepted: "위험 수용", false_positive: "오탐" };

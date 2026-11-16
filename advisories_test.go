@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/spsp4755/jasca/internal/formats"
 )
 
 type advView struct {
@@ -266,7 +268,8 @@ func containsStr(l []string, s string) bool {
 	return false
 }
 
-func TestHarborTargetsExcluded(t *testing.T) {
+// A target the removed Harbor integration left excluded is skipped until a report with a package list arrives.
+func TestExcludedTargets(t *testing.T) {
 	e := newExEnv(t)
 	_, mck, tid := e.project(t, "web")
 	mustUpload(t, e.s, "web", "target=app&kind=fs", pkgDoc("app", "npm", [2]string{"left-pad", "1.3.0"}), mck)
@@ -275,16 +278,20 @@ func TestHarborTargetsExcluded(t *testing.T) {
 	if n := qInt(t, e.s, `select count(*) from findings where rule_id='INT-2026-001'`); n != 0 {
 		t.Errorf("excluded target matched: %d", n)
 	}
-	mustUpload(t, e.s, "web", "target=app&kind=fs", pkgDoc("app", "npm", [2]string{"left-pad", "1.3.0"}), mck)
-	if n := qInt(t, e.s, `select count(*) from findings where rule_id='INT-2026-001'`); n != 0 {
-		t.Errorf("excluded target matched at ingest: %d", n)
-	}
 	rec := do(t, e.s, "POST", "/api/v1/advisories/preview", advBody("", "npm", "left-pad", "<1.3.1"), e.secA)
 	wantCode(t, rec, 200, "preview")
 	if p := decode[[]map[string]string](t, rec); len(p) != 0 {
 		t.Errorf("preview included an excluded target: %v", p)
 	}
-	sqlExec(t, e.s, `update targets set recheck_excluded = false where id=$1`, tid)
+	e.s.ingest(context.Background(), ingestInput{ProjectID: qint64(t, e.s, `select project_id from targets where id=$1`, tid),
+		TargetKind: "fs", TargetName: "app", Source: "upload", Report: &formats.Report{Format: "sarif"}})
+	if n := qInt(t, e.s, `select count(*) from targets where id=$1 and recheck_excluded`, tid); n != 1 {
+		t.Errorf("a report without packages included the target again")
+	}
+	mustUpload(t, e.s, "web", "target=app&kind=fs", pkgDoc("app", "npm", [2]string{"left-pad", "1.3.0"}, [2]string{"ms", "2.0.0"}), mck)
+	if n := qInt(t, e.s, `select count(*) from findings where rule_id='INT-2026-001'`); n != 1 {
+		t.Errorf("a report with a package list did not include the target again: %d", n)
+	}
 	rec = do(t, e.s, "POST", "/api/v1/advisories/preview", advBody("", "npm", "left-pad", "<1.3.1"), e.secA)
 	p := decode[[]map[string]string](t, rec)
 	if len(p) != 1 || p[0]["project_key"] != "web" || p[0]["pkg"] != "left-pad" || p[0]["version"] != "1.3.0" || p[0]["target"] != "app" {

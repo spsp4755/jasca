@@ -71,7 +71,7 @@ func (s *server) handleScanUpload(w http.ResponseWriter, r *http.Request, c *req
 		p, ok = formats.Detect(raw[:min(len(raw), 8192)])
 	}
 	if !ok {
-		writeErr(w, 400, "unsupported_format", "지원하지 않는 보고서 형식입니다. Trivy JSON, SARIF, Harbor, CycloneDX 보고서를 올리세요.")
+		writeErr(w, 400, "unsupported_format", "지원하지 않는 보고서 형식입니다. Trivy JSON, SARIF, CycloneDX 보고서를 올리세요.")
 		return
 	}
 	rep, err := p.Parse(bytes.NewReader(raw))

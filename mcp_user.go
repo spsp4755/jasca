@@ -463,7 +463,7 @@ func mcpUserTools() []mcpTool {
 				"target": {"type": "string", "description": "The target's exact name from list_targets."}}}`, mcpDeleteTarget),
 
 		writeTool(mcpUser, false, "upload_report", "스캔 보고서 올리기 (작은 보고서, 멤버 이상)",
-			"Upload a scanner report to a project: the text of a Trivy JSON, SARIF, Harbor or CycloneDX report, up to about "+
+			"Upload a scanner report to a project: the text of a Trivy JSON, SARIF or CycloneDX report, up to about "+
 				"4 MB. Members and owners. The report's findings replace the target's previous state: what is no longer "+
 				"reported is marked fixed. Returns the scan id, the target's open findings and whether the scan passed the "+
 				"policy. For a larger report, or to have the server scan a source archive or image file, use upload_commands.",
@@ -941,7 +941,7 @@ func mcpUploadCommands(m *mcpCall, raw json.RawMessage) (any, error) {
 		"notes": []string{
 			"target is the name without a version; put the version in ref. A new name creates a new scan target.",
 			"The scan commands answer with scan_id: the server scans in the background, so follow it with get_scan until status is done or failed.",
-			fmt.Sprintf("Limits: scan files %d MB (zip, tar, tar.gz), reports %d MB (Trivy JSON, SARIF, Harbor, CycloneDX; add -H 'Content-Encoding: gzip' for a gzipped report).",
+			fmt.Sprintf("Limits: scan files %d MB (zip, tar, tar.gz), reports %d MB (Trivy JSON, SARIF, CycloneDX; add -H 'Content-Encoding: gzip' for a gzipped report).",
 				m.s.cfg.MaxScanUploadMB, m.s.cfg.MaxReportMB),
 		},
 	}

@@ -202,7 +202,7 @@ func TestRecheckRoutes(t *testing.T) {
 	pid := mkProject(t, s, "web")
 	adm := loginAs(t, s, mkUser(t, s, "adm", "admin"))
 	seedInventory(t, s, pid, "fs", "in", "trivy/fs-mixed.json", false)
-	ex := seedInventory(t, s, pid, "image", "harbor", "trivy/image-alpine.json", false)
+	ex := seedInventory(t, s, pid, "image", "excluded", "trivy/image-alpine.json", false)
 	sqlExec(t, s, `update targets set recheck_excluded=true where id=$1`, ex)
 	s.ingest(context.Background(), ingestInput{ProjectID: pid, TargetKind: "repo", TargetName: "nopkgs", Source: "upload",
 		Report: &formats.Report{Format: "sarif"}})

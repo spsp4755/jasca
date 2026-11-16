@@ -31,7 +31,7 @@ export default function ProjectTargets({ project }: { project: Project }) {
           { key: "name", header: "이름", render: (t) => (
             <span className="target-name">
               <span className="mono">{t.name}</span>
-              {t.recheck_excluded && <span className="tag tag-quiet" title="Harbor 대상은 재평가와 사내 Advisory 매칭에서 제외됩니다.">재평가 제외</span>}
+              {t.recheck_excluded && <span className="tag tag-quiet" title="예전 Harbor 연동으로 받은 대상입니다. 패키지 목록이 온전하지 않아 재평가와 사내 Advisory 매칭에서 제외됩니다. 이 대상에 보고서를 새로 올리면 다시 포함됩니다.">재평가 제외</span>}
             </span>) },
           { key: "open", header: "열린 결과", width: 90, align: "right", render: (t) => <b className={`num${t.counts.open ? "" : " muted"}`}>{fmtNumber(t.counts.open)}</b> },
           { key: "sev", header: "심각도별", width: 260, render: (t) => <SummaryCell s={t.counts} /> },
@@ -39,7 +39,7 @@ export default function ProjectTargets({ project }: { project: Project }) {
           { key: "go", header: <span className="sr-only">스캔 기록</span>, width: 96, align: "right", render: (t) => <Link to={`/projects/${project.key}/scans?target_id=${t.id}`} className="nw">스캔 기록</Link> },
           ...(owner ? [{ key: "edit", header: <span className="sr-only">관리</span>, width: 150, align: "right" as const, render: (t: Target) => (
             <span className="row-actions">
-              {!t.recheck_excluded && <Button size="sm" variant="ghost" aria-label={`${t.name} 이름 변경`} onClick={() => setEdit({ t, del: false })}>이름 변경</Button>}
+              <Button size="sm" variant="ghost" aria-label={`${t.name} 이름 변경`} onClick={() => setEdit({ t, del: false })}>이름 변경</Button>
               <Button size="sm" variant="ghost" aria-label={`${t.name} 삭제`} onClick={() => setEdit({ t, del: true })}>삭제</Button>
             </span>) }] : []),
         ]} />

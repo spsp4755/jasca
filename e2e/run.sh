@@ -55,7 +55,9 @@ echo "== keycloak ($JASCA_E2E_KC_CONTAINER)"
 
 if curl -sf "$JASCA_E2E_BASE/healthz" >/dev/null 2>&1; then echo "$ADDR 에 이미 서버가 떠 있습니다. 끄고 다시 실행하세요." >&2; exit 1; fi
 [ -z "$TRIVY" ] || export JASCA_TRIVY_BIN=$TRIVY
+# JASCA_SECRET_KEY: every suite runs with the integration secrets encrypted at rest (SSO login, sync, SMTP, AI, channels)
 JASCA_MAX_SESSIONS=0 JASCA_SESSION_IDLE_MIN=0 JASCA_DATABASE_URL=$JASCA_E2E_DATABASE_URL JASCA_BOOTSTRAP_PASSWORD=$JASCA_E2E_ADMIN_PASSWORD \
+  JASCA_SECRET_KEY=e2e-secret-key-0123456789abcdef0123456789 \
   JASCA_ADDR=$ADDR JASCA_DATA_DIR=.out/data .out/jasca > .out/server.log 2>&1 &
 PID=$!
 trap 'kill $PID 2>/dev/null' EXIT INT TERM

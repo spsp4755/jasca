@@ -349,6 +349,9 @@ func (s *server) smtpConf(ctx context.Context) (smtpSettings, error) {
 	return st, err
 }
 
+// noRedirect: outbound calls carry credentials, so a redirect to another host is never followed.
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
 // sendErr maps a failure to a short Korean text. The remote body and the URL (it holds the webhook token) never go in.
 func sendErr(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -371,7 +374,7 @@ func (s *server) sendChannel(ctx context.Context, kind string, cfg []byte, m not
 		var c struct {
 			WebhookURL string `json:"webhook_url"`
 		}
-		if json.Unmarshal(cfg, &c) != nil || c.WebhookURL == "" {
+		if json.Unmarshal(s.openJSON(cfg, "channel"), &c) != nil || c.WebhookURL == "" {
 			return errors.New("Webhook URL이 설정되지 않았습니다.")
 		}
 		body, _ := json.Marshal(map[string]string{"text": m.mattermostText()})
@@ -670,7 +673,7 @@ func (s *server) handleChannelList(w http.ResponseWriter, r *http.Request, c *re
 		}
 		pub := map[string]any{}
 		var m map[string]any
-		json.Unmarshal(cfg, &m)
+		json.Unmarshal(s.openJSON(cfg, "channel"), &m)
 		if kind == "mattermost" {
 			u, _ := m["webhook_url"].(string)
 			pub["webhook_url_set"] = u != ""
@@ -695,7 +698,7 @@ func (s *server) handleChannelCreate(w http.ResponseWriter, r *http.Request, c *
 	}
 	var id int64
 	err := s.db.QueryRow(r.Context(), `insert into notify_channels(kind, name, config, enabled) values($1,$2,$3,$4) returning id`,
-		in.Kind, in.Name, json.RawMessage(cfg), in.Enabled).Scan(&id)
+		in.Kind, in.Name, json.RawMessage(s.sealJSON(cfg, "channel")), in.Enabled).Scan(&id)
 	if err != nil {
 		writeInternal(w, "channel create", err)
 		return
@@ -734,7 +737,7 @@ func (s *server) handleChannelPut(w http.ResponseWriter, r *http.Request, c *req
 		}
 	}
 	if _, err := s.db.Exec(r.Context(), `update notify_channels set name=$2, config=$3, enabled=$4 where id=$1`,
-		id, in.Name, json.RawMessage(cfg), in.Enabled); err != nil {
+		id, in.Name, json.RawMessage(s.sealJSON(cfg, "channel")), in.Enabled); err != nil {
 		writeInternal(w, "channel put", err)
 		return
 	}

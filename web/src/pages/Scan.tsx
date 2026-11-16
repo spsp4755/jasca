@@ -162,7 +162,7 @@ function PolicyBanner({ s }: { s: ScanDetail }) {
   if (s.status === "failed") return <div className="alert alert-danger" role="alert"><Icon name="alert" /><span><b>스캔 실패</b> · {s.error || "원인을 알 수 없습니다."}</span></div>;
   if (s.status === "canceled") return <div className="alert alert-warn"><Icon name="info" />취소된 스캔입니다.</div>;
   if (live(s.status)) return <div className="alert alert-info" role="status"><span className="spinner" aria-hidden="true" />{s.status === "queued" ? "스캔 대기 중입니다." : "스캔 중입니다."} 끝나면 자동으로 갱신됩니다.</div>;
-  if (!s.policy) return null; // nothing was judged (re-evaluations, Harbor reports): no banner beats an empty one
+  if (!s.policy) return null; // nothing was judged (re-evaluations): no banner beats an empty one
   if (s.policy.disabled) return <div className="alert alert-info"><Icon name="info" /><span><b>정책 사용 안 함</b> · 이 프로젝트는 정책을 쓰지 않아 이 스캔을 판정하지 않았습니다.</span></div>;
   return s.policy.passed ? (
     <div className="policy-banner policy-banner-pass"><Icon name="shieldCheck" size={20} /><div><b>정책 통과</b><p>프로젝트 정책의 기준을 넘는 결과가 없습니다.</p></div></div>

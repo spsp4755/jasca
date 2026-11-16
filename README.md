@@ -1,10 +1,10 @@
 # JASCA
 
-JASCA는 폐쇄망 Kubernetes에서 쓰는 취약점 관리 서비스입니다. CI와 서버 Trivy 스캔, Harbor 보고서에서 나온 결과를 프로젝트 단위로 모아 상태를 추적하고, 예외를 승인하고, 새로 알려진 취약점을 다시 스캔하지 않고 반영합니다. v1.0.0은 이전 버전(v0.3.x, NestJS/Next.js)을 Go 단일 바이너리와 내장 React 웹으로 다시 만든 것입니다.
+JASCA는 폐쇄망 Kubernetes에서 쓰는 취약점 관리 서비스입니다. CI와 서버 Trivy 스캔에서 나온 결과를 프로젝트 단위로 모아 상태를 추적하고, 예외를 승인하고, 새로 알려진 취약점을 다시 스캔하지 않고 반영합니다. v1.0.0은 이전 버전(v0.3.x, NestJS/Next.js)을 Go 단일 바이너리와 내장 React 웹으로 다시 만든 것입니다.
 
 ## 주요 기능
 
-- **결과 수집**: Trivy JSON(취약점·설정 오류·비밀값), SARIF 2.1(Semgrep, Checkov 등), Harbor 취약점 보고서, CycloneDX JSON SBOM을 업로드 API로 받습니다. SBOM은 받는 즉시 서버의 Trivy DB로 평가합니다.
+- **결과 수집**: Trivy JSON(취약점·설정 오류·비밀값), SARIF 2.1(Semgrep, Checkov 등), CycloneDX JSON SBOM을 업로드 API로 받습니다. SBOM은 받는 즉시 서버의 Trivy DB로 평가합니다.
 - **서버 스캔**: 압축 파일(zip, tar, tar.gz/tgz)이나 `docker save` 이미지 tar를 올리면 서버의 Trivy가 검사합니다.
 - **새 취약점 반영**: 관리자가 오프라인 Trivy DB를 올리면 저장된 모든 대상의 패키지 목록을 자동으로 다시 평가합니다. 공개 DB에 없는 취약점은 **사내 Advisory**(화면 또는 CSV)로 등록하면 기존 결과에도 즉시 적용됩니다.
 - **결과 추적**: 대상별로 안정적인 결과 하나를 유지하고(열림, 해결됨, 위험 수용, 오탐), 사라진 결과는 자동으로 해결됨 처리하며, 다시 나타나면 재발로 표시합니다.
@@ -15,7 +15,7 @@ JASCA는 폐쇄망 Kubernetes에서 쓰는 취약점 관리 서비스입니다. 
 - **예외**: 요청, 보안 담당 승인, 만료일(최대 1년), 만료 7일 전 알림, 만료 시 자동 재오픈.
 - **접근 제어**: 기본 거부. 프로젝트 멤버십(소유자, 멤버, 보기 전용)을 사용자 또는 Keycloak 그룹·부서 경로로 지정합니다.
 - **Keycloak SSO**: OIDC, 부서·그룹 동기화, 구형 Keycloak(`/auth` 경로) 지원. 비상용 로컬 `admin` 한 계정만 따로 두고, 평소에는 관리 화면에서 꺼 둡니다. 한 계정은 한 곳에서만 접속합니다.
-- **연동**: Harbor 웹훅, Mattermost·메일 알림, 사내 OpenAI 호환 LLM으로 조치 안내와 프로젝트 보고서(AI).
+- **연동**: Mattermost·메일 알림, 사내 OpenAI 호환 LLM으로 조치 안내와 프로젝트 보고서(AI). 연동 비밀값은 배포 설정의 키(`JASCA_SECRET_KEY`)로 암호화해 DB에 저장합니다.
 - **MCP**: AI 코딩·보안 에이전트가 MCP(Model Context Protocol, `/mcp`)로 JASCA를 씁니다. 사용자가 발급한 **개인 MCP 키**로 연결하면 에이전트는 그 사용자의 권한으로 조회하고, 프로젝트를 만들고, 보고서를 올리고, 담당자·기한과 예외를 다룹니다. 역할에 따라 도구가 달라져 보안 담당은 예외 승인, 관리자는 시스템 상태·서버 로그·사용자 관리 같은 운영 도구까지 씁니다. 프로젝트의 읽기 권한 API 토큰으로는 그 프로젝트만 조회합니다.
 - **감사 로그**: 모든 쓰기를 행위자·IP와 함께 기록합니다.
 
@@ -58,7 +58,7 @@ grep -q '"passed":true' jasca.json   # 정책을 통과하지 못하면 종료 �
 
 ## 문서
 
-- [DEPLOY-OFFLINE.md](DEPLOY-OFFLINE.md): 설치, Keycloak, Trivy DB, Harbor, 업그레이드, 백업
+- [DEPLOY-OFFLINE.md](DEPLOY-OFFLINE.md): 설치, Keycloak, Trivy DB, 업그레이드, 백업
 - [docs/admin-guide.md](docs/admin-guide.md): 관리 화면 안내
 - [docs/user-guide.md](docs/user-guide.md): 사용자 안내
 - [docs/maintaining.md](docs/maintaining.md): 유지보수(형식, 버전 비교, Advisory, 테스트, 릴리스)

@@ -12,6 +12,7 @@
 - `data-jasca-postgres-0`: PostgreSQL 데이터 PVC. `jasca-data`: 앱 PVC. **Namespace/PVC/PV 삭제, 새 빈 PVC로 변경, DB 이름 변경 금지.**
 - PostgreSQL StatefulSet은 축소/삭제 시 PVC Retain을 명시합니다. 그러나 Namespace/PVC 자체 삭제, 스토리지 장애까지 막아주지는 않습니다. 별도 백업이 필수입니다.
 - 초기 관리자 비밀번호(`JASCA_BOOTSTRAP_PASSWORD`)는 빈 DB의 최초 생성에만 사용됩니다. 이미지 업데이트로 기존 관리자 암호를 초기화하지 않습니다.
+- 연동 비밀값(Keycloak Client Secret, SMTP 비밀번호, Mattermost Webhook, AI API 키)은 `JASCA_SECRET_KEY`로 암호화해 DB에 저장합니다. **이 키는 DB에도 DB 백업에도 없습니다.** `jasca.yaml`과 함께 보관하고, 한 번 정하면 바꾸지 않습니다.
 
 ## 릴리스 파일
 
@@ -57,6 +58,7 @@ Namespace `jasca`는 미리 생성되어 있다고 가정합니다(`kubectl crea
 `jasca.yaml` 하나만 고쳐서 적용합니다. PostgreSQL은 사내 DB를 씁니다.
 
 1. `JASCA_BOOTSTRAP_PASSWORD`를 12~72자 ASCII로 변경(기본값 `CHANGE_ME`는 12자 미만이라 앱이 시작하지 않습니다).
+   - `JASCA_SECRET_KEY`도 정합니다. 관리 화면에 입력하는 연동 비밀값(Keycloak Client Secret, SMTP 비밀번호, Mattermost Webhook, AI API 키)을 DB에 암호화해 저장하는 키입니다. 32자 이상이어야 하고(`openssl rand -base64 32`), 기본값 `CHANGE_ME`인 채로는 앱이 시작하지 않습니다. **한 번 정하면 바꾸지 않고, `jasca.yaml`과 함께 보관합니다**(DB 백업에는 없습니다). 줄을 지우면 암호화 없이 저장합니다.
 2. DB 담당자에게 받은 접속 정보를 적습니다.
 
    | 받은 값 | `jasca.yaml`의 항목 |
@@ -131,12 +133,12 @@ SSO는 선택입니다. 설정하지 않아도 로컬 관리자(`admin`)로 로�
           configMap: { name: jasca-ca }   # kubectl -n jasca create configmap jasca-ca --from-file=ca.crt=사내CA.crt
 ```
 
-   Harbor나 LLM 서버가 사내 CA를 쓰는 경우에도 같은 설정이 적용됩니다.
+   LLM 서버가 사내 CA를 쓰는 경우에도 같은 설정이 적용됩니다.
 
 ### 관리 화면에 입력
 
 1. 로컬 `admin`으로 로그인합니다(`https://<접속 주소>/login?local=1`).
-2. **관리 → SSO (Keycloak)**: Issuer URL, Client ID, Client Secret, 관리자 역할, 보안 담당 역할, **사이트 주소**(`https://<접속 주소>`; 비우면 브라우저가 접속한 주소)를 입력하고 "SSO 로그인 사용"을 켭니다. 사이트 주소는 로그인 콜백 주소, 알림 링크, **Harbor 웹훅 URL**의 기준이므로 꼭 넣으세요.
+2. **관리 → SSO (Keycloak)**: Issuer URL, Client ID, Client Secret, 관리자 역할, 보안 담당 역할, **사이트 주소**(`https://<접속 주소>`; 비우면 브라우저가 접속한 주소)를 입력하고 "SSO 로그인 사용"을 켭니다. 사이트 주소는 로그인 콜백 주소와 알림 링크의 기준이므로 꼭 넣으세요.
 3. **관리 → Keycloak 동기화**: 서비스 계정 Client ID/Secret을 입력하고 **지금 동기화**로 확인합니다(결과에 그룹 수와 사용자 수가 보입니다).
 4. 로그인 화면에서 Keycloak으로 한 번 로그인해 보고, **관리 → 사용자·역할**에서 계정, 역할, 부서를 확인합니다. 로그인 화면에는 Keycloak 버튼만 보이고, 비상용 로컬 로그인은 `/login?local=1`로만 열립니다.
 
@@ -175,7 +177,7 @@ sha256sum db.tar.gz javadb.tar.gz > trivy-db.sha256
 반입 매체로 옮긴 뒤 **관리 → Trivy DB**에서 `db.tar.gz`는 **취약점 DB** 칸에, `javadb.tar.gz`는 **Java DB** 칸에 **각각 따로** 올립니다. 칸을 잘못 골라도 파일 내용으로 구분해 맞는 DB에 적용하고, 어느 DB를 적용했는지 화면에 알려 줍니다.
 
 - 올린 파일은 검사한 뒤 한 번에 교체합니다. 올바른 번들이 아니면 거부하고 기존 DB를 그대로 씁니다. 파일 크기는 `JASCA_MAX_SCAN_UPLOAD_MB`(Ingress `proxy-body-size` 포함), 풀었을 때 크기는 `JASCA_MAX_EXTRACT_MB`가 상한입니다.
-- 취약점 DB 교체가 끝나면 **재평가가 자동으로 시작**됩니다(Java DB는 다음 서버 스캔부터 쓰이며 재평가를 시작하지 않습니다). 저장된 모든 대상(Harbor 보고서 대상 제외)의 최신 패키지 목록을 새 DB로 다시 평가하고, 새로 걸린 취약점은 "재평가"로 표시되며 알림이 갑니다. 진행 상황은 **관리 → 재평가**에서 봅니다. 스캔을 다시 돌릴 필요가 없습니다.
+- 취약점 DB 교체가 끝나면 **재평가가 자동으로 시작**됩니다(Java DB는 다음 서버 스캔부터 쓰이며 재평가를 시작하지 않습니다). 저장된 모든 대상의 최신 패키지 목록을 새 DB로 다시 평가하고, 새로 걸린 취약점은 "재평가"로 표시되며 알림이 갑니다. 진행 상황은 **관리 → 재평가**에서 봅니다. 스캔을 다시 돌릴 필요가 없습니다.
 - 두 DB의 설치 여부와 생성 시각, 취약점 DB의 다음 갱신 예정 시각이 **관리 → Trivy DB**의 각 칸에 보입니다. 갱신 예정에서 7일 넘게 지나면 경고가 보이니(DB의 갱신 예정은 생성 하루 뒤라 폐쇄망에서는 늘 조금 지나 있습니다) 주기적으로(예: 매주) 같은 절차를 반복하세요. DB가 오래되면 새 취약점이 탐지되지 않습니다.
 - 설치 직후 취약점 DB를 올리기 전에는 서버 스캔을 받지 않고(스캔 화면에 안내가 나오고 업로드는 409로 거부), 재평가도 걸러낼 DB가 없습니다.
 
@@ -185,12 +187,25 @@ sha256sum db.tar.gz javadb.tar.gz > trivy-db.sha256
 
 1. DB와 PVC를 백업합니다(아래 "백업과 복원").
 2. 새 `jasca-vX.Y.Z.tar.gz`를 모든 워커에 반입합니다(위 "이미지 반입").
-3. 새 `jasca.yaml`에 쓰던 값(Ingress host, `ingressClassName`, `JASCA_BOOTSTRAP_PASSWORD`, `JASCA_TZ`, DB 접속 정보, 이미지 경로)을 옮겨 적고 적용합니다. v1.1.1까지의 `jasca.yaml`(`JASCA_DATABASE_URL`과 `PGPASSWORD`)을 그대로 쓰면서 이미지 태그만 바꿔도 됩니다. 두 방식을 한 파일에 섞으면 앱이 시작하지 않습니다. `CHANGE_ME`인 채로 적용하면 Secret을 덮어씁니다. 새 `postgres.yaml`을 적용할 때도 `POSTGRES_PASSWORD`를 옮겨 적으세요.
+3. 새 `jasca.yaml`에 쓰던 값(Ingress host, `ingressClassName`, `JASCA_BOOTSTRAP_PASSWORD`, `JASCA_SECRET_KEY`, `JASCA_TZ`, DB 접속 정보, 이미지 경로)을 옮겨 적고 적용합니다. v1.1.1까지의 `jasca.yaml`(`JASCA_DATABASE_URL`과 `PGPASSWORD`)을 그대로 쓰면서 이미지 태그만 바꿔도 됩니다. 두 방식을 한 파일에 섞으면 앱이 시작하지 않습니다. `CHANGE_ME`인 채로 적용하면 Secret을 덮어씁니다. 새 `postgres.yaml`을 적용할 때도 `POSTGRES_PASSWORD`를 옮겨 적으세요.
 ```sh
 kubectl apply -f jasca.yaml
 kubectl -n jasca rollout status deployment/jasca
 ```
 4. 로그인 화면 아래에 새 버전(`JASCA vX.Y.Z`)이 보이는지 보고, 로그인과 스캔 한 건으로 확인합니다. Recreate 전략이라 교체 중 잠시 접속이 끊깁니다.
+
+### 연동 비밀값 암호화 켜기 (`JASCA_SECRET_KEY`)
+
+v1.3.x까지는 연동 비밀값(Keycloak Client Secret, 동기화 서비스 계정 Secret, SMTP 비밀번호, Mattermost Webhook URL, AI API 키)이 DB에 그대로 저장되어 DB 담당자나 DB 백업에서 읽을 수 있었습니다. 키를 넣으면 암호화해 저장합니다.
+
+1. 키를 만듭니다: `openssl rand -base64 32` (32자 이상이면 됩니다).
+2. 쓰던 `jasca.yaml`의 Secret `jasca-secrets`에 `JASCA_SECRET_KEY: "<만든 키>"` 한 줄을 넣고 적용합니다. 이미지 태그를 함께 바꾸지 않았다면 `kubectl -n jasca rollout restart deployment/jasca`로 다시 시작합니다.
+3. 시작할 때 이미 저장되어 있던 값을 한 번에 암호화하고 로그에 `secrets: encrypted N stored secret(s)`를 남깁니다. 화면에서 다시 입력할 것은 없습니다.
+
+- **키는 바꾸지 않습니다.** 업그레이드할 때마다 같은 값을 새 `jasca.yaml`에 옮겨 적습니다. 키를 바꾸는 명령은 없으므로, 바꿔야 한다면 새 키로 시작한 뒤 관리 화면에서 연동 비밀값을 다시 입력합니다.
+- 키는 DB에 없습니다. `jasca.yaml`(또는 Secret을 만든 원본)을 안전한 곳에 보관하세요.
+- 줄을 넣지 않으면 전과 같이 암호화 없이 동작하고, 시작할 때 로그에 `secrets: JASCA_SECRET_KEY is not set`이 한 줄 남습니다.
+- 로그인 비밀번호, API 토큰, MCP 키는 전부터 해시로만 저장하므로 이 키와 상관없습니다.
 
 ## 전용 PostgreSQL에서 사내 DB로 옮기기
 
@@ -244,17 +259,7 @@ kubectl -n jasca scale deployment/jasca --replicas=1
 
 복원은 같은 방법으로 임시 Pod를 띄우되 `readOnly`를 빼고, `kubectl exec -i … -- tar -C /data -xf - < jasca-data.tar`로 풉니다. DB는 빈 DB에 `pg_restore -U jasca -d jasca --clean --if-exists`로 복원합니다. 백업 파일에는 사용자 정보와 보고서가 들어 있으므로 접근을 제한하세요.
 
-## Harbor 웹훅 연동
-
-Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 가져와 저장합니다. JASCA는 Harbor에서 SBOM을 가져오지 않으므로 Harbor 대상은 재평가와 사내 Advisory 매칭에서 제외됩니다(대상 목록에 "재평가 제외"로 표시).
-
-1. Harbor에서 이미지를 읽을 수 있는 **robot 계정**을 만듭니다(예: `robot$jasca`, 해당 프로젝트의 pull 권한).
-2. JASCA **관리 → SSO**의 **사이트 주소**를 먼저 입력해 둡니다. 웹훅 URL이 이 주소로 만들어집니다.
-3. **관리 → Harbor → Harbor 연결 추가**: 이름, Harbor 주소(`https://harbor.example.internal`), 로봇 계정, 로봇 계정 Secret을 입력합니다. 저장하면 **웹훅 URL**(`https://<접속 주소>/api/v1/hooks/harbor/<번호>`)과 **웹훅 Secret**이 한 번만 보입니다. Secret은 다시 볼 수 없습니다.
-4. Harbor의 해당 프로젝트 → Webhooks → 새 웹훅: Endpoint URL에 위 웹훅 URL, **Auth Header에 웹훅 Secret**, 이벤트는 **Scanning finished**(`SCANNING_COMPLETED`)를 고릅니다. 다른 이벤트는 받아도 무시합니다(202).
-5. **매핑**: JASCA는 Harbor 프로젝트와 저장소 패턴(`web/*`, `*` = 전체)을 JASCA 프로젝트에 연결합니다. 패턴이 더 구체적인 행이 먼저 적용됩니다. 매핑이 없는 이미지는 **매핑되지 않은 이미지** 목록에 쌓이고, 프로젝트를 고르면 그때 연결해 가져옵니다.
-6. **연결 시험**으로 JASCA가 Harbor에 닿는지 확인합니다. JASCA는 등록한 Harbor 주소로만 호출합니다(이벤트 안의 주소는 쓰지 않음). Harbor가 사내 CA를 쓰면 위 Keycloak 7번의 `SSL_CERT_FILE` 설정이 필요합니다.
-7. 웹훅 요청은 바로 202로 응답하고 보고서는 백그라운드에서 가져옵니다. 웹훅이 JASCA 앞의 Ingress를 통과하는지(본문 1MB 이하, `Authorization` 헤더 유지) 확인하세요.
+`JASCA_SECRET_KEY`는 DB 백업에 들어 있지 않습니다. 복원한 DB는 **백업 때 쓰던 것과 같은 키**로 시작해야 연동 비밀값을 읽습니다. 키를 `jasca.yaml`과 함께 따로 보관하세요. 키가 다르거나 없어도 앱은 시작하지만 연동 비밀값은 "설정 안 됨"으로 보이고, 관리 화면에서 다시 입력해야 합니다.
 
 ## 자원과 규모
 
@@ -272,6 +277,8 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 | 증상 | 확인 |
 |---|---|
 | Pod가 시작하지 않고 로그에 `JASCA_BOOTSTRAP_PASSWORD must be set to 12-72 characters` | Secret의 `JASCA_BOOTSTRAP_PASSWORD`가 `CHANGE_ME`이거나 12자 미만입니다. 매번 시작할 때 검사합니다. |
+| Pod가 시작하지 않고 로그에 `JASCA_SECRET_KEY must be 32 or more characters` | Secret의 `JASCA_SECRET_KEY`가 `CHANGE_ME`이거나 32자 미만입니다. `openssl rand -base64 32`로 만든 값을 넣으세요. 이미 운영 중이면 **쓰던 키**를 넣어야 합니다. |
+| 로그에 `secrets: cannot decrypt sso.client_secret`(또는 `sync.client_secret`, `smtp.password`, `ai.api_key`, `channel.webhook_url`), 화면에서 그 비밀값이 "설정 안 됨" | `JASCA_SECRET_KEY`가 저장할 때의 키와 다르거나 빠졌습니다. 쓰던 키를 되돌려 다시 시작하면 그대로 읽힙니다. 키를 잃었으면 해당 관리 화면에서 그 값을 다시 입력합니다. Keycloak Client Secret이 읽히지 않으면 SSO 로그인이 안 되므로 `/login?local=1`의 `admin`으로 들어가 입력하세요(`admin`을 꺼 두었다면 `kubectl -n jasca exec deploy/jasca -- /jasca --enable-local-admin`). |
 | 로그에 `database:` 오류, `/readyz`가 503 | `password authentication failed`: `JASCA_DB_USER`, `JASCA_DB_PASSWORD`. `JASCA_DB_SCHEMA: schema … does not exist … or … no USAGE privilege`: 스키마 이름(대소문자 구분)과 권한. `no CREATE privilege on schema`: 계정에 그 스키마의 CREATE 권한이 필요합니다. `connection refused`나 시간 초과: `JASCA_DB_HOST`, `JASCA_DB_PORT`, 방화벽. 전용 PostgreSQL이면 Pod와 NetworkPolicy(`app=jasca`만 허용)도 봅니다. |
 | 로그인 화면에서 "Keycloak에 연결하지 못했습니다"(`?error=sso`) | Issuer URL이 `.well-known/openid-configuration`의 `issuer`와 글자 그대로 같은지(구형은 `/auth` 포함), Pod에서 Keycloak으로 닿는지, 사내 CA(`SSL_CERT_FILE`)를 확인합니다. 서버 로그의 `sso callback` 줄에 단계(`discovery`, `exchange`, `verify`)가 나옵니다. |
 | Keycloak 로그인 직후 `Invalid redirect_uri` | Keycloak client의 Valid redirect URIs가 `https://<접속 주소>/api/v1/auth/sso/callback`과 같은지, JASCA의 사이트 주소가 실제 접속 주소와 같은지 봅니다. |
@@ -286,7 +293,6 @@ Harbor가 이미지를 스캔하면 JASCA가 Harbor의 취약점 보고서를 �
 | MCP 클라이언트가 `/mcp`에서 401·403 | 401은 MCP 키나 토큰이 틀렸거나 만료·폐기된 것, 또는 키 주인의 계정이 비활성화된 것입니다(클라이언트에 따라 OAuth 등록 오류로 보입니다). 403은 프로젝트 토큰의 권한 범위에 `read`가 없거나 프록시가 다른 사이트의 `Origin` 헤더를 붙이는 경우입니다. 도구 호출이 "Not allowed"로 답하면 키 주인의 역할이나 프로젝트 권한이 모자라거나 읽기 전용 키입니다. |
 | MCP 키로 API를 부르면 403 "MCP 키는 MCP 주소(/mcp)와 스캔 업로드에만 쓸 수 있습니다" | 개인 MCP 키(`jsu_…`)는 `/mcp`와 업로드(`POST …/scans`, `POST …/scan-jobs`)에서만 받습니다. CI에는 프로젝트 API 토큰(`jsc_…`)을 쓰세요. |
 | 모든 쓰기 요청이 403(`csrf`) | 프록시가 `Origin`/`Host`를 바꾸고 있습니다. 브라우저가 접속한 호스트가 그대로 전달되어야 합니다. |
-| Harbor 웹훅이 401 | Harbor 웹훅의 Auth Header가 연결 생성 때 보인 Secret과 같은지 봅니다. Secret은 다시 볼 수 없으니, 잊었으면 연결을 새로 만드세요. |
 | 알림이 오지 않음 | **관리 → 알림 채널**의 시험 발송, SMTP 설정, 프로젝트 **설정 → 알림**에서 채널과 이벤트를 골랐는지 확인합니다. 전송은 실패하면 1분, 5분, 30분 뒤에 다시 시도하고 4번째 실패에서 멈춥니다. |
 | `/healthz`는 되는데 화면이 안 열림 | Ingress 경로와 TLS를 확인합니다. 앱은 `/` 전체를 서비스합니다. |
 

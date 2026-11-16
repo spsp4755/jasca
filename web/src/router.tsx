@@ -14,7 +14,6 @@ import AdminAI from "./pages/admin/AI";
 import AdminAudit from "./pages/admin/Audit";
 import AdminChannels from "./pages/admin/Channels";
 import AdminDefaultPolicy from "./pages/admin/DefaultPolicy";
-import AdminHarbor from "./pages/admin/Harbor";
 import AdminRecheck from "./pages/admin/Recheck";
 import AdminRetention from "./pages/admin/Retention";
 import AdminSSO from "./pages/admin/SSO";
@@ -56,7 +55,7 @@ export const pages: RouteObject[] = [
     children: [
       { path: "users", element: <AdminUsers /> }, { path: "sso", element: <AdminSSO /> }, { path: "sync", element: <AdminSync /> },
       { path: "default-policy", element: <AdminDefaultPolicy /> }, { path: "trivy", element: <AdminTrivy /> }, { path: "recheck", element: <AdminRecheck /> },
-      { path: "harbor", element: <AdminHarbor /> }, { path: "ai", element: <AdminAI /> }, { path: "channels", element: <AdminChannels /> },
+      { path: "ai", element: <AdminAI /> }, { path: "channels", element: <AdminChannels /> },
       { path: "retention", element: <AdminRetention /> }, { path: "audit", element: <AdminAudit /> },
     ],
   },

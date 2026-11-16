@@ -16,8 +16,8 @@ import (
 
 // The administrator's MCP tools: what someone running the service asks about (is it healthy, what failed, who has
 // which role, what is queued) and the few actions that go with it. They are listed only for a personal key whose
-// user is administrator at the moment of the call. Settings with secrets (SSO, SMTP, channels, AI, Harbor
-// connections) stay on the administration screens: an agent reads them here without the secrets and changes none.
+// user is administrator at the moment of the call. Settings with secrets (SSO, SMTP, channels, AI) stay on
+// the administration screens: an agent reads them here without the secrets and changes none.
 
 var startedAt = time.Now()
 
@@ -69,7 +69,7 @@ func mcpAdminTools() []mcpTool {
 			none, mcpSystemStatus),
 		readTool(mcpAdmin, "get_server_logs", "서버 로그: 최근 로그에서 찾기",
 			"The server's recent log lines, oldest first (times are UTC): errors of scans, Keycloak sign-in and sync, "+
-				"notifications, Harbor, and internal errors. Kept in memory since the last start, the newest 2000 entries. "+
+				"notifications, and internal errors. Kept in memory since the last start, the newest 2000 entries. "+
 				"Secrets are never logged.",
 			`{"type": "object", "additionalProperties": false, "properties": {
 				"query": {"type": "string", "maxLength": 200, "description": "Only lines containing this text, case-insensitive: for example sso, keycloak sync, server scan, notify, panic."},
@@ -106,13 +106,9 @@ func mcpAdminTools() []mcpTool {
 				"limit": `+limitSchema(100, 500)+`}}`, mcpListKeys),
 		readTool(mcpAdmin, "get_settings", "운영 설정 조회 (비밀값 제외)",
 			"The service's settings without any secret: remediation deadlines by severity, retention of raw reports, the "+
-				"default policy of new projects, SSO (Keycloak), Keycloak sync, Trivy scan options, AI, SMTP, notification "+
-				"channels and Harbor connections. Read-only: settings are changed on the administration screens.",
+				"default policy of new projects, SSO (Keycloak), Keycloak sync, Trivy scan options, AI, SMTP and notification "+
+				"channels. Read-only: settings are changed on the administration screens.",
 			none, mcpGetSettings),
-		readTool(mcpAdmin, "list_harbor_unmapped", "매핑되지 않은 Harbor 이미지",
-			"Images Harbor reported a scan for that no mapping assigns to a project yet, newest first. Assign one with "+
-				"assign_harbor_image to fetch its report.",
-			`{"type": "object", "additionalProperties": false, "properties": {"limit": `+limitSchema(50, 500)+`}}`, mcpListHarborUnmapped),
 
 		writeTool(mcpAdmin, false, "update_user", "사용자 역할 변경·비활성화",
 			"Change a user's system role or deactivate/reactivate the account. role keycloak hands the role back to "+
@@ -134,10 +130,6 @@ func mcpAdminTools() []mcpTool {
 				"vulnerability DB again, without new scans. It runs in the background behind new scans; system_status "+
 				"shows its progress. Refused while one is running.",
 			none, mcpStartRecheck),
-		writeTool(mcpAdmin, false, "assign_harbor_image", "매핑되지 않은 Harbor 이미지를 프로젝트에 연결",
-			"Assign an unmapped Harbor image to a project and fetch its vulnerability report.",
-			`{"type": "object", "additionalProperties": false, "required": ["id", "project"], "properties": {
-				"id": {"type": "integer", "minimum": 1, "description": "Id from list_harbor_unmapped."},`+projectProp+`}}`, mcpAssignHarbor),
 	}
 }
 
@@ -255,18 +247,18 @@ func mcpSystemStatus(m *mcpCall, raw json.RawMessage) (any, error) {
 	}
 	out["keycloak"] = kc
 
-	// notifications, exceptions, Harbor, totals
+	// notifications, exceptions, totals
 	var n struct {
-		Queued, Failed7, PendingEx, Unmapped, Users, Projects, Targets, Keys, Overdue int
-		Open                                                                          sevCounts
+		Queued, Failed7, PendingEx, Users, Projects, Targets, Keys, Overdue int
+		Open                                                                sevCounts
 	}
 	if err := s.db.QueryRow(ctx, `select (select count(*) from deliveries where state = 'queued'),
 			(select count(*) from deliveries where state = 'failed' and created_at > now() - interval '7 days'),
 			(select count(*) from exceptions where status = 'pending' and expires_at > now()),
-			(select count(*) from harbor_unmapped), (select count(*) from users where active), (select count(*) from projects),
+			(select count(*) from users where active), (select count(*) from projects),
 			(select count(*) from targets), (select count(*) from mcp_keys where revoked_at is null and expires_at > now()),
 			(select count(*) from findings where status = 'open' and due_at < now()), fc.*
-		from `+openCountsSQL("true")+` fc`).Scan(&n.Queued, &n.Failed7, &n.PendingEx, &n.Unmapped, &n.Users, &n.Projects, &n.Targets,
+		from `+openCountsSQL("true")+` fc`).Scan(&n.Queued, &n.Failed7, &n.PendingEx, &n.Users, &n.Projects, &n.Targets,
 		&n.Keys, &n.Overdue, &n.Open.Critical, &n.Open.High, &n.Open.Medium, &n.Open.Low, &n.Open.Unknown, &n.Open.Open); err != nil {
 		return nil, err
 	}
@@ -274,7 +266,7 @@ func mcpSystemStatus(m *mcpCall, raw json.RawMessage) (any, error) {
 	if n.Failed7 > 0 {
 		problem("%d notifications failed in the last 7 days. list_notifications shows the errors.", n.Failed7)
 	}
-	out["waiting_for_people"] = map[string]any{"pending_exception_requests": n.PendingEx, "unmapped_harbor_images": n.Unmapped}
+	out["waiting_for_people"] = map[string]any{"pending_exception_requests": n.PendingEx}
 	out["totals"] = map[string]any{"active_users": n.Users, "projects": n.Projects, "targets": n.Targets, "live_mcp_keys": n.Keys,
 		"open_findings": n.Open, "overdue_findings": n.Overdue}
 	out["problems"] = problems
@@ -583,7 +575,7 @@ func mcpRevokeKey(m *mcpCall, raw json.RawMessage) (any, error) {
 	return map[string]any{"revoked": true, "key_id": *a.ID}, nil
 }
 
-// --- settings, sync, recheck, Harbor ---
+// --- settings, sync, recheck ---
 
 func mcpGetSettings(m *mcpCall, raw json.RawMessage) (any, error) {
 	if err := noArgs(raw); err != nil {
@@ -594,7 +586,7 @@ func mcpGetSettings(m *mcpCall, raw json.RawMessage) (any, error) {
 		"remediation_deadlines": "GET /api/v1/admin/sla", "raw_report_retention": "GET /api/v1/admin/retention",
 		"default_policy": "GET /api/v1/admin/default-policy", "sso": "GET /api/v1/admin/sso", "keycloak_sync": "GET /api/v1/admin/sync",
 		"trivy": "GET /api/v1/admin/trivy", "ai": "GET /api/v1/admin/ai", "smtp": "GET /api/v1/admin/smtp",
-		"notification_channels": "GET /api/v1/admin/channels", "harbor_connections": "GET /api/v1/admin/harbor",
+		"notification_channels": "GET /api/v1/admin/channels",
 	} {
 		var v json.RawMessage
 		if err := m.api(route, nil, nil, nil, &v); err != nil {
@@ -632,57 +624,4 @@ func mcpStartRecheck(m *mcpCall, raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return map[string]any{"started": true, "run_id": run.ID, "targets_total": run.Total}, nil
-}
-
-func mcpListHarborUnmapped(m *mcpCall, raw json.RawMessage) (any, error) {
-	var a struct {
-		Limit *int `json:"limit"`
-	}
-	if err := toolArgs(raw, &a); err != nil {
-		return nil, err
-	}
-	limit, err := limitArg(a.Limit, 50, 500)
-	if err != nil {
-		return nil, err
-	}
-	type row struct {
-		ID            int64     `json:"id"`
-		Connection    string    `json:"connection"`
-		HarborProject string    `json:"harbor_project"`
-		Repository    string    `json:"repository"`
-		Tag           string    `json:"tag,omitempty"`
-		Digest        string    `json:"digest"`
-		ReceivedAt    time.Time `json:"received_at"`
-	}
-	list, err := collect[row](m.r.Context(), m.s, `select h.id, l.name, h.harbor_project, h.repository, h.tag, h.digest,
-			date_trunc('second', h.received_at)
-		from harbor_unmapped h join harbor_links l on l.id = h.link_id order by h.received_at desc, h.id desc limit $1`, limit)
-	return struct {
-		Images []row `json:"images"`
-	}{list}, err
-}
-
-func mcpAssignHarbor(m *mcpCall, raw json.RawMessage) (any, error) {
-	var a struct {
-		ID      *int64 `json:"id"`
-		Project string `json:"project"`
-	}
-	if err := toolArgs(raw, &a); err != nil {
-		return nil, err
-	}
-	if a.ID == nil || *a.ID < 1 {
-		return nil, toolErrorf("Invalid arguments: id is required: an id from list_harbor_unmapped.")
-	}
-	if err := m.needProject(a.Project); err != nil {
-		return nil, err
-	}
-	err := m.api("POST /api/v1/admin/harbor/unmapped/{id}/assign", map[string]string{"id": itoa(*a.ID)}, nil,
-		map[string]int64{"project_id": m.c.Project.ID}, nil)
-	if errors.Is(err, errRESTNotFound) {
-		return nil, toolErrorf("Unmapped image %d not found: it may have been assigned already.", *a.ID)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{"assigned": true, "project": m.c.Project.Key, "next": "The report is fetched in the background; list_scans of the project shows it."}, nil
 }

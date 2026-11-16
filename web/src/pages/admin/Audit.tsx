@@ -27,10 +27,13 @@ const ACTION: Record<string, string> = {
   "exception.request": "예외 요청", "exception.approve": "예외 승인", "exception.reject": "예외 반려", "exception.revoke": "예외 철회·취소", "exception.expire": "예외 만료",
   "advisory.create": "Advisory 등록", "advisory.update": "Advisory 수정", "advisory.delete": "Advisory 삭제", "advisory.import": "Advisory 가져오기",
   "ai.guide": "AI 조치 안내 요청", "ai.report": "AI 보고서 요청",
-  "harbor.link_create": "Harbor 연결 추가", "harbor.link_update": "Harbor 연결 수정", "harbor.link_delete": "Harbor 연결 삭제",
-  "harbor.mappings_put": "Harbor 매핑 변경", "harbor.assign": "Harbor 이미지 프로젝트 지정", "harbor.fetch": "Harbor 보고서 가져오기",
   "channel.create": "알림 채널 추가", "channel.update": "알림 채널 수정", "channel.delete": "알림 채널 삭제", "channel.test": "알림 채널 시험 발송",
   "trivy.settings": "스캔 옵션 변경", "trivy.db_upload": "Trivy DB 올리기", "trivy.db_upload_failed": "Trivy DB 올리기 실패", "sync.run": "Keycloak 동기화",
+};
+// Rows the removed Harbor integration left behind still read in Korean; they are not offered in the filter.
+const OLD_ACTION: Record<string, string> = {
+  "harbor.link_create": "Harbor 연결 추가", "harbor.link_update": "Harbor 연결 수정", "harbor.link_delete": "Harbor 연결 삭제",
+  "harbor.mappings_put": "Harbor 매핑 변경", "harbor.assign": "Harbor 이미지 프로젝트 지정", "harbor.fetch": "Harbor 보고서 가져오기",
 };
 const ACTIONS = Object.entries(ACTION).sort((a, b) => a[1].localeCompare(b[1], "ko"));
 const DETAIL: Record<string, string> = {
@@ -138,7 +141,7 @@ export default function Audit() {
               const key = e.details?.mcp_key; // done by the person's agent through this MCP key
               return typeof key === "string" ? <span className="member">{who(e)}<span className="tag tag-quiet" title={`MCP 키 "${key}"로 에이전트가 실행했습니다`}>MCP</span></span> : who(e);
             } },
-            { key: "action", header: "동작", nowrap: true, render: (e) => <span title={e.action}>{ACTION[e.action] ?? e.action}</span> },
+            { key: "action", header: "동작", nowrap: true, render: (e) => <span title={e.action}>{ACTION[e.action] ?? OLD_ACTION[e.action] ?? e.action}</span> },
             { key: "project", header: "프로젝트", nowrap: true, render: (e) => e.project_key || "-" },
             { key: "target", header: "대상", render: (e) => { const t = targetText(e); return t ? <span className="audit-target" title={t}>{t}</span> : "-"; } },
             { key: "ip", header: "IP", mono: true, nowrap: true, render: (e) => e.ip || "-" },

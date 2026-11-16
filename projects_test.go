@@ -369,15 +369,15 @@ func TestTargetRenameDelete(t *testing.T) {
 	if n := qInt(t, s, `select count(*) from findings f join targets t on t.id=f.target_id where t.name='app' and f.status='open'`); n != 1 {
 		t.Fatalf("the finding did not follow the renamed target: %d", n)
 	}
-	sqlExec(t, s, `update targets set recheck_excluded = true where id=$1`, v2)
-	wantCode(t, do(t, s, "PATCH", path(v2), map[string]string{"name": "x"}, ca), 409, "harbor target")
+	sqlExec(t, s, `update targets set recheck_excluded = true where id=$1`, v2) // a target the removed Harbor integration left behind
+	wantCode(t, do(t, s, "PATCH", path(v2), map[string]string{"name": "x"}, ca), 204, "rename of a former Harbor target")
 
 	wantCode(t, do(t, s, "DELETE", path(v1), nil, ca), 204, "delete")
 	wantCode(t, do(t, s, "DELETE", path(v1), nil, ca), 404, "delete again")
 	if n := qInt(t, s, `select count(*) from findings`) + qInt(t, s, `select count(*) from targets where id=$1`, v1); n != 0 {
 		t.Fatalf("rows left after the delete: %d", n)
 	}
-	if auditCount(t, s, "target.rename") != 1 || auditCount(t, s, "target.delete") != 1 {
+	if auditCount(t, s, "target.rename") != 2 || auditCount(t, s, "target.delete") != 1 {
 		t.Fatal("not audited")
 	}
 }
