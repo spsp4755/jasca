@@ -64,6 +64,8 @@ L.run(async () => {
   await p.keyboard.press("Escape");
   await visit(p, "/packages?q=ssl&version=%3C99", "package search result", () => p.getByRole("table", { name: "찾은 패키지" }).waitFor());
   await visit(p, "/vulns/CVE-2022-37434", "vuln");
+  await visit(p, "/vulns/CVE-2099-10001", "vuln known to be exploited", () => p.getByRole("region", { name: "악용 정보" }).waitFor()); // intel.cjs loaded the KEV and EPSS files
+  await visit(p, "/findings?kev=true&sort=epss", "findings known to be exploited");
   await visit(p, "/scan", "scan upload");
   await visit(p, "/exceptions", "exceptions");
   await visit(p, "/exceptions/approvals", "exception approvals");

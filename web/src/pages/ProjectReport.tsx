@@ -7,6 +7,7 @@ import Button from "../components/Button";
 import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
 import Empty from "../components/Empty";
+import { KevBadge } from "../components/Intel";
 import { PkgCell, SummaryCell } from "./Home";
 import { useToast } from "../components/Toast";
 import { ApiError, api } from "../api/client";
@@ -84,7 +85,8 @@ export default function ProjectReport() {
                 <span className="muted num">열린 결과 {fmtNumber(t.open ?? 0)}</span></div>
                 {late && <p style={{ margin: "8px 0 0" }}>{late.open === 0 ? "조치 기한이 지난 열린 결과는 없습니다."
                   : <>조치 기한이 지난 열린 결과 <b className="num">{fmtNumber(late.open)}</b>건{" "}
-                    ({(["critical", "high", "medium", "low"] as const).filter((s) => late[s] > 0).map((s) => `${s.toUpperCase()} ${fmtNumber(late[s])}건`).join(", ")})</>}</p>}</section>}
+                    ({(["critical", "high", "medium", "low"] as const).filter((s) => late[s] > 0).map((s) => `${s.toUpperCase()} ${fmtNumber(late[s])}건`).join(", ")})</>}</p>}
+                {(d.summary.kev ?? 0) > 0 && <p style={{ margin: "6px 0 0" }}><KevBadge /> 실제 공격에 쓰이는 것이 확인된(CISA KEV) 열린 취약점 <b className="num">{fmtNumber(d.summary.kev)}</b>건. 심각도와 상관없이 먼저 조치하세요.</p>}</section>}
               {pol && <section><h2>정책</h2><p>{pol.enabled
                 ? `열린 결과 중 심각도 ${SEVERITY_LABEL[pol.min_severity] ?? pol.min_severity} 이상이 ${pol.max_count}개를 넘으면 정책 실패입니다.${pol.new_only ? " 이번 스캔에서 새로 나온 결과만 셉니다." : ""}${pol.fixable_only ? " 조치 버전이 있는 결과만 셉니다." : ""}`
                 : "정책을 쓰지 않습니다. 스캔은 판정하지 않고 '정책 사용 안 함'으로 표시됩니다."}</p></section>}
@@ -96,10 +98,10 @@ export default function ProjectReport() {
                   { key: "d", header: "검사 기준 DB", nowrap: true, render: (r) => fmtDate(r.db_checked_at) }]} />
                 <p className="muted" style={{ margin: "8px 0 0", fontSize: 12.5 }}>검사 기준 DB는 이 서버가 그 대상의 패키지를 마지막으로 대조한 취약점 DB의 생성일입니다. CI에서 검사해 올린 결과는 다음 재평가 때 기록됩니다.</p></section>}
               {fixes && fixes.groups.length > 0 && <section><h2>먼저 올릴 패키지</h2>
-                <p className="muted" style={{ margin: "0 0 8px" }}>가장 심각한 취약점을 해결하는 패키지부터, 같으면 많이 해결하는 순서입니다{fixes.groups.length > 10 ? `(패키지 ${fmtNumber(fixes.groups.length)}개 중 앞의 10개)` : ""}.
+                <p className="muted" style={{ margin: "0 0 8px" }}>악용이 확인된 취약점을 해결하는 패키지, 가장 심각한 취약점을 해결하는 패키지, 많이 해결하는 패키지 순서입니다{fixes.groups.length > 10 ? `(패키지 ${fmtNumber(fixes.groups.length)}개 중 앞의 10개)` : ""}.
                   {fixes.totals.no_fix > 0 && ` 조치 버전이 아직 없는 취약점 ${fmtNumber(fixes.totals.no_fix)}건은 여기에 없습니다.`}</p>
                 <Table dense rows={fixes.groups.slice(0, 10)} rowKey={(g) => `${g.ecosystem}|${g.package}|${g.installed}`} caption="먼저 올릴 패키지" columns={[
-                  { key: "p", header: "패키지", render: (g) => <><b>{g.package}</b>{g.ecosystem && <span className="muted"> {g.ecosystem}</span>}</> },
+                  { key: "p", header: "패키지", render: (g) => <><b>{g.package}</b>{g.ecosystem && <span className="muted"> {g.ecosystem}</span>}{g.kev > 0 && <> <KevBadge count={g.kev} /></>}</> },
                   { key: "v", header: "설치 버전 → 올릴 버전", width: "34%", render: (g) => <span className="mono">{g.installed} → {fixTo(g)}{!g.recommended && " (비교 못 함)"}</span> },
                   { key: "c", header: "해결되는 취약점", render: (g) => <span className="row-gap"><SummaryCell s={fixCounts(g)} /><span className="num nw">{fmtNumber(g.resolves.open)}건</span></span> },
                   { key: "t", header: "대상", nowrap: true, align: "right", render: (g) => `${fmtNumber(g.targets.length)}개` }]} /></section>}
@@ -108,7 +110,7 @@ export default function ProjectReport() {
                   {rest.length > 0 && ` ${rest.join(", ")}은 프로젝트의 결과 화면에서 볼 수 있습니다.`}</p>
                 {top.length > 0 && <Table dense rows={top} rowKey={(r) => r.id} caption="주요 취약점" columns={[
                   { key: "s", header: "심각도", width: 100, render: (r) => <SeverityBadge severity={r.severity} /> },
-                  { key: "i", header: "취약점", render: (r) => <span className="rule"><span className={r.kind === "vuln" ? "mono nw" : "mono"}>{r.rule_id}</span>{r.title && <span className="rule-title" title={r.title}>{r.title}</span>}</span> },
+                  { key: "i", header: "취약점", render: (r) => <span className="rule"><span className={r.kind === "vuln" ? "mono nw" : "mono"}>{r.rule_id}</span>{r.kev && <KevBadge />}{r.title && <span className="rule-title" title={r.title}>{r.title}</span>}</span> },
                   { key: "p", header: "패키지 · 조치 버전 / 위치", width: "30%", render: (r) => (r.pkg_name ? <PkgCell name={r.pkg_name} version={r.pkg_version} fixed={r.fixed_version} /> : <span className="mono muted break">{whereOf(r) || "—"}</span>) },
                   { key: "t", header: "대상", render: (r) => r.target }]} />}</section>}
               {(d.exceptions ?? []).length > 0 && <section><h2>예외</h2>

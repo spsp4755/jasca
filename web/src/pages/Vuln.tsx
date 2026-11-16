@@ -7,6 +7,7 @@ import type { AiRun, RunRef, Severity, Vuln as VulnT, VulnAffected } from "../ap
 import Button from "../components/Button";
 import Empty from "../components/Empty";
 import Icon from "../components/Icon";
+import { KevBadge, fmtPct, fmtTop } from "../components/Intel";
 import PageHeader from "../components/PageHeader";
 import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
@@ -43,7 +44,7 @@ export default function Vuln() {
   return (
     <>
       <PageHeader crumbs={crumbs} title={id}
-        description={v ? <>{v.advisory && <><Link className="tag" to={`/advisories/${encodeURIComponent(id)}`}>사내 Advisory</Link>{" "}</>}{v.title || "제목 없음"}</> : <span className="skeleton" style={{ width: 280 }} />}
+        description={v ? <>{v.advisory && <><Link className="tag" to={`/advisories/${encodeURIComponent(id)}`}>사내 Advisory</Link>{" "}</>}{v.kev && <><KevBadge />{" "}</>}{v.title || "제목 없음"}</> : <span className="skeleton" style={{ width: 280 }} />}
         actions={<Link className="btn btn-secondary" to={`/findings?q=${encodeURIComponent(id)}&status=`}><Icon name="search" />결과에서 보기</Link>} />
       <div className="detail-grid">
         <div className="detail-main">
@@ -106,6 +107,7 @@ export default function Vuln() {
               )}
             </div>
           </section>
+          {v && /^CVE-/i.test(v.id) && <Exploitation v={v} />}
           {v && (v.refs ?? []).length > 0 && (
             <section className="panel" aria-labelledby="h-refs">
               <div className="panel-head"><h2 id="h-refs">참고 자료</h2><span className="panel-meta">{v.refs.length}개</span></div>
@@ -121,6 +123,43 @@ export default function Vuln() {
         </aside>
       </div>
     </>
+  );
+}
+
+/**
+ * 악용 정보: is the CVE being exploited (KEV), and how likely is it to be (EPSS). Each says in a line what it means, and
+ * tells "not in the catalog" from "no catalog uploaded yet" (intel.*.loaded_at).
+ */
+function Exploitation({ v }: { v: VulnT }) {
+  const { kev, epss } = v.intel;
+  return (
+    <section className="panel" aria-labelledby="h-intel">
+      <div className="panel-head"><h2 id="h-intel">악용 정보</h2></div>
+      <div className="panel-body intel">
+        <div className="intel-item">
+          <h3>KEV <span className="muted">실제 악용 여부</span></h3>
+          {v.kev ? (
+            <>
+              <p className="intel-lead intel-danger"><Icon name="alert" size={15} />실제 공격에 쓰이고 있습니다</p>
+              <dl className="kv kv-tight">
+                <div className="kv-row"><dt>등재일</dt><dd className="num">{v.kev.date_added ? fmtDate(v.kev.date_added) : "—"}</dd></div>
+                <div className="kv-row"><dt>랜섬웨어</dt><dd>{v.kev.ransomware ? <b>랜섬웨어 공격에 쓰인 것이 확인됨</b> : "확인된 바 없음"}</dd></div>
+              </dl>
+              {v.kev.required_action && <p className="intel-action"><span className="muted">CISA 권고</span><span lang="en">{v.kev.required_action}</span></p>}
+            </>
+          ) : kev.loaded_at ? <p className="intel-lead">목록에 없습니다</p> : <p className="muted">관리자가 KEV 목록을 아직 올리지 않았습니다.</p>}
+          <p className="side-note">미국 CISA가 실제 공격에 쓰인 것을 확인한 취약점 목록(KEV)입니다. 목록에 있으면 심각도와 상관없이 먼저 조치하세요.{kev.loaded_at && ` ${fmtDate(kev.date ?? kev.loaded_at)} 목록 기준.`}</p>
+        </div>
+        <div className="intel-item">
+          <h3>EPSS <span className="muted">악용 가능성</span></h3>
+          {v.epss != null ? (
+            <p className="intel-lead"><span className={`num intel-score${v.epss >= 0.1 ? " intel-danger" : ""}`}>{fmtPct(v.epss)}</span>
+              {v.epss_percentile != null && <span className="muted">전체 CVE 중 {fmtTop(v.epss_percentile)}</span>}</p>
+          ) : epss.loaded_at ? <p className="intel-lead">점수가 없습니다</p> : <p className="muted">관리자가 EPSS 점수를 아직 올리지 않았습니다.</p>}
+          <p className="side-note">앞으로 30일 안에 이 취약점이 공격에 쓰일 확률을 추정한 값입니다(FIRST EPSS). 대부분의 CVE는 1%에 못 미치므로 10%를 넘으면 높은 편입니다.{epss.loaded_at && ` ${fmtDate(epss.date ?? epss.loaded_at)} 점수 기준.`}</p>
+        </div>
+      </div>
+    </section>
   );
 }
 

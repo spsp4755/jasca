@@ -49,7 +49,7 @@ var eventLabels = map[string]string{
 	"new_critical": "새 CRITICAL/HIGH 취약점", "policy_failed": "정책 실패", "scan_failed": "스캔 실패",
 	"exception_requested": "예외 요청", "exception_approved": "예외 승인", "exception_rejected": "예외 반려",
 	"exception_expiring": "예외 만료 임박", "exception_expired": "예외 만료", "new_known": "새로 알려진 취약점", "test": "시험 메시지",
-	"due_soon": "조치 기한 임박", "overdue": "조치 기한 지남", "ops_alert": "운영 알림",
+	"due_soon": "조치 기한 임박", "overdue": "조치 기한 지남", "ops_alert": "운영 알림", "kev_listed": "악용이 확인된 취약점",
 }
 
 // --- queueing ---
@@ -327,6 +327,25 @@ func (s *server) renderMsg(ctx context.Context, event string, raw []byte) notify
 		what = str("label")
 		m.Lines = slices.DeleteFunc([]string{str("value"), str("action")}, func(v string) bool { return v == "" })
 		p.Name, path = "JASCA 운영", "/admin/system"
+	case "kev_listed": // notifyKEV
+		what += fmt.Sprintf(" %d건", num("count"))
+		m.Lines = []string{"실제 공격에 쓰이고 있다고 확인된(CISA KEV) 취약점이 이 프로젝트의 열린 결과에 있습니다. 먼저 조치하세요."}
+		top, _ := d["top"].([]any)
+		for _, t := range top {
+			t, _ := t.(map[string]any)
+			get := func(k string) string { v, _ := t[k].(string); return clean(v) }
+			l := "- " + strings.TrimSpace(get("severity")+" "+get("rule_id"))
+			if pkg := get("pkg"); pkg != "" {
+				l += " (" + pkg + ")"
+			}
+			m.Lines = append(m.Lines, l+" · 대상 "+get("target"))
+		}
+		if rest := num("count") - len(top); rest > 0 {
+			m.Lines = append(m.Lines, fmt.Sprintf("외 %d건", rest))
+		}
+		if path != "" {
+			path += "?kev=true"
+		}
 	case "test":
 		what = "알림 채널 시험 메시지"
 		add("채널", str("channel"))

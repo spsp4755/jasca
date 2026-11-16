@@ -134,6 +134,10 @@ type findingView struct {
 	Assignee      *assigneeView   `json:"assignee"`
 	DueAt         *time.Time      `json:"due_at"` // only an open finding has one; overdue = it is in the past
 	DueManual     bool            `json:"due_manual"`
+	// exploitation data of the vulnerability (intel.go): in CISA's KEV catalog, and the EPSS probability and percentile
+	KEV     bool     `json:"kev"`
+	EPSS    *float64 `json:"epss"`
+	EPSSPct *float64 `json:"epss_percentile"`
 	// only GET /findings/{id} fills these: not columns of findingCols
 	PendingExceptionID *int64 `json:"pending_exception_id,omitempty" db:"-"`
 	SLADays            *int   `json:"sla_days,omitempty" db:"-"` // the days the deadline setting gives this severity
@@ -141,8 +145,9 @@ type findingView struct {
 
 const findingCols = `select f.id, f.project_id, p.key, f.target_id, t.kind, t.name, f.kind, f.tool, f.rule_id, f.title, f.severity,
 		f.pkg_name, f.pkg_version, f.fixed_version, f.pkg_path, f.location, f.status, f.origin, f.first_seen_at,
-		f.last_seen_at, f.fixed_at, f.reopened_count, f.exception_id, f.details, ` + assigneeSQL + `, f.due_at, f.due_manual
-	from findings f join targets t on t.id = f.target_id join projects p on p.id = f.project_id `
+		f.last_seen_at, f.fixed_at, f.reopened_count, f.exception_id, f.details, ` + assigneeSQL + `, f.due_at, f.due_manual,
+		coalesce(vi.kev, false), vi.epss::float8, vi.epss_pct::float8
+	from findings f join targets t on t.id = f.target_id join projects p on p.id = f.project_id` + intelJoin
 
 // where collects AND-ed SQL conditions; each ? in a condition becomes the $n of its value.
 type where struct {
@@ -224,6 +229,13 @@ func findingFilter(q url.Values, w *where, u *user) string {
 	default:
 		return "due는 overdue 또는 soon입니다."
 	}
+	switch q.Get("kev") {
+	case "":
+	case "true":
+		w.conds = append(w.conds, kevSQL)
+	default:
+		return "kev는 true만 쓸 수 있습니다."
+	}
 	return ""
 }
 
@@ -231,30 +243,45 @@ func (s *server) handleFindingList(w http.ResponseWriter, r *http.Request, c *re
 	s.writeFindings(w, r, c.User, s.visibleWhere(c.User))
 }
 
-// Lists put what to fix first on top: CRITICAL down to UNKNOWN, the newest first inside a severity. With sort=due
-// it is the earliest deadline first, and the findings without a deadline last.
+// Lists put what to fix first on top: CRITICAL down to UNKNOWN, inside a severity the vulnerabilities known to be
+// exploited (KEV) first, then the newest. With sort=due it is the earliest deadline first, with sort=epss the
+// highest EPSS probability first; the findings without a deadline or a score come last.
 var severityRank = map[string]int{"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4, "UNKNOWN": 5}
 
 const (
-	sevRankSQL      = `coalesce(array_position(array['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'], f.severity), 5)`
-	findingOrder    = ` order by ` + sevRankSQL + `, f.id desc`
-	findingOrderDue = ` order by f.due_at nulls last, f.id desc`
+	sevRankSQL = `coalesce(array_position(array['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'], f.severity), 5)`
+	// sevKevSQL is the default sort key: twice the severity rank, one less for a KEV vulnerability. It needs intelJoin.
+	sevKevSQL        = `(` + sevRankSQL + ` * 2 - case when vi.kev then 1 else 0 end)`
+	findingOrder     = ` order by ` + sevKevSQL + `, f.id desc`
+	findingOrderDue  = ` order by f.due_at nulls last, f.id desc`
+	findingOrderEPSS = ` order by vi.epss desc nulls last, f.id desc`
 )
 
-// findingSort reads the sort parameter: the ORDER BY to use and whether it is the deadline order.
-func findingSort(q url.Values) (order string, byDue bool, msg string) {
+// sevKevRank is sevKevSQL for a row already read.
+func sevKevRank(severity string, kev bool) int {
+	n := cmp.Or(severityRank[severity], 5) * 2
+	if kev {
+		n--
+	}
+	return n
+}
+
+// findingSort reads the sort parameter: the ORDER BY to use and which order it is ("severity", "due" or "epss").
+func findingSort(q url.Values) (order, by, msg string) {
 	switch q.Get("sort") {
 	case "", "severity":
-		return findingOrder, false, ""
+		return findingOrder, "severity", ""
 	case "due":
-		return findingOrderDue, true, ""
+		return findingOrderDue, "due", ""
+	case "epss":
+		return findingOrderEPSS, "epss", ""
 	}
-	return "", false, "sort는 severity 또는 due입니다."
+	return "", "", "sort는 severity, due 또는 epss입니다."
 }
 
 // writeFindings answers {items, next_cursor, total} for the findings matching base plus the query parameters (u is
-// the caller, see findingFilter), with keyset pagination: the cursor is "<severity rank>.<id>" of the last row seen,
-// or with sort=due "<its due_at, - for none>.<id>".
+// the caller, see findingFilter), with keyset pagination: the cursor is "<sort key>.<id>" of the last row seen, the
+// key being sevKevRank, or with sort=due its due_at, or with sort=epss its EPSS score (- for none in both).
 func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, u *user, f *where) {
 	ctx := r.Context()
 	q := r.URL.Query()
@@ -262,7 +289,7 @@ func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, u *user, 
 		badRequest(w, msg)
 		return
 	}
-	order, byDue, msg := findingSort(q)
+	order, by, msg := findingSort(q)
 	if msg != "" {
 		badRequest(w, msg)
 		return
@@ -278,26 +305,34 @@ func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, u *user, 
 		return
 	}
 	if v := q.Get("cursor"); v != "" {
-		i := strings.LastIndexByte(v, '.') // a due_at has dots of its own
+		i := strings.LastIndexByte(v, '.') // a due_at and a score have dots of their own
 		head, tail := v[:max(i, 0)], v[i+1:]
 		id, err := strconv.ParseInt(tail, 10, 64)
 		n := len(f.args) + 1
 		switch {
 		case err != nil || i < 0:
 			err = cmp.Or(err, strconv.ErrSyntax)
-		case byDue && head == "-": // the deadlines are through: on to the rest of the findings without one
+		case by == "due" && head == "-": // the deadlines are through: on to the rest of the findings without one
 			f.args = append(f.args, id)
 			f.conds = append(f.conds, fmt.Sprintf("f.due_at is null and f.id < $%d", n))
-		case byDue:
+		case by == "due":
 			var due time.Time
 			due, err = time.Parse(time.RFC3339Nano, head)
 			f.args = append(f.args, due, id)
 			f.conds = append(f.conds, fmt.Sprintf("(f.due_at > $%d or f.due_at is null or f.due_at = $%d and f.id < $%d)", n, n, n+1))
+		case by == "epss" && head == "-":
+			f.args = append(f.args, id)
+			f.conds = append(f.conds, fmt.Sprintf("vi.epss is null and f.id < $%d", n))
+		case by == "epss":
+			var score float64
+			score, err = strconv.ParseFloat(head, 64)
+			f.args = append(f.args, score, id)
+			f.conds = append(f.conds, fmt.Sprintf("(vi.epss < $%d or vi.epss is null or vi.epss = $%d and f.id < $%d)", n, n, n+1))
 		default:
 			var rank int
 			rank, err = strconv.Atoi(head)
 			f.args = append(f.args, rank, id)
-			f.conds = append(f.conds, fmt.Sprintf("(%s > $%d or (%s = $%d and f.id < $%d))", sevRankSQL, n, sevRankSQL, n, n+1))
+			f.conds = append(f.conds, fmt.Sprintf("(%s > $%d or (%s = $%d and f.id < $%d))", sevKevSQL, n, sevKevSQL, n, n+1))
 		}
 		if err != nil {
 			badRequest(w, "cursor가 잘못되었습니다.")
@@ -313,12 +348,14 @@ func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, u *user, 
 	var next *string
 	if len(items) == limit {
 		last := items[len(items)-1]
-		head := strconv.Itoa(cmp.Or(severityRank[last.Severity], 5))
-		if byDue {
+		head := strconv.Itoa(sevKevRank(last.Severity, last.KEV))
+		switch {
+		case by == "due" && last.DueAt != nil:
+			head = last.DueAt.UTC().Format(time.RFC3339Nano)
+		case by == "epss" && last.EPSS != nil:
+			head = strconv.FormatFloat(*last.EPSS, 'f', -1, 64)
+		case by != "severity":
 			head = "-"
-			if last.DueAt != nil {
-				head = last.DueAt.UTC().Format(time.RFC3339Nano)
-			}
 		}
 		next = new(head + "." + itoa(last.ID))
 	}
@@ -391,7 +428,14 @@ func (s *server) handleFindingCSV(w http.ResponseWriter, r *http.Request, c *req
 		bw.WriteString("\r\n")
 	}
 	line("프로젝트", "대상 종류", "대상", "종류", "도구", "규칙/취약점 ID", "제목", "심각도", "상태", "패키지", "설치 버전",
-		"조치 버전", "패키지 경로", "위치", "출처", "처음 발견", "마지막 발견", "해결 시각", "담당자", "조치 기한")
+		"조치 버전", "패키지 경로", "위치", "출처", "처음 발견", "마지막 발견", "해결 시각", "담당자", "조치 기한",
+		"악용 확인(KEV)", "EPSS", "EPSS 백분위")
+	num := func(v *float64) string {
+		if v == nil {
+			return ""
+		}
+		return strconv.FormatFloat(*v, 'f', -1, 64)
+	}
 	at := func(t *time.Time) string {
 		if t == nil {
 			return ""
@@ -406,7 +450,7 @@ func (s *server) handleFindingCSV(w http.ResponseWriter, r *http.Request, c *req
 		}
 		line(v.ProjectKey, v.TargetKind, v.TargetName, v.Kind, v.Tool, v.RuleID, v.Title, v.Severity, v.Status, v.PkgName,
 			v.PkgVersion, v.FixedVersion, v.PkgPath, v.Location, v.Origin, at(&v.FirstSeenAt), at(&v.LastSeenAt), at(v.FixedAt),
-			v.Assignee.display(), at(v.DueAt))
+			v.Assignee.display(), at(v.DueAt), map[bool]string{true: "Y"}[v.KEV], num(v.EPSS), num(v.EPSSPct))
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("finding csv: %v", err) // the header is out; the truncated file is all we can give

@@ -417,6 +417,14 @@ MEDIUM 1건
 - MEDIUM CVE-2024-1 (curl) · 대상 api · 기한 2026-11-01 09:00 · 담당 박운영
 
 https://jasca.example.internal/projects/web?due=overdue&sort=due`},
+		{"kev_listed", `"count":7,"cves":2,"top":[{"severity":"CRITICAL","rule_id":"CVE-2021-44228","pkg":"log4j-core","target":"api"},{"severity":"HIGH","rule_id":"CVE-2022-37434","pkg":"zlib","target":"alpine-app"}]`,
+			`[웹 서비스] 악용이 확인된 취약점 7건
+실제 공격에 쓰이고 있다고 확인된(CISA KEV) 취약점이 이 프로젝트의 열린 결과에 있습니다. 먼저 조치하세요.
+- CRITICAL CVE-2021-44228 (log4j-core) · 대상 api
+- HIGH CVE-2022-37434 (zlib) · 대상 alpine-app
+외 5건
+
+https://jasca.example.internal/projects/web?kev=true`},
 	} {
 		m := s.renderMsg(ctx, c.event, []byte(`{"project_key":"web","project_name":"웹 서비스","data":{`+c.data+`}}`))
 		if got := m.text(); got != c.want {

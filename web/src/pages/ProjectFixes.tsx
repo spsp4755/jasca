@@ -7,6 +7,7 @@ import { SEVERITIES } from "../api/types";
 import Button from "../components/Button";
 import Empty from "../components/Empty";
 import Icon from "../components/Icon";
+import { KevBadge } from "../components/Intel";
 import SeverityBadge from "../components/SeverityBadge";
 import Table from "../components/Table";
 import { useToast } from "../components/Toast";
@@ -33,9 +34,9 @@ const lead = (plan: FixPlan, resolved: number) => `패키지 ${fmtNumber(plan.gr
 function groupText(g: FixGroup, n?: number) {
   const fixable = g.resolves.open > 0;
   const head = `${n ? `${n}. ` : "- "}${g.package}${g.ecosystem ? ` (${g.ecosystem})` : ""} ${g.installed}${fixable ? ` → ${fixTo(g)}${g.recommended || g.fixed_versions.length < 2 ? "" : " 중 설치 계열에 맞는 버전"}` : ""}`;
-  const count = fixable
+  const count = (fixable
     ? `해결 ${g.resolves.open}건 (${sevText(g.resolves)})${g.no_fix ? `, 아직 조치 버전 없음 ${g.no_fix}건` : ""}`
-    : `조치 버전 없음 ${g.findings.length}건 (${sevText(fixCounts(g))})`;
+    : `조치 버전 없음 ${g.findings.length}건 (${sevText(fixCounts(g))})`) + (g.kev ? `, 이 중 악용 확인(KEV) ${g.kev}건` : "");
   return [head, `   ${count}`, `   대상: ${g.targets.map((t) => t.name).join(", ")}`, `   ${[...new Set(g.findings.map((f) => f.rule_id))].join(", ")}`].join("\n");
 }
 
@@ -73,6 +74,7 @@ export default function ProjectFixes({ project }: { project: Project }) {
   const plan = q.data;
   const t = plan?.totals;
   const resolved = plan?.groups.reduce((n, g) => n + g.resolves.open, 0) ?? 0;
+  const kev = plan ? [...plan.groups, ...plan.no_fix_groups].reduce((n, g) => n + g.kev, 0) : 0;
   const list = (extra: object) => `/projects/${k}${qs({ ...extra, target_id: targetId })}`;
   const other = t ? OTHER_KINDS.filter((kind) => t.other_kinds[kind] > 0) : [];
   const copy = async (text: string, what: string) => toast((await copyText(text)) ? `${what} 복사했습니다. 티켓이나 메신저에 붙여 넣으세요.` : "복사하지 못했습니다. 브라우저의 클립보드 권한을 확인하세요.", "info");
@@ -117,8 +119,9 @@ export default function ProjectFixes({ project }: { project: Project }) {
                 <Link to={list({ kind: "vuln", fixable: "true" })} className="num fix-win">{fmtNumber(resolved)}건</Link>이 해결됩니다.
               </p>
             )}
-            {(t.no_fix > 0 && plan.groups.length > 0 || other.length > 0 || plan.truncated) && (
+            {(kev > 0 || t.no_fix > 0 && plan.groups.length > 0 || other.length > 0 || plan.truncated) && (
               <ul className="fix-rest">
+                {kev > 0 && <li><KevBadge /> 실제 공격에 쓰이는 취약점이 <Link to={list({ kev: "true" })} className="num">{fmtNumber(kev)}건</Link> 있습니다. 이를 해결하는 패키지를 맨 위에 두었습니다.</li>}
                 {t.no_fix > 0 && plan.groups.length > 0 && <li>올려도 남는 취약점: <Link to={list({ kind: "vuln", fixable: "false" })} className="num">아직 조치 버전 없음 {fmtNumber(t.no_fix)}건</Link></li>}
                 {other.length > 0 && (
                   <li>이 계획이 다루지 않는 열린 결과:{" "}
@@ -131,7 +134,7 @@ export default function ProjectFixes({ project }: { project: Project }) {
           </section>
           {plan.groups.length > 0 && (
             <section className="panel" aria-labelledby="h-fix">
-              <div className="panel-head"><h2 id="h-fix">올릴 패키지</h2><span className="panel-meta">심각한 것부터, 많이 해결되는 순서 · 줄을 누르면 대상과 취약점이 펼쳐집니다</span></div>
+              <div className="panel-head"><h2 id="h-fix">올릴 패키지</h2><span className="panel-meta">악용이 확인된 것, 심각한 것, 많이 해결되는 순서 · 줄을 누르면 대상과 취약점이 펼쳐집니다</span></div>
               <ul className="fix-list">{plan.groups.map(row)}</ul>
             </section>
           )}
@@ -171,6 +174,7 @@ function FixRow({ g, projectKey, onOpen, onCopy }: { g: FixGroup; projectKey: st
               ? <><span className="fix-arrow" aria-hidden="true">→</span><span className="sr-only">에서</span><span className="mono pkg-fix">{fixTo(g)}</span>
                 {!g.recommended && <span className="tag tag-quiet">비교 못 함</span>}</>
               : <span className="pkg-nofix">조치 버전 없음</span>}
+            {g.kev > 0 && <KevBadge count={g.kev} />}
           </span>
           <span className="fix-gain">
             <span className="sev-row">{SEVERITIES.map((s) => { const n = counts[s.toLowerCase() as keyof Counts] ?? 0; return n > 0 && <SeverityBadge key={s} severity={s} count={n} />; })}</span>
@@ -200,6 +204,7 @@ function FixRow({ g, projectKey, onOpen, onCopy }: { g: FixGroup; projectKey: st
               { key: "sev", header: "심각도", width: 108, render: (f) => <SeverityBadge severity={f.severity} /> },
               { key: "rule", header: "취약점", render: (f) => (
                 <span className="rule"><Link to={`/vulns/${encodeURIComponent(f.rule_id)}`} className="mono nw">{f.rule_id}</Link>
+                  {f.kev && <KevBadge />}
                   {f.title && <span className="rule-title" title={f.title}>{f.title}</span>}</span>) },
               { key: "target", header: "대상", width: "24%", nowrap: true, render: (f) => <span className="mono" title={f.target}>{f.target}</span> },
               { key: "fix", header: "조치 버전", width: "22%", render: (f) => (f.fixed_version ? <span className="mono pkg-fix break">{f.fixed_version}</span> : <span className="pkg-nofix">아직 없음</span>) },

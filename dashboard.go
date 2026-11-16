@@ -83,6 +83,11 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request, c *reqC
 			Open    int `json:"open"`
 			Overdue int `json:"overdue"`
 		} `json:"mine"` // open findings assigned to the caller
+		// open findings of vulnerabilities in the KEV catalog; loaded false = no catalog was uploaded, so 0 says nothing
+		KEV struct {
+			Open   int  `json:"open"`
+			Loaded bool `json:"loaded"`
+		} `json:"kev"`
 	}{}
 	cond, args := vis("f", 1)
 	k := &d.Totals
@@ -99,6 +104,16 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request, c *reqC
 		fail(err)
 		return
 	}
+	if err := s.db.QueryRow(ctx, `select count(*) from findings f where f.status = 'open' and `+kevSQL+` and `+cond, args...).Scan(&d.KEV.Open); err != nil {
+		fail(err)
+		return
+	}
+	intel, err := s.intelState(ctx)
+	if err != nil {
+		fail(err)
+		return
+	}
+	d.KEV.Loaded = intel.KEV.LoadedAt != nil
 	// the caller's own, in the projects they can still see: the same findings as GET /findings?assignee=me
 	cond, args = vis("f", 2)
 	if err := s.db.QueryRow(ctx, `select count(*), count(*) filter (where f.due_at < now()) from findings f

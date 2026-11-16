@@ -58,7 +58,7 @@ var mcpAllTools = sync.OnceValue(func() []mcpTool {
 	type extra struct{ proj, title string }
 	classic := map[string]extra{
 		"project_summary":   {"required", "프로젝트 요약: 심각도별 열린 결과 수, 기한 지난 결과 수, 대상 수, 마지막 스캔, 정책 기준"},
-		"list_findings":     {"optional", "결과 목록: 심각도·상태·종류·대상·담당자·기한 지남으로 거르기 (프로젝트를 생략하면 내가 볼 수 있는 전체)"},
+		"list_findings":     {"optional", "결과 목록: 심각도·상태·종류·대상·담당자·기한 지남·악용 확인으로 거르기 (프로젝트를 생략하면 내가 볼 수 있는 전체)"},
 		"list_fixes":        {"required", "조치 계획: 어떤 패키지를 어느 버전으로 올리면 몇 건이 해결되는지"},
 		"get_finding":       {"", "결과 한 건의 상세: 위치, 설치·조치 버전, 담당자와 기한, 예외 상태"},
 		"get_vulnerability": {"optional", "취약점(CVE) 설명, CVSS, 참고 링크와 영향받는 대상"},

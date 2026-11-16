@@ -7,7 +7,7 @@ import Icon from "./Icon";
 import { statusLabel } from "./StatusBadge";
 
 const STATUSES = ["open", "fixed", "accepted", "false_positive"];
-const KEYS = ["project", "target_id", "severity", "status", "kind", "origin", "fixable", "q", "assignee", "due", "sort"] as const;
+const KEYS = ["project", "target_id", "severity", "status", "kind", "origin", "fixable", "q", "assignee", "due", "sort", "kev"] as const;
 
 /**
  * Findings filters live in the URL, under the API's own parameter names. A missing `status` means "open" (what people
@@ -93,6 +93,9 @@ export default function FilterBar({ projects, targets }: {
       <label className="check-row filter-fix">
         <input type="checkbox" checked={f.fixable === "true"} onChange={(e) => set("fixable", e.target.checked ? "true" : undefined)} />조치 버전 있음
       </label>
+      <label className="check-row filter-fix" title="실제 공격에 쓰이는 것이 확인된 취약점(CISA KEV 목록)만 봅니다.">
+        <input type="checkbox" checked={f.kev === "true"} onChange={(e) => set("kev", e.target.checked ? "true" : undefined)} />악용 확인만
+      </label>
       {target && (
         <span className="tag filter-chip">대상 #{target}
           <button type="button" aria-label="대상 필터 지우기" onClick={() => set("target_id", undefined)}><Icon name="x" size={12} /></button>
@@ -104,7 +107,7 @@ export default function FilterBar({ projects, targets }: {
         </span>
       )}
       <div className="sev-toggles" role="group" aria-label="정렬">
-        {([["", "심각도 순"], ["due", "기한 순"]] as const).map(([v, label]) => (
+        {([["", "심각도 순"], ["due", "기한 순"], ["epss", "악용 가능성 순"]] as const).map(([v, label]) => (
           <button key={v} type="button" className="sev-toggle" aria-pressed={(f.sort ?? "") === v} onClick={() => set("sort", v)}>{label}</button>
         ))}
       </div>

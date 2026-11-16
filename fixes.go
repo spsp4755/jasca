@@ -29,6 +29,7 @@ type fixFinding struct {
 	Target       string `json:"target"`
 	PkgPath      string `json:"pkg_path"`
 	FixedVersion string `json:"fixed_version"`
+	KEV          bool   `json:"kev"` // the vulnerability is in the KEV catalog (intel.go)
 }
 
 type fixTarget struct {
@@ -47,18 +48,22 @@ type fixGroup struct {
 	// every finding counted in Resolves, whatever release line each listed version belongs to. "" when the versions
 	// could not be compared (unknown ecosystem, a version that does not parse, nothing above the installed
 	// version); then FixedVersions is all there is to say.
-	Recommended   string       `json:"recommended"`
-	FixedVersions []string     `json:"fixed_versions"` // as the scanners wrote them, without duplicates
-	Resolves      sevCounts    `json:"resolves"`       // findings with a fixed version, by severity; open = all of them
-	NoFix         int          `json:"no_fix"`         // findings of the group without a fixed version
-	Targets       []fixTarget  `json:"targets"`
-	Findings      []fixFinding `json:"findings"` // most severe first
+	Recommended   string    `json:"recommended"`
+	FixedVersions []string  `json:"fixed_versions"` // as the scanners wrote them, without duplicates
+	Resolves      sevCounts `json:"resolves"`       // findings with a fixed version, by severity; open = all of them
+	NoFix         int       `json:"no_fix"`         // findings of the group without a fixed version
+	// KEV counts the group's findings of vulnerabilities known to be exploited: those the upgrade resolves, or all of
+	// them when it resolves none. A group with one comes before every group without.
+	KEV      int          `json:"kev"`
+	Targets  []fixTarget  `json:"targets"`
+	Findings []fixFinding `json:"findings"` // most severe first, a KEV vulnerability first inside a severity
 
-	rank int // severity rank of the worst finding the upgrade resolves (of any finding when it resolves none)
+	rank     int // severity rank of the worst finding the upgrade resolves (of any finding when it resolves none)
+	kevNoFix int // KEV findings without a fixed version
 }
 
 type fixPlan struct {
-	Groups      []*fixGroup `json:"groups"`        // an upgrade resolves something: worst severity, then most resolved first
+	Groups      []*fixGroup `json:"groups"`        // an upgrade resolves something: KEV first, worst severity, then most resolved
 	NoFixGroups []*fixGroup `json:"no_fix_groups"` // no finding has a fixed version: upgrading does not help yet
 	Totals      struct {
 		OpenVulns int `json:"open_vulns"`
@@ -119,8 +124,8 @@ func (s *server) fixPlan(ctx context.Context, projectID, targetID int64) (*fixPl
 			from targets t where t.project_id = $1)
 		select f.id, f.rule_id, f.severity, f.title, t.id, t.name, f.pkg_path, f.fixed_version, t.kind, f.pkg_name, f.pkg_version,
 			coalesce((select p.ecosystem from packages p where p.scan_id = t.scan_id and p.name = f.pkg_name
-				and p.version = f.pkg_version order by (p.path = f.pkg_path) desc, p.ecosystem limit 1), '')
-		from findings f join inv t on t.id = f.target_id
+				and p.version = f.pkg_version order by (p.path = f.pkg_path) desc, p.ecosystem limit 1), ''), coalesce(vi.kev, false)
+		from findings f join inv t on t.id = f.target_id`+intelJoin+`
 		where f.project_id = $1 and f.status = 'open' and f.kind = 'vuln' and ($2 = 0 or f.target_id = $2)`+
 		findingOrder+` limit $3`, projectID, targetID, fixMaxFindings)
 	if err != nil {
@@ -134,7 +139,7 @@ func (s *server) fixPlan(ctx context.Context, projectID, targetID int64) (*fixPl
 		var kind string
 		var k key
 		if err := rows.Scan(&f.ID, &f.RuleID, &f.Severity, &f.Title, &f.TargetID, &f.Target, &f.PkgPath, &f.FixedVersion,
-			&kind, &k.pkg, &k.version, &k.eco); err != nil {
+			&kind, &k.pkg, &k.version, &k.eco, &f.KEV); err != nil {
 			return nil, err
 		}
 		g := groups[k]
@@ -154,6 +159,9 @@ func (s *server) fixPlan(ctx context.Context, projectID, targetID int64) (*fixPl
 		rank := cmp.Or(severityRank[f.Severity], 5)
 		if f.FixedVersion == "" {
 			g.NoFix++
+			if f.KEV {
+				g.kevNoFix++
+			}
 			if g.Resolves.Open == 0 {
 				g.rank = cmp.Or(g.rank, rank) // rows come most severe first
 			}
@@ -163,6 +171,9 @@ func (s *server) fixPlan(ctx context.Context, projectID, targetID int64) (*fixPl
 			g.rank = rank
 		}
 		g.Resolves.Open++
+		if f.KEV {
+			g.KEV++
+		}
 		switch f.Severity {
 		case "CRITICAL":
 			g.Resolves.Critical++
@@ -186,6 +197,7 @@ func (s *server) fixPlan(ctx context.Context, projectID, targetID int64) (*fixPl
 	}
 	for _, g := range groups {
 		if g.Resolves.Open == 0 {
+			g.KEV = g.kevNoFix
 			p.NoFixGroups = append(p.NoFixGroups, g)
 			continue
 		}
@@ -197,7 +209,7 @@ func (s *server) fixPlan(ctx context.Context, projectID, targetID int64) (*fixPl
 	}
 	for _, list := range [][]*fixGroup{p.Groups, p.NoFixGroups} {
 		slices.SortFunc(list, func(a, b *fixGroup) int {
-			return cmp.Or(cmp.Compare(a.rank, b.rank), cmp.Compare(b.Resolves.Open, a.Resolves.Open), cmp.Compare(len(b.Findings), len(a.Findings)),
+			return cmp.Or(cmp.Compare(min(b.KEV, 1), min(a.KEV, 1)), cmp.Compare(a.rank, b.rank), cmp.Compare(b.Resolves.Open, a.Resolves.Open), cmp.Compare(len(b.Findings), len(a.Findings)),
 				cmp.Compare(a.Package, b.Package), cmp.Compare(a.Installed, b.Installed), cmp.Compare(a.Ecosystem, b.Ecosystem))
 		})
 	}

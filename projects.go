@@ -495,7 +495,7 @@ func (s *server) handlePolicyPut(w http.ResponseWriter, r *http.Request, c *reqC
 // --- notification subscriptions (channels and delivery are Task 12) ---
 
 var notifyEvents = []string{"new_critical", "policy_failed", "scan_failed", "exception_requested", "exception_approved",
-	"exception_rejected", "exception_expiring", "exception_expired", "new_known", "due_soon", "overdue"}
+	"exception_rejected", "exception_expiring", "exception_expired", "new_known", "due_soon", "overdue", "kev_listed"}
 
 type notifySub struct {
 	ChannelID int64    `json:"channel_id"`

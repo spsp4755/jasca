@@ -340,7 +340,7 @@ func TestFindingPatch(t *testing.T) {
 		t.Errorf("list: %+v", l)
 	}
 	csv := do(t, s, "GET", "/api/v1/findings.csv?status=open", nil, ck).Body.String()
-	if lines := strings.Split(strings.TrimSpace(csv), "\r\n"); len(lines) != 2 || !strings.HasSuffix(lines[0], `"담당자","조치 기한"`) ||
+	if lines := strings.Split(strings.TrimSpace(csv), "\r\n"); len(lines) != 2 || !strings.Contains(lines[0], `"담당자","조치 기한"`) ||
 		!strings.Contains(lines[1], `,"dev","20`) {
 		t.Errorf("csv:\n%s", csv)
 	}

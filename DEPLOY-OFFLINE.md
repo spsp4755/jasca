@@ -23,6 +23,7 @@
 | jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress. 사내 PostgreSQL 접속 정보까지 이 파일 하나에 적습니다 |
 | postgres.yaml | 사내 DB가 없을 때만 쓰는 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
 | db.tar.gz, javadb.tar.gz | 릴리스 날짜 기준 Trivy 취약점 DB와 Java DB. 설치 뒤 **관리 → Trivy DB**에서 올립니다(아래 "Trivy DB 오프라인 갱신"). 시간이 지났으면 새로 받으세요 |
+| known_exploited_vulnerabilities.json, epss_scores-current.csv.gz | 릴리스 날짜 기준 악용 정보(CISA KEV 목록, EPSS 점수). 선택 사항이며 설치 뒤 **관리 → Trivy DB → 악용 정보**에서 올립니다(아래 "악용 정보 오프라인 갱신") |
 | DEPLOY-OFFLINE.md | 이 문서 |
 | RELEASE-NOTES.md | 이번 버전의 변경 사항 |
 | SHA256SUMS | 반입 파일 무결성 검사 |
@@ -181,6 +182,25 @@ sha256sum db.tar.gz javadb.tar.gz > trivy-db.sha256
 - 두 DB의 설치 여부와 생성 시각, 취약점 DB의 다음 갱신 예정 시각이 **관리 → Trivy DB**의 각 칸에 보입니다. 갱신 예정에서 7일 넘게 지나면 경고가 보이니(DB의 갱신 예정은 생성 하루 뒤라 폐쇄망에서는 늘 조금 지나 있습니다) 주기적으로(예: 매주) 같은 절차를 반복하세요. DB가 오래되면 새 취약점이 탐지되지 않습니다.
 - DB가 오래된 것을 놓치지 않게: 갱신 예정에서 7일 넘게 지나면 로그인한 **모든 사용자의 화면 위쪽**에 안내가 계속 보이고, **관리 → 시스템 상태**에 "문제"로 나옵니다. **관리 → 알림 채널 → 운영 알림**에서 채널을 골라 두면 그 채널로도 알리고, 그대로면 일주일마다 다시 알립니다. 스캔 상세와 프로젝트 보고서에는 그 결과를 대조한 DB의 생성일(**검사 기준 DB**)이 나옵니다.
 - 설치 직후 취약점 DB를 올리기 전에는 서버 스캔을 받지 않고(스캔 화면에 안내가 나오고 업로드는 409로 거부), 재평가도 걸러낼 DB가 없습니다.
+
+## 악용 정보 오프라인 갱신 (KEV · EPSS)
+
+선택 사항입니다. 올리면 실제 공격에 쓰이는 취약점(**악용 확인**)과 공격에 쓰일 확률(**악용 가능성**)이 결과에 표시되어 무엇부터 고칠지 정하기 쉬워집니다. 서버는 이 파일도 받으러 밖으로 나가지 않습니다.
+
+인터넷이 되는 PC에서(브라우저로 주소를 열어 저장해도 됩니다):
+
+```sh
+curl -LO https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json   # KEV 목록 (약 2MB)
+curl -LO https://epss.empiricalsecurity.com/epss_scores-current.csv.gz                          # EPSS 점수 (약 3MB, 압축은 풀지 않음)
+sha256sum known_exploited_vulnerabilities.json epss_scores-current.csv.gz > intel.sha256
+```
+
+반입 매체로 옮긴 뒤 **관리 → Trivy DB**의 **악용 정보 (KEV · EPSS)** 칸에서 **각각 따로** 올립니다. 칸을 잘못 골라도 파일 내용으로 구분해 맞는 쪽에 적용합니다.
+
+- 올린 파일은 전부 검사한 뒤 한 번에 교체합니다. 잘렸거나 다른 파일이면 거부하고 기존 정보를 그대로 씁니다. 파일 크기는 `JASCA_MAX_REPORT_MB`(기본 50)가 상한이고, Ingress 설정은 바꿀 것이 없습니다.
+- EPSS는 약 40만 건이며 교체에 몇 초 걸립니다(로컬 PostgreSQL 17에서 3초 안팎). 그동안 다른 요청과 스캔은 멈추지 않습니다. 데이터는 PostgreSQL에 들어가므로(`vuln_intel` 테이블, 약 40만 행) DB 백업에 함께 담깁니다.
+- KEV 목록을 올리면 이전 목록에 없던 취약점이 열린 결과에 있는 프로젝트에 알림이 갑니다(그 이벤트를 구독한 프로젝트만).
+- Trivy DB를 갱신할 때(예: 매주) 함께 올리세요. 올리지 않으면 표시와 정렬만 빠지고 나머지는 그대로 동작합니다.
 
 ## 업그레이드
 

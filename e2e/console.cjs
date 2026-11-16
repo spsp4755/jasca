@@ -19,6 +19,7 @@ L.run(async () => {
     "/projects/e2e-proj/settings", "/findings", "/findings?due=overdue&sort=due", "/packages", "/packages?q=ssl", "/account/mcp", "/vulns/CVE-2022-37434", "/scan", "/exceptions", "/exceptions/approvals",
     "/advisories", "/advisories/new", "/advisories/JASCA-E2E-001", "/reports", "/reports/e2e-proj", "/admin/default-policy"]);
   await tour("lee", ["/", "/projects", "/projects/e2e-proj", "/projects/e2e-proj/fixes", "/projects/e2e-proj/settings", "/findings", "/findings?assignee=me", "/packages", "/account/mcp", "/exceptions", "/advisories", "/reports", "/admin"]);
+  await tour("kim", ["/findings?kev=true&sort=epss", "/vulns/CVE-2099-10001", "/projects/e2e-intel/fixes"]); // 악용 정보 (intel.cjs)
   await tour("admin", ["/admin/users", "/admin/sso", "/admin/sync", "/admin/default-policy", "/admin/trivy", "/admin/recheck", "/admin/ai",
     "/admin/channels", "/admin/retention", "/admin/audit"]);
   await tour("admin", ["/admin/system"]);

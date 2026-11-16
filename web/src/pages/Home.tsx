@@ -4,6 +4,7 @@ import { SEVERITIES, type Counts, type Dashboard, type FindingOrigin, type Polic
 import Button from "../components/Button";
 import Empty from "../components/Empty";
 import Icon from "../components/Icon";
+import { KevBadge } from "../components/Intel";
 import PageHeader from "../components/PageHeader";
 import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
@@ -64,7 +65,7 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
   if (d && !d.recent_scans.length && !d.totals.open) return <FirstRun />;
   return (
     <div className="home-grid">
-      <RiskSummary totals={d?.totals} overdue={d?.overdue} mine={d?.mine} />
+      <RiskSummary totals={d?.totals} overdue={d?.overdue} mine={d?.mine} kev={d?.kev} />
 
       <section className="panel span-8" aria-labelledby="h-trend">
         <div className="panel-head">
@@ -164,7 +165,8 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
   );
 }
 
-function RiskSummary({ totals, overdue, mine }: { totals?: Counts; overdue?: Counts; mine?: Dashboard["mine"] }) {
+function RiskSummary({ totals, overdue, mine, kev }: { totals?: Counts; overdue?: Counts; mine?: Dashboard["mine"]; kev?: Dashboard["kev"] }) {
+  const admin = isAdmin(useMe().data);
   const sevs = SEVERITIES.map((s) => ({ s, n: totals ? totals[s.toLowerCase() as keyof Counts] : 0 }));
   const sum = sevs.reduce((a, x) => a + x.n, 0);
   const late = SEVERITIES.map((s) => ({ s, n: overdue?.[s.toLowerCase() as keyof Counts] ?? 0 })).filter((x) => x.n > 0);
@@ -176,6 +178,11 @@ function RiskSummary({ totals, overdue, mine }: { totals?: Counts; overdue?: Cou
         <p className="risk-caption">
           {totals ? (totals.critical + totals.high > 0 ? <Link to="/findings?severity=CRITICAL,HIGH">CRITICAL·HIGH <b className="num">{fmtNumber(totals.critical + totals.high)}</b>건 먼저 확인하세요</Link> : "CRITICAL·HIGH 없음") : " "}
         </p>
+        {/* what attackers are using right now, whatever its severity */}
+        {kev && (kev.open > 0
+          ? <p className="risk-kev"><Link to="/findings?kev=true"><KevBadge /><span><b className="num">{fmtNumber(kev.open)}</b>건</span></Link></p>
+          : kev.loaded ? <p className="risk-kev muted">악용이 확인된 열린 취약점 없음</p>
+          : admin && <p className="risk-kev muted"><Link to="/admin/trivy">악용 정보(KEV)를 올리면</Link> 실제 공격에 쓰이는 취약점을 표시합니다</p>)}
       </div>
       <div className="risk-right">
         <ul className="risk-tiles">

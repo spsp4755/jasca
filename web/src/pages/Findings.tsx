@@ -7,6 +7,7 @@ import type { Finding, FindingPage, Project, Target } from "../api/types";
 import Button from "../components/Button";
 import Empty from "../components/Empty";
 import FilterBar, { readFilters } from "../components/FilterBar";
+import { EpssText, KevBadge } from "../components/Intel";
 import Icon from "../components/Icon";
 import PageHeader from "../components/PageHeader";
 import SeverityBadge from "../components/SeverityBadge";
@@ -71,6 +72,7 @@ export function FindingsView({ project, projects, targets }: { project?: string;
         <span className="rule">
           {r.kind === "vuln" ? <Link to={`/vulns/${encodeURIComponent(r.rule_id)}`} className="mono nw">{r.rule_id}</Link> : <span className="mono">{r.rule_id}</span>}
           {r.kind !== "vuln" && <span className="tag tag-quiet">{KIND_LABEL[r.kind]}</span>}
+          {r.kev && <KevBadge />}
           {r.title && <span className="rule-title" title={r.title}>{r.title}</span>}
         </span>
       ),
@@ -83,6 +85,7 @@ export function FindingsView({ project, projects, targets }: { project?: string;
     { key: "status", header: "상태", width: 96, className: filters.status && !filters.status.includes(",") ? "col-wide" : undefined, render: (r) => <StatusBadge status={r.status} /> },
     { key: "assignee", header: "담당자", render: (r) => <AssigneeName a={r.assignee} /> }, // no width: as wide as the names, which the cell caps
     { key: "due", header: "기한", width: 92, render: (r) => <DueText at={r.due_at} /> },
+    { key: "epss", header: <span title="EPSS: 앞으로 30일 안에 악용될 확률">악용 가능성</span>, width: 88, align: "right", className: "col-wide", render: (r) => <EpssText value={r.epss} /> },
     { key: "seen", header: "처음 발견", width: 92, align: "right", className: "col-wide", render: (r) => <span className="num muted" title={fmtDate(r.first_seen_at)}>{fmtDaysAgo(r.first_seen_at)}</span> },
   ];
 
@@ -126,6 +129,7 @@ export function FindingsView({ project, projects, targets }: { project?: string;
                 : filters.assignee === "none" ? "이 조건의 결과 중 담당자가 없는 것은 없습니다."
                 : filters.due === "overdue" ? "이 조건의 결과 중 조치 기한이 지난 것은 없습니다. 기한은 열린 결과에만 있습니다."
                 : filters.due === "soon" ? "이 조건의 결과 중 기한이 7일 안에 끝나는 것은 없습니다. 이미 지난 것은 '기한 지남'에서 봅니다."
+                : filters.kev === "true" ? "이 조건의 결과 중 악용이 확인된(CISA KEV) 취약점은 없습니다. 목록은 관리자가 올린 KEV 파일 기준입니다."
                 : filters.status === "open" ? "열린 결과만 보고 있습니다. 해결되거나 예외 처리된 결과도 보려면 상태를 '모든 상태'로 바꾸세요." : "필터를 줄이거나 검색어를 바꿔 보세요."} />
           )} />
         {q.hasNextPage && (

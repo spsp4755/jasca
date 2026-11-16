@@ -29,6 +29,7 @@ const ACTION: Record<string, string> = {
   "ai.guide": "AI 조치 안내 요청", "ai.report": "AI 보고서 요청",
   "ops_alerts.update": "운영 알림 채널 변경", "channel.create": "알림 채널 추가", "channel.update": "알림 채널 수정", "channel.delete": "알림 채널 삭제", "channel.test": "알림 채널 시험 발송",
   "trivy.settings": "스캔 옵션 변경", "trivy.db_upload": "Trivy DB 올리기", "trivy.db_upload_failed": "Trivy DB 올리기 실패", "sync.run": "Keycloak 동기화",
+  "intel.upload": "악용 정보 올리기", "intel.upload_failed": "악용 정보 올리기 실패",
 };
 // Rows the removed Harbor integration left behind still read in Korean; they are not offered in the filter.
 const OLD_ACTION: Record<string, string> = {
@@ -52,6 +53,7 @@ const DETAIL: Record<string, string> = {
   // finding.assign, finding.due, sla.update
   finding_id: "결과 번호", finding_ids: "결과 번호", count: "건수", assignee: "담당자", unassigned: "지정 해제", due_at: "기한", auto: "정책 기한으로 되돌림",
   days: "심각도별 기한(일)", recalculated: "기한이 바뀐 결과",
+  data_at: "데이터 기준 시각", newly_listed: "새로 등재된 CVE", // intel.upload
   // trivy.settings: the words of 관리 → Trivy DB → 스캔 옵션
   pkg_types: "패키지 종류", include_dev_deps: "개발용 의존성도 검사", severities: "결과에 넣을 심각도", ignore_unfixed: "조치 버전이 없는 취약점 제외",
   skip_dirs: "건너뛸 디렉터리", skip_files: "건너뛸 파일", detection_priority: "탐지 방식", timeout_min: "스캔 1건 제한 시간(분)",
@@ -74,11 +76,11 @@ const CODE: Record<string, Record<string, string>> = {
   },
 };
 // The 대상 column: what was acted on, in words where the server stores a code.
-const SETTING: Record<string, string> = { ai: "AI 설정", ai_prompts: "AI 프롬프트", sso: "SSO (Keycloak)", sync: "Keycloak 동기화", db: "취약점 DB", "java-db": "Java DB" };
+const SETTING: Record<string, string> = { ai: "AI 설정", ai_prompts: "AI 프롬프트", sso: "SSO (Keycloak)", sync: "Keycloak 동기화", db: "취약점 DB", "java-db": "Java DB", kev: "KEV 목록", epss: "EPSS 점수" };
 function targetText(e: AuditEntry): string {
   const scan = /^(scan|target)\./.test(e.action) && /^(image|repo|fs|sbom):(.*)$/s.exec(e.target); // "fs:name"
   if (scan) return `${TARGET_KIND_LABEL[scan[1] as TargetKind]} ${scan[2]}`;
-  if (e.action === "settings.update" || e.action.startsWith("trivy.db_upload")) return SETTING[e.target] ?? e.target;
+  if (e.action === "settings.update" || e.action.startsWith("trivy.db_upload") || e.action.startsWith("intel.")) return SETTING[e.target] ?? e.target;
   return e.target.replace(/^finding:/, "결과 #");
 }
 const code = (k: string, v: unknown) => (typeof v !== "string" ? String(v) : k === "was" ? statusLabel(v) : CODE[k]?.[v] ?? v);

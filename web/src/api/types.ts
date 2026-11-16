@@ -102,6 +102,8 @@ export interface Finding {
   reopened_count: number; exception_id: number | null; details: Record<string, unknown>;
   /** due_at: the deadline, only while open (overdue = it is in the past). due_manual: a person set it, not the deadline setting. */
   assignee: Assignee | null; due_at: string | null; due_manual: boolean;
+  /** kev: the vulnerability is in CISA's KEV catalog. epss: probability (0-1) of exploitation in 30 days, null without a score. */
+  kev: boolean; epss: number | null; epss_percentile: number | null;
   pending_exception_id?: number | null; // GET /findings/{id} only: a request waiting for a decision that covers it
   sla_days?: number | null; // GET /findings/{id} only: the days the deadline setting gives this severity
 }
@@ -109,8 +111,10 @@ export interface Finding {
 export interface FindingFilters {
   project?: string; target_id?: string; severity?: string; status?: string; kind?: string; origin?: string;
   fixable?: "true" | "false" | ""; q?: string; limit?: number; cursor?: string;
-  /** assignee: "me", "none" or a user id. due: overdue, or soon = within 7 days. sort=due: earliest deadline first. */
+  /** assignee: "me", "none" or a user id. due: overdue, or soon = within 7 days. sort=due: earliest deadline first; sort=epss: highest EPSS first. */
   assignee?: string; due?: string; sort?: string;
+  /** "true": only vulnerabilities in the KEV catalog */
+  kev?: string;
 }
 export interface FindingPage { items: Finding[]; next_cursor: string | null; total: number }
 export interface VulnAffected {
@@ -123,7 +127,15 @@ export interface Vuln {
   /** the id is an internal advisory (/advisories/{id}) */
   advisory?: boolean;
   affected: VulnAffected[];
+  /** kev: set when the KEV catalog lists the id. intel: what was uploaded, to tell "not listed" from "nothing loaded". */
+  kev: { date_added: string; ransomware: boolean; required_action: string } | null;
+  epss: number | null; epss_percentile: number | null; intel: IntelStatus;
 }
+/** One uploaded exploitation data file: the day the data is from, how many CVEs, when it was uploaded (null = never). */
+export interface IntelSource { date: string | null; count: number; loaded_at: string | null }
+export interface IntelStatus { kev: IntelSource; epss: IntelSource }
+/** POST /admin/intel: kind is what the file turned out to be; newly_listed counts CVEs the previous KEV catalog did not have. */
+export interface IntelUpload extends IntelStatus { kind: "kev" | "epss"; newly_listed: number }
 
 // --- packages ---
 /** One package of a target's current inventory. open_findings 0 = no known vulnerability yet. */
@@ -182,6 +194,8 @@ export interface Dashboard {
   recent_scans: DashboardScan[]; newly_known: DashboardFinding[];
   /** overdue: open findings past their deadline by severity (open = all). mine: open findings assigned to me. */
   overdue: Counts; mine: { open: number; overdue: number };
+  /** open findings of KEV vulnerabilities; loaded false = no KEV catalog was uploaded */
+  kev: { open: number; loaded: boolean };
 }
 
 // --- audit / channels ---
@@ -262,18 +276,19 @@ export type SMTPSettingsPut = Omit<SMTPSettings, "password_set"> & { password?: 
 export interface ReportFinding {
   id: number; target: string; kind: FindingKind; rule_id: string; title: string; severity: Severity;
   pkg_name: string; pkg_version: string; fixed_version: string; first_seen_at: string;
-  location: string; details: { start_line?: number; end_line?: number };
+  location: string; details: { start_line?: number; end_line?: number }; kev: boolean;
 }
 // --- 조치 계획: GET /projects/{key}/fixes ---
-export interface FixFinding { id: number; rule_id: string; severity: Severity; title: string; target_id: number; target: string; pkg_path: string; fixed_version: string }
+export interface FixFinding { id: number; rule_id: string; severity: Severity; title: string; target_id: number; target: string; pkg_path: string; fixed_version: string; kev: boolean }
 export interface FixTarget { id: number; kind: TargetKind; name: string; paths: string[] }
 /**
  * One package at one installed version. recommended: that version or a higher one resolves every finding counted in
  * resolves (resolves.open = all of them); "" when the fixed versions could not be compared, then fixed_versions is shown as written.
+ * kev: findings of KEV vulnerabilities the upgrade resolves (all of the group's when it resolves none); such groups come first.
  */
 export interface FixGroup {
   package: string; ecosystem: string; installed: string; recommended: string; fixed_versions: string[];
-  resolves: Counts; no_fix: number; targets: FixTarget[]; findings: FixFinding[];
+  resolves: Counts; no_fix: number; kev: number; targets: FixTarget[]; findings: FixFinding[];
 }
 /** inventory_targets: targets whose scans listed packages (0: nothing looked at packages). truncated: only the `limit` most severe findings were grouped. */
 export interface FixPlan {
@@ -284,7 +299,7 @@ export interface FixPlan {
 export interface ProjectReportData {
   project: { key: string; name: string; description: string };
   generated_at: string;
-  summary: { by_severity: Counts; by_kind: Record<FindingKind, number>; overdue?: Counts };
+  summary: { by_severity: Counts; by_kind: Record<FindingKind, number>; overdue?: Counts; kev?: number };
   targets: Target[];
   findings: ReportFinding[];
   exceptions: ExceptionItem[];

@@ -86,6 +86,18 @@ type vulnView struct {
 	AIGuideAt      *time.Time     `json:"ai_guide_at"`
 	Advisory       bool           `json:"advisory"` // the id is an internal advisory (GET /advisories/{id}), not a public CVE
 	Affected       []vulnAffected `json:"affected"`
+	// exploitation data (intel.go): KEV is set when the catalog lists the id; EPSS is nil without a score. Intel says
+	// what was uploaded and from which day, so the page can tell "not listed" from "no catalog loaded".
+	KEV     *vulnKEV    `json:"kev"`
+	EPSS    *float64    `json:"epss"`
+	EPSSPct *float64    `json:"epss_percentile"`
+	Intel   intelStatus `json:"intel"`
+}
+
+type vulnKEV struct {
+	DateAdded      string `json:"date_added"` // YYYY-MM-DD
+	Ransomware     bool   `json:"ransomware"` // known to be used in ransomware campaigns
+	RequiredAction string `json:"required_action"`
 }
 
 // handleVulnGet returns the shared catalog entry with the findings of it that the caller can see (at most 1000).
@@ -110,6 +122,24 @@ func (s *server) handleVulnGet(w http.ResponseWriter, r *http.Request, c *reqCtx
 		where f.rule_id = $1 and `+cond+` order by p.key, t.name, f.id limit 1000`, append([]any{v.ID}, args...)...)
 	if v.Affected, err = pgx.CollectRows(rows, pgx.RowToStructByPos[vulnAffected]); err != nil {
 		writeInternal(w, "vuln affected", err)
+		return
+	}
+	var k vulnKEV
+	var kev bool
+	var added *time.Time
+	switch err := s.db.QueryRow(ctx, `select kev, kev_added, kev_ransomware, kev_action, epss::float8, epss_pct::float8
+		from vuln_intel where cve = $1`, v.ID).Scan(&kev, &added, &k.Ransomware, &k.RequiredAction, &v.EPSS, &v.EPSSPct); {
+	case err == nil && kev:
+		if added != nil {
+			k.DateAdded = added.Format(time.DateOnly)
+		}
+		v.KEV = &k
+	case err != nil && !errors.Is(err, pgx.ErrNoRows):
+		writeInternal(w, "vuln intel", err)
+		return
+	}
+	if v.Intel, err = s.intelState(ctx); err != nil {
+		writeInternal(w, "vuln intel", err)
 		return
 	}
 	writeJSON(w, 200, v)

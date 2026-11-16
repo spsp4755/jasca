@@ -29,6 +29,7 @@ type reportFinding struct {
 	// where a secret or misconfiguration sits: the file, and of the details only the lines
 	Location string          `json:"location"`
 	Details  json.RawMessage `json:"details"`
+	KEV      bool            `json:"kev"` // the vulnerability is in the KEV catalog (intel.go)
 }
 
 // handleProjectReport returns everything the printable report page shows; the page does the layout.
@@ -56,13 +57,18 @@ func (s *server) handleProjectReport(w http.ResponseWriter, r *http.Request, c *
 		fail(err)
 		return
 	}
+	var kev int // open findings of vulnerabilities known to be exploited
+	if err := s.db.QueryRow(ctx, `select count(*) from findings f where f.status = 'open' and f.project_id = $1 and `+kevSQL, pid).Scan(&kev); err != nil {
+		fail(err)
+		return
+	}
 	var over sevCounts // the open findings past their deadline
 	if err := s.db.QueryRow(ctx, `select * from `+openCountsSQL("f.due_at < now() and f.project_id = $1")+` x`, pid).
 		Scan(&over.Critical, &over.High, &over.Medium, &over.Low, &over.Unknown, &over.Open); err != nil {
 		fail(err)
 		return
 	}
-	rep.Summary = map[string]any{"by_severity": sev, "overdue": over,
+	rep.Summary = map[string]any{"by_severity": sev, "overdue": over, "kev": kev,
 		"by_kind": map[string]int{"vuln": byKind.Vuln, "misconfig": byKind.Misconfig, "secret": byKind.Secret, "sast": byKind.SAST}}
 	var err error
 	if rep.Targets, err = s.projectTargets(ctx, pid); err != nil {
@@ -71,10 +77,11 @@ func (s *server) handleProjectReport(w http.ResponseWriter, r *http.Request, c *
 	}
 	if rep.Findings, err = collect[reportFinding](ctx, s, `select f.id, t.name, f.kind, f.rule_id, f.title, f.severity, f.pkg_name,
 			f.pkg_version, f.fixed_version, f.first_seen_at, f.location,
-			jsonb_strip_nulls(jsonb_build_object('start_line', f.details->'start_line', 'end_line', f.details->'end_line'))
-		from findings f join targets t on t.id = f.target_id
+			jsonb_strip_nulls(jsonb_build_object('start_line', f.details->'start_line', 'end_line', f.details->'end_line')),
+			coalesce(vi.kev, false)
+		from findings f join targets t on t.id = f.target_id`+intelJoin+`
 		where f.project_id = $1 and f.status = 'open'
-		order by array_position(array['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'], f.severity), f.first_seen_at, f.id limit 100`, pid); err != nil {
+		order by `+sevKevSQL+`, f.first_seen_at, f.id limit 100`, pid); err != nil {
 		fail(err)
 		return
 	}

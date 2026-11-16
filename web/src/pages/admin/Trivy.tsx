@@ -5,9 +5,9 @@ import Button from "../../components/Button";
 import Field from "../../components/Field";
 import { useApi, useUnloadGuard } from "../../api/hooks";
 import { API_BASE, ApiError, api } from "../../api/client";
-import { daysUntil, fmtDate, fmtDateTime, fmtRelative } from "../../lib/format";
+import { daysUntil, fmtDate, fmtDateTime, fmtNumber, fmtRelative } from "../../lib/format";
 import { useToast } from "../../components/Toast";
-import { SEVERITIES, type TrivyOptions, type TrivyPkgType, type TrivyScanner, type TrivyStatus, type TrivyUpload } from "../../api/types";
+import { SEVERITIES, type IntelStatus, type IntelUpload, type TrivyOptions, type TrivyPkgType, type TrivyScanner, type TrivyStatus, type TrivyUpload } from "../../api/types";
 import { Loading, Panel } from "./parts";
 import { RecheckRuns } from "./Recheck";
 
@@ -17,17 +17,17 @@ const DB: Record<DbKind, { title: string; file: string }> = {
   "java-db": { title: "Java DB", file: "javadb.tar.gz" },
 };
 
-/** Upload with progress; plain XHR because fetch has no upload progress. The answer says which DB the file was. */
-function upload(file: File, onProgress: (pct: number) => void): Promise<TrivyUpload> {
+/** Upload with progress; plain XHR because fetch has no upload progress. The answer says in `kind` what the file was. */
+function upload<T extends { kind: string }>(path: string, file: File, onProgress: (pct: number) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
-    x.open("POST", `${API_BASE}/admin/trivy/db`);
+    x.open("POST", `${API_BASE}${path}`);
     x.setRequestHeader("Accept", "application/json");
     x.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
     x.onload = () => {
-      let body: Partial<TrivyUpload> & { message?: string } = {};
+      let body: Partial<T> & { message?: string } = {};
       try { body = JSON.parse(x.responseText); } catch { /* non-JSON */ }
-      if (x.status >= 200 && x.status < 300 && body.kind) return resolve(body as TrivyUpload);
+      if (x.status >= 200 && x.status < 300 && body.kind) return resolve(body as T);
       reject(new Error(body.message || `업로드하지 못했습니다. (${x.status})`));
     };
     x.onerror = () => reject(new Error("서버에 연결하지 못했습니다. 네트워크를 확인하세요."));
@@ -54,7 +54,7 @@ function DbBlock({ kind, installed, applied, flash, onApplied, children }: {
   async function pick(f?: File) {
     if (!f) return;
     setPct(0);
-    try { onApplied(await upload(f, setPct), kind); } catch (e) { toast((e as Error).message, "error"); }
+    try { onApplied(await upload<TrivyUpload>("/admin/trivy/db", f, setPct), kind); } catch (e) { toast((e as Error).message, "error"); }
     setPct(null);
     if (input.current) input.current.value = "";
   }
@@ -83,6 +83,113 @@ function DbBlock({ kind, installed, applied, flash, onApplied, children }: {
           )}
           {pct === null && applied && <span className="tag">방금 적용됨</span>}
         </div>
+      </div>
+    </section>
+  );
+}
+
+type IntelKind = IntelUpload["kind"];
+const INTEL: Record<IntelKind, { title: string; file: string; url: string; what: string }> = {
+  kev: {
+    title: "KEV 목록", file: "known_exploited_vulnerabilities.json", url: "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+    what: "미국 CISA가 실제 공격에 쓰인 것을 확인한 취약점 목록입니다. 목록에 있는 취약점은 결과에 '악용 확인'으로 표시되고 같은 심각도 안에서 맨 위에 옵니다. 새로 등재된 취약점이 열린 결과에 있으면 그 프로젝트에 알림을 보냅니다.",
+  },
+  epss: {
+    title: "EPSS 점수", file: "epss_scores-current.csv.gz", url: "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+    what: "CVE마다 앞으로 30일 안에 공격에 쓰일 확률을 추정한 점수입니다(FIRST). 결과 목록에 '악용 가능성'으로 보이고 그 순서로 정렬할 수 있습니다.",
+  },
+};
+
+/** One exploitation data file: what it is for, what is loaded, and its own upload button. Like the DB blocks, a file picked under the wrong one is still applied as what it is. */
+function IntelBlock({ kind, st, applied, onApplied }: { kind: IntelKind; st: IntelStatus[IntelKind]; applied: boolean; onApplied: (r: IntelUpload, under: IntelKind) => void }) {
+  const toast = useToast();
+  const hid = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const [pct, setPct] = useState<number | null>(null);
+  useUnloadGuard(pct !== null);
+  const { title, file, what } = INTEL[kind];
+  const loaded = !!st.loaded_at;
+
+  async function pick(f?: File) {
+    if (!f) return;
+    setPct(0);
+    try { onApplied(await upload<IntelUpload>("/admin/intel", f, setPct), kind); } catch (e) { toast((e as Error).message, "error"); }
+    setPct(null);
+    if (input.current) input.current.value = "";
+  }
+
+  return (
+    <section className="intel-block" aria-labelledby={hid}>
+      <div className="intel-head">
+        <h3 id={hid}>{title}</h3>
+        <span className={`status status-${loaded ? "ok" : "muted"}`}><span className="status-dot" aria-hidden="true" />{loaded ? "적용됨" : "올리지 않음"}</span>
+        <code className="panel-meta mono">{file}</code>
+      </div>
+      <p>{what}</p>
+      {loaded && (
+        <dl className="kv">
+          <div className="kv-row"><dt>데이터 기준일</dt><dd>{st.date ? <>{fmtDate(st.date)} <span className="muted">· {fmtRelative(st.date)}</span></> : <span className="muted">파일에 날짜가 없습니다</span>}</dd></div>
+          <div className="kv-row"><dt>CVE 수</dt><dd className="num">{fmtNumber(st.count)}개</dd></div>
+          <div className="kv-row"><dt>올린 시각</dt><dd>{fmtDateTime(st.loaded_at)}</dd></div>
+        </dl>
+      )}
+      <div className="admin-actions">
+        <input ref={input} type="file" accept=".json,.csv,.gz,application/json,application/gzip,text/csv" hidden onChange={(e) => pick(e.target.files?.[0])} />
+        <Button variant="secondary" disabled={pct !== null} onClick={() => input.current?.click()}>{loaded ? `새 ${title}${kind === "kev" ? "으" : ""}로 교체` : `${title} 올리기`}</Button>
+        {pct !== null && (
+          <>
+            <div className="progress" style={{ width: 160 }} role="progressbar" aria-label={`${title} 업로드 진행률`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div>
+            <span className="num">{pct}%{pct === 100 && " · 적용 중"}</span>
+          </>
+        )}
+        {pct === null && applied && <span className="tag">방금 적용됨</span>}
+      </div>
+    </section>
+  );
+}
+
+/** 악용 정보: the two optional files that say which vulnerabilities attackers use (KEV) and are likely to use (EPSS). */
+function IntelPanel() {
+  const q = useApi<IntelStatus>("/admin/intel");
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [applied, setApplied] = useState<IntelKind[]>([]);
+
+  function onApplied(r: IntelUpload, under: IntelKind) {
+    const what = INTEL[r.kind].title;
+    const src = r[r.kind];
+    const eul = r.kind === "kev" ? "을" : "를"; // 목록을, 점수를
+    toast(`${r.kind !== under ? `올린 파일이 ${what}${r.kind === "kev" ? "이어서" : "여서"} ` : ""}${what}${eul} 적용했습니다 (${src.date ? `${fmtDate(src.date)} 기준, ` : ""}CVE ${fmtNumber(src.count)}개).${
+      r.kind === "kev" ? (r.newly_listed > 0 ? ` 새로 등재된 CVE는 ${fmtNumber(r.newly_listed)}개입니다.` : " 새로 등재된 CVE는 없습니다.") : ""}`, "ok");
+    setApplied((a) => (a.includes(r.kind) ? a : [...a, r.kind]));
+    qc.setQueryData(["/admin/intel"], { kev: r.kev, epss: r.epss });
+    // every list, count and detail that shows the badge or the score
+    void qc.invalidateQueries({ predicate: (query) => /^\/(findings|dashboard|projects|vulns)/.test(String(query.queryKey[0])) });
+  }
+
+  return (
+    <section className="panel" aria-labelledby="h-intel">
+      <div className="panel-head"><h2 id="h-intel">악용 정보 (KEV · EPSS)</h2><span className="panel-meta">선택 · 무엇부터 고칠지 정하는 데 씁니다</span></div>
+      <div className="panel-body">
+        <Loading q={q} />
+        {q.data && (
+          <>
+            <div className="intel-grid">
+              {(["kev", "epss"] as const).map((k) => <IntelBlock key={k} kind={k} st={q.data[k]} applied={applied.includes(k)} onApplied={onApplied} />)}
+            </div>
+            <p className="db-next">KEV는 새 취약점이 확인될 때마다, EPSS는 매일 갱신됩니다. Trivy DB를 교체할 때 함께 올리세요. 올리지 않아도 스캔과 재평가는 그대로 동작하고, 표시와 정렬만 빠집니다.</p>
+            <details className="intel-help">
+              <summary>인터넷 PC에서 파일 받는 방법</summary>
+              <ol className="steps">
+                <li>KEV 목록을 받습니다. 브라우저로 주소를 열어 저장해도 됩니다.
+                  <pre className="code">curl -LO {INTEL.kev.url}</pre></li>
+                <li>EPSS 점수를 받습니다. 압축(<code>.csv.gz</code>)은 풀지 않고 그대로 올립니다.
+                  <pre className="code">curl -LO {INTEL.epss.url}</pre></li>
+                <li>두 파일을 USB 등으로 옮겨 위의 해당 칸에서 올립니다. 칸을 잘못 골라도 파일 내용으로 구분해 맞는 쪽에 적용하고, 내용이 잘렸거나 다른 파일이면 거부하고 기존 정보를 그대로 씁니다.</li>
+              </ol>
+            </details>
+          </>
+        )}
       </div>
     </section>
   );
@@ -301,6 +408,7 @@ export default function Trivy() {
           </div>
         </details>
       )}
+      {s && <IntelPanel />}
       {s && <ScanOptions key={JSON.stringify(optionsOf(s))} current={optionsOf(s)} defaultTimeout={s.default_timeout_min} />}
       <RecheckRuns />
     </>

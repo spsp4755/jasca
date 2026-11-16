@@ -8,6 +8,7 @@ import Button from "../components/Button";
 import Dialog from "../components/Dialog";
 import Field from "../components/Field";
 import Icon from "../components/Icon";
+import { KevBadge, fmtPct, fmtTop } from "../components/Intel";
 import SeverityBadge from "../components/SeverityBadge";
 import StatusBadge from "../components/StatusBadge";
 import { useToast } from "../components/Toast";
@@ -95,11 +96,18 @@ export default function FindingDrawer({ finding: f, onClose, showProject = true 
             {f.status === "open" && <p className="drawer-todo"><Icon name="arrowRight" size={15} /><span><b>할 일</b> {todo(f)}
               {/* this sentence looks at one vulnerability; the plan names the version that clears every one of the package */}
               {f.kind === "vuln" && f.fixed_version && <> <Link to={`/projects/${encodeURIComponent(f.project_key)}/fixes`}>이 패키지의 다른 취약점까지 한 번에 해결하는 버전은 조치 계획에서 봅니다.</Link></>}
+              {f.kev && <b className="todo-late"> 실제 공격에 쓰이는 취약점입니다. 먼저 조치하세요.</b>}
               {late?.over && <b className="todo-late"> 조치 기한이 {late.days < 0 ? `${-late.days}일` : "오늘"} 지났습니다.</b>}</span></p>}
             {now && <Triage f={now} canEdit={canTriage(role, isSecurity(me.data))} />}
             <dl className="kv">
               <Row label="상태"><StatusBadge status={f.status} />{waiting && <> · {waiting}</>}{f.reopened_count > 0 && <span className="muted"> · 다시 열림 {f.reopened_count}회</span>}</Row>
               {f.exception_id && <Row label="예외"><Link to={`/exceptions?id=${f.exception_id}`}>예외 #{f.exception_id}</Link></Row>}
+              {(f.kev || f.epss != null) && (
+                <Row label="악용 정보">
+                  {f.kev && <><KevBadge /> <span>CISA KEV 목록에 있습니다.</span>{f.epss != null && <br />}</>}
+                  {f.epss != null && <span>30일 안에 악용될 확률 <b className="num">{fmtPct(f.epss)}</b>{f.epss_percentile != null && <span className="muted"> · 전체 CVE 중 {fmtTop(f.epss_percentile)}</span>}</span>}
+                </Row>
+              )}
               {f.pkg_name && <Row label="패키지"><b>{f.pkg_name}</b> <span className="mono">{f.pkg_version}</span></Row>}
               {f.pkg_name && <Row label="조치 버전">{f.fixed_version ? <span className="mono pkg-fix">{f.fixed_version}</span> : <span className="muted">아직 없음</span>}</Row>}
               {f.pkg_path && <Row label="경로"><span className="mono break">{f.pkg_path}</span></Row>}

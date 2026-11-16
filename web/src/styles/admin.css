@@ -84,3 +84,21 @@
   .sys-row { grid-template-columns: 64px minmax(0, 1fr) 52px; row-gap: 4px; }
   .sys-text { grid-column: 1 / -1; grid-row: 2; }
 }
+/* 악용 정보: two blocks side by side inside one panel, each with its own upload button */
+.intel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.intel-block { display: flex; flex-direction: column; gap: 10px; padding-right: 28px; font-size: 13.5px; color: var(--text-2); }
+.intel-block + .intel-block { padding: 0 0 0 28px; border-left: 1px solid var(--line); }
+.intel-block > p { margin: 0; }
+.intel-block .admin-actions { margin-top: auto; padding-top: 4px; min-height: 40px; }
+.intel-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.intel-head h3 { font-size: 14px; font-weight: 650; color: var(--text); }
+.intel-head code { margin-left: auto; }
+.intel-grid + .db-next { margin: 14px 0 0; }
+.intel-help { margin-top: 10px; }
+.intel-help > summary { font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.intel-help .steps { margin-top: 10px; }
+@media (max-width: 900px) {
+  .intel-grid { grid-template-columns: 1fr; }
+  .intel-block, .intel-block + .intel-block { padding: 0; border-left: 0; }
+  .intel-block + .intel-block { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+}

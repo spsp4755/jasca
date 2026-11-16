@@ -591,11 +591,16 @@ type mcpFinding struct {
 	Assignee string     `json:"assignee,omitempty"`
 	DueAt    *time.Time `json:"due_at,omitempty"`
 	Overdue  bool       `json:"overdue,omitempty"`
+	// exploitation data: kev = in CISA's Known Exploited Vulnerabilities catalog; epss = probability (0-1) of
+	// exploitation in the next 30 days. Left out when unknown or when the administrator has not uploaded the data.
+	KEV  bool     `json:"kev,omitempty"`
+	EPSS *float64 `json:"epss,omitempty"`
 }
 
 func (m *mcpCall) findingRow(f findingView) mcpFinding {
 	return mcpFinding{f.ID, m.keyOnly(f.ProjectKey), f.Severity, f.RuleID, clip(f.Title, 200), f.PkgName, f.PkgVersion, f.FixedVersion, f.TargetName,
-		f.Status, f.FirstSeenAt.Truncate(time.Second), f.Assignee.display(), sec(f.DueAt), f.DueAt != nil && f.DueAt.Before(time.Now())}
+		f.Status, f.FirstSeenAt.Truncate(time.Second), f.Assignee.display(), sec(f.DueAt), f.DueAt != nil && f.DueAt.Before(time.Now()),
+		f.KEV, f.EPSS}
 }
 
 func mcpListFindings(m *mcpCall, raw json.RawMessage) (any, error) {
@@ -607,6 +612,7 @@ func mcpListFindings(m *mcpCall, raw json.RawMessage) (any, error) {
 		Query    string   `json:"query"`
 		Fixable  *bool    `json:"fixable"`
 		Overdue  bool     `json:"overdue"`
+		KEV      bool     `json:"kev"`
 		Assignee string   `json:"assignee"`
 		Limit    *int     `json:"limit"`
 		Cursor   string   `json:"cursor"`
@@ -647,6 +653,9 @@ func mcpListFindings(m *mcpCall, raw json.RawMessage) (any, error) {
 	}
 	if a.Overdue {
 		q.Set("due", "overdue")
+	}
+	if a.KEV {
+		q.Set("kev", "true")
 	}
 	switch a.Assignee {
 	case "":
@@ -725,6 +734,7 @@ func mcpListFixes(m *mcpCall, raw json.RawMessage) (any, error) {
 		FixedVersions    []string   `json:"fixed_versions,omitempty"` // only when upgrade_to could not be worked out
 		Resolves         *sevCounts `json:"resolves,omitempty"`
 		WithoutFix       int        `json:"without_fix,omitempty"`
+		KEV              int        `json:"kev,omitempty"` // findings of known exploited vulnerabilities this row covers: do these first
 		Targets          []string   `json:"targets"`
 		Vulnerabilities  []string   `json:"vulnerabilities"`
 	}
@@ -732,7 +742,7 @@ func mcpListFixes(m *mcpCall, raw json.RawMessage) (any, error) {
 		out := []fix{}
 		for _, g := range gs[:min(limit, len(gs))] {
 			f := fix{Package: g.Package, Ecosystem: g.Ecosystem, InstalledVersion: g.Installed, UpgradeTo: g.Recommended,
-				WithoutFix: g.NoFix, Targets: []string{}, Vulnerabilities: []string{}}
+				WithoutFix: g.NoFix, KEV: g.KEV, Targets: []string{}, Vulnerabilities: []string{}}
 			if g.Resolves.Open > 0 {
 				f.Resolves = &g.Resolves
 			}
@@ -848,9 +858,11 @@ func mcpGetVulnerability(m *mcpCall, raw json.RawMessage) (any, error) {
 		CWEIDs        []string   `json:"cwe_ids,omitempty"`
 		PublishedAt   *time.Time `json:"published_at,omitempty"`
 		References    []string   `json:"references,omitempty"`
+		KEV           *vulnKEV   `json:"kev,omitempty"`  // in CISA's Known Exploited Vulnerabilities catalog
+		EPSS          *float64   `json:"epss,omitempty"` // probability (0-1) of exploitation in the next 30 days
 		AffectedTotal int        `json:"affected_total"`
 		Affected      []affected `json:"affected"`
-	}{ID: v.ID, Title: v.Title, Description: clip(v.Description, 4000), CVSSScore: v.CVSSScore, CVSSVector: v.CVSSVector,
+	}{ID: v.ID, KEV: v.KEV, EPSS: v.EPSS, Title: v.Title, Description: clip(v.Description, 4000), CVSSScore: v.CVSSScore, CVSSVector: v.CVSSVector,
 		CWEIDs: v.CWEIDs, PublishedAt: sec(v.PublishedAt), References: v.Refs[:min(20, len(v.Refs))], AffectedTotal: len(v.Affected)}
 	for _, f := range v.Affected[:min(200, len(v.Affected))] {
 		out.Affected = append(out.Affected, affected{f.FindingID, m.keyOnly(f.ProjectKey), f.Target, f.Severity, f.Status, f.PkgName, f.PkgVersion, f.FixedVersion})
@@ -1105,8 +1117,10 @@ var mcpTools = func() []mcpTool {
 			`{"type": "object", "additionalProperties": false, "properties": {}}`, mcpProjectSummary),
 		tool("list_findings",
 			"List the project's findings (vulnerabilities, misconfigurations, leaked secrets, SAST results), most severe "+
-				"first. Returns open findings unless status says otherwise. Each row names its assignee and remediation "+
-				"deadline (due_at) when it has them. Narrow down with the filters, then call get_finding for one finding's "+
+				"first, and inside a severity those known to be exploited first. Returns open findings unless status says "+
+				"otherwise. Each row names its assignee and remediation deadline (due_at) when it has them, kev: true "+
+				"when the vulnerability is in CISA's Known Exploited Vulnerabilities catalog, and epss, the probability "+
+				"(0-1) of exploitation in the next 30 days, when the administrator has uploaded that data. Narrow down with the filters, then call get_finding for one finding's "+
 				"details. total counts all matches; pass next_cursor as cursor for the next page.",
 			`{"type": "object", "additionalProperties": false, "properties": {
 				"severity": {"type": "array", "items": {"type": "string", "enum": `+enumJSON(mcpSeverities)+`}, "description": "Only findings of these severities."},
@@ -1116,13 +1130,15 @@ var mcpTools = func() []mcpTool {
 				"query": {"type": "string", "maxLength": 200, "description": "Case-insensitive text to find in the rule id (such as a CVE id), package name or title."},
 				"fixable": {"type": "boolean", "description": "true: only findings with a fixed version available. false: only findings without one."},
 				"overdue": {"type": "boolean", "description": "true: only open findings whose remediation deadline (due_at) has passed."},
+				"kev": {"type": "boolean", "description": "true: only findings of vulnerabilities in CISA's Known Exploited Vulnerabilities catalog (attacks seen in the wild)."},
 				"assignee": {"type": "string", "description": "Only findings assigned to this person: a username, none for unassigned findings, or me for the user of a personal key."},
 				"limit": `+limitSchema(50, 200)+`,
 				"cursor": {"type": "string", "description": "next_cursor from the previous call with the same filters."}}}`,
 			mcpListFindings),
 		tool("list_fixes",
 			"The remediation plan: the project's open vulnerability findings grouped by the package upgrade that resolves "+
-				"them, most valuable first (worst severity, then most findings resolved). upgrade_to is the version to move "+
+				"them, most valuable first (upgrades covering a known exploited vulnerability, counted in kev, then worst "+
+				"severity, then most findings resolved). upgrade_to is the version to move "+
 				"to: that version or a higher one resolves every finding counted in resolves (by severity; open is their "+
 				"sum). When upgrade_to is absent the listed fixed_versions could not be compared: choose the one for the "+
 				"installed release line. without_fix counts findings no upgrade resolves yet; no_fix_yet lists packages "+
@@ -1138,8 +1154,9 @@ var mcpTools = func() []mcpTool {
 				"vulnerability_id to pass to get_vulnerability.",
 			fmt.Sprintf(idSchema, "Finding id from list_findings or get_vulnerability."), mcpGetFinding),
 		tool("get_vulnerability",
-			"Look up a vulnerability by its CVE or advisory id: title, description, CVSS, CWE, references, and every "+
-				"finding of it within reach (target, status, installed and fixed version).",
+			"Look up a vulnerability by its CVE or advisory id: title, description, CVSS, CWE, references, whether it "+
+				"is known to be exploited (kev, with the date CISA listed it) and its EPSS probability when that data is "+
+				"loaded, and every finding of it within reach (target, status, installed and fixed version).",
 			`{"type": "object", "additionalProperties": false, "required": ["id"], "properties": {
 				"id": {"type": "string", "description": "Vulnerability id such as CVE-2024-1234 or GHSA-xxxx-xxxx-xxxx: a rule_id of a vuln finding."}}}`,
 			mcpGetVulnerability),
