@@ -426,10 +426,18 @@ https://jasca.example.internal/projects/web?due=overdue&sort=due`},
 			t.Errorf("%s subject: %s", c.event, m.subject())
 		}
 	}
-	if len(eventLabels) != 12 {
+	if len(eventLabels) != 13 {
 		t.Errorf("an event was added (%d): give it a message here", len(eventLabels))
 	}
-	m := s.renderMsg(ctx, "test", []byte(`{"data":{"channel":"보안팀 채널"}}`))
+	// an operator alert has no project: its title says so, and the link is the status screen
+	m := s.renderMsg(ctx, "ops_alert", []byte(`{"data":{"label":"데이터 볼륨","value":"남은 공간 3.2GB / 전체 29.4GB","action":"데이터 볼륨(PVC jasca-data)을 늘리세요."}}`))
+	if got, want := m.text(), "[JASCA 운영] 데이터 볼륨\n남은 공간 3.2GB / 전체 29.4GB\n데이터 볼륨(PVC jasca-data)을 늘리세요.\n\nhttps://jasca.example.internal/admin/system"; got != want {
+		t.Errorf("ops alert:\n%s", got)
+	}
+	if m.subject() != "[JASCA 운영] 데이터 볼륨" {
+		t.Errorf("ops alert subject: %s", m.subject())
+	}
+	m = s.renderMsg(ctx, "test", []byte(`{"data":{"channel":"보안팀 채널"}}`))
 	if got, want := m.text(), "알림 채널 시험 메시지\n채널: 보안팀 채널\nJASCA가 보낸 시험 메시지입니다. 이 메시지가 보이면 채널 설정이 올바릅니다."; got != want {
 		t.Errorf("test message:\n%s", got)
 	}

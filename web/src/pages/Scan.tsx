@@ -13,7 +13,7 @@ import StatusBadge from "../components/StatusBadge";
 import Table from "../components/Table";
 import Tabs from "../components/Tabs";
 import { useToast } from "../components/Toast";
-import { SEVERITY_LABEL, SOURCE_LABEL, TARGET_KIND_LABEL, fmtDateTime, fmtNumber } from "../lib/format";
+import { SEVERITY_LABEL, SOURCE_LABEL, TARGET_KIND_LABEL, fmtDate, fmtDateTime, fmtNumber } from "../lib/format";
 import FindingDrawer from "./FindingDrawer";
 import { PkgCell } from "./Home";
 
@@ -143,6 +143,7 @@ export default function Scan() {
                   <div className="kv-row"><dt>형식</dt><dd className="mono">{s.format}</dd></div>
                   {s.summary.os?.name && <div className="kv-row"><dt>OS</dt><dd>{s.summary.os.family} {s.summary.os.name}</dd></div>}
                   {done && !!s.summary.packages && <div className="kv-row"><dt>검사한 패키지</dt><dd className="num">{fmtNumber(s.summary.packages)}개</dd></div>}
+                  {done && s.summary.db_updated_at && <div className="kv-row"><dt>검사 기준 DB</dt><dd title="이 스캔을 대조한 취약점 DB가 만들어진 날입니다. 그 뒤에 알려진 취약점은 들어 있지 않습니다.">{fmtDate(s.summary.db_updated_at)} 생성</dd></div>}
                   <div className="kv-row"><dt>올린 주체</dt><dd>{s.created_by || "시스템"}</dd></div>
                   <div className="kv-row"><dt>시작</dt><dd>{fmtDateTime(s.created_at)}</dd></div>
                   <div className="kv-row"><dt>완료</dt><dd>{fmtDateTime(s.finished_at)}</dd></div>

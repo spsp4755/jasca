@@ -9,7 +9,9 @@ import { api } from "../../api/client";
 import { fmtDate } from "../../lib/format";
 import { useToast } from "../../components/Toast";
 import type { ChannelKind, NotifyChannel, SMTPSettings, SMTPSettingsPut } from "../../api/types";
+import { Link } from "react-router-dom";
 import { Check, Loading, Panel, SecretField, useSave } from "./parts";
+import type { OpsAlerts } from "./System";
 
 const KIND: Record<ChannelKind, string> = { mattermost: "Mattermost", email: "이메일" };
 type Form = { id?: number; kind: ChannelKind; name: string; enabled: boolean; webhook_url: string; webhookSet: boolean; to: string };
@@ -44,6 +46,37 @@ function SMTP() {
   );
 }
 
+/** Which channels hear about JASCA's own problems (opsCheck in system.go). */
+function OpsAlertChannels({ channels }: { channels: NotifyChannel[] }) {
+  const q = useApi<OpsAlerts>("/admin/ops-alerts");
+  const [ids, setIds] = useState<number[]>([]);
+  useEffect(() => { if (q.data) setIds(q.data.channel_ids); }, [q.data]);
+  const save = useSave(() => api.put("/admin/ops-alerts", { channel_ids: ids }), { ok: "운영 알림을 받을 채널을 저장했습니다.", invalidate: ["/admin/ops-alerts"] });
+  const dirty = !!q.data && [...ids].sort().join() !== [...q.data.channel_ids].sort().join();
+  return (
+    <Panel title="운영 알림" meta="JASCA 자체에 문제가 생겼을 때 운영자에게 알립니다">
+      <p className="muted">취약점 DB가 오래됨, 저장 공간 부족, 알림 전송 실패, Keycloak 동기화 실패, 재평가 실패를 고른 채널로 보냅니다. 같은 문제는 한 번만 보내고, 취약점 DB가 오래된 경우만 일주일마다 다시 알립니다. 지금 상태는 <Link to="/admin/system">시스템 상태</Link>에서 봅니다.</p>
+      <Loading q={q} />
+      {q.data && (channels.length === 0 ? <p className="muted" style={{ margin: 0 }}>먼저 위에서 채널을 추가하세요.</p> : (
+        <form className="admin-form" onSubmit={(e) => { e.preventDefault(); save.mutate(undefined); }}>
+          <fieldset className="opt-set">
+            <legend className="field-label">받을 채널</legend>
+            <div className="stack" style={{ gap: 8 }}>
+              {channels.map((c) => (
+                <Check key={c.id} checked={ids.includes(c.id)} onChange={(v) => setIds(v ? [...ids, c.id] : ids.filter((x) => x !== c.id))}>
+                  {c.name} <span className="muted">· {KIND[c.kind] ?? c.kind}{!c.enabled && " · 중지된 채널(보내지 않음)"}</span>
+                </Check>
+              ))}
+            </div>
+          </fieldset>
+          <div className="admin-actions"><Button type="submit" variant="primary" disabled={!dirty} loading={save.isPending}>저장</Button>
+            {ids.length === 0 && <span className="muted">고른 채널이 없으면 운영 알림을 보내지 않습니다.</span>}</div>
+        </form>
+      ))}
+    </Panel>
+  );
+}
+
 // Assumed config shapes: mattermost {webhook_url}, email {to: string[]}. The webhook URL is treated as a secret.
 export default function Channels() {
   const q = useApi<NotifyChannel[]>("/admin/channels");
@@ -56,7 +89,7 @@ export default function Channels() {
     const body = { kind: x.kind, name: x.name, enabled: x.enabled, config: cfg(x) };
     return x.id ? api.put(`/admin/channels/${x.id}`, body) : api.post("/admin/channels", body);
   }, { ok: "저장했습니다.", invalidate: ["/admin/channels", "/channels"], onDone: () => setF(null) });
-  const del = useSave((id: number) => api.del(`/admin/channels/${id}`), { ok: "삭제했습니다.", invalidate: ["/admin/channels", "/channels"] });
+  const del = useSave((id: number) => api.del(`/admin/channels/${id}`), { ok: "삭제했습니다.", invalidate: ["/admin/channels", "/channels", "/admin/ops-alerts"] });
   const test = useSave((id: number) => api.post<{ error?: string }>(`/admin/channels/${id}/test`), { onDone: (r) => (r?.error ? toast(`시험 발송 실패: ${r.error}`, "error") : toast("시험 메시지를 보냈습니다.", "ok")) });
   const edit = (c: NotifyChannel) => setF({
     id: c.id, kind: c.kind, name: c.name, enabled: c.enabled, webhook_url: "", webhookSet: c.kind === "mattermost",
@@ -83,6 +116,7 @@ export default function Channels() {
               </div>) },
           ]} />
       </Panel>
+      <OpsAlertChannels channels={q.data ?? []} />
       <SMTP />
       <Dialog open={!!f} onClose={() => setF(null)} title={f?.id ? "채널 수정" : "채널 추가"}
         footer={<><Button onClick={() => setF(null)}>취소</Button><Button variant="primary" disabled={!ready} loading={save.isPending} onClick={() => save.mutate(f!)}>저장</Button></>}>

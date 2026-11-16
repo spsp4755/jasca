@@ -27,7 +27,7 @@ const ACTION: Record<string, string> = {
   "exception.request": "예외 요청", "exception.approve": "예외 승인", "exception.reject": "예외 반려", "exception.revoke": "예외 철회·취소", "exception.expire": "예외 만료",
   "advisory.create": "Advisory 등록", "advisory.update": "Advisory 수정", "advisory.delete": "Advisory 삭제", "advisory.import": "Advisory 가져오기",
   "ai.guide": "AI 조치 안내 요청", "ai.report": "AI 보고서 요청",
-  "channel.create": "알림 채널 추가", "channel.update": "알림 채널 수정", "channel.delete": "알림 채널 삭제", "channel.test": "알림 채널 시험 발송",
+  "ops_alerts.update": "운영 알림 채널 변경", "channel.create": "알림 채널 추가", "channel.update": "알림 채널 수정", "channel.delete": "알림 채널 삭제", "channel.test": "알림 채널 시험 발송",
   "trivy.settings": "스캔 옵션 변경", "trivy.db_upload": "Trivy DB 올리기", "trivy.db_upload_failed": "Trivy DB 올리기 실패", "sync.run": "Keycloak 동기화",
 };
 // Rows the removed Harbor integration left behind still read in Korean; they are not offered in the filter.
@@ -45,7 +45,7 @@ const DETAIL: Record<string, string> = {
   scope: "범위", scopes: "권한", resolution: "처리", expires_at: "만료", note: "메모", id: "번호", project_id: "프로젝트 번호", link_id: "연결 번호", scan_id: "스캔 번호",
   base_url: "주소", rows: "행 수", digest: "다이제스트", duplicate: "중복", bytes: "크기(바이트)", kind: "종류", ok: "성공", host: "호스트", port: "포트",
   format: "형식", ref: "태그·커밋(ref)", tls: "암호화", findings: "결과 수", policy_passed: "정책 통과", total: "대상 수", scanners: "스캐너", error: "오류",
-  version: "버전", updated_at: "갱신 시각", groups: "그룹 수", users: "사용자 수", principal_kind: "구분", principal: "대상", role: "역할", channel_id: "채널 번호", events: "이벤트",
+  version: "버전", updated_at: "갱신 시각", groups: "그룹 수", users: "사용자 수", principal_kind: "구분", principal: "대상", role: "역할", channel_id: "채널 번호", channel_ids: "채널 번호", events: "이벤트",
   role_from_sso: "Keycloak 역할 따름", added: "추가", removed: "제거", changed: "역할 변경", member_count: "멤버 수",
   from: "이전 이름", open: "열린 결과", // target.rename, target.delete
   key_id: "키 번호", read_only: "읽기 전용", owner: "키 주인", // mcpkey.create, mcpkey.revoke

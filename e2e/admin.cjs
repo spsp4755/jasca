@@ -34,6 +34,8 @@ L.run(async () => {
   }
   const sso = (await api("GET", "/admin/sso")).body;
   L.ok(sso.client_secret_set === true && !("client_secret" in sso && sso.client_secret), "SSO answer says client_secret_set, never the value");
+  // 시스템 상태 shows last errors and server log lines: they must not carry a secret either
+  for (const p of ["/admin/system", "/admin/ops-alerts"]) L.ok((await sweep("GET", p)).status === 200, `GET ${p} readable`);
   const page = admin.page;
   // an empty AI prompt is not a missing setting: the page says the built-in one is used and can load it to edit
   await page.goto(`${L.BASE}/admin/ai`);

@@ -589,13 +589,14 @@ type targetView struct {
 	LastScanAt      *time.Time `json:"last_scan_at"`
 	Counts          sevCounts  `json:"counts"`
 	RecheckExcluded bool       `json:"recheck_excluded"`
+	DBCheckedAt     *time.Time `json:"db_checked_at"` // build time of the vulnerability DB the inventory was last checked against here
 }
 
 // projectTargets lists a project's targets with their open counts, for the 대상 tab, the target filters and the
 // report. A target shows up once a scan of it has succeeded: one whose only uploads failed or were canceled has
 // nothing to show and is reached from its scan in the scan history.
 func (s *server) projectTargets(ctx context.Context, projectID int64) ([]targetView, error) {
-	rows, err := s.db.Query(ctx, `select t.id, t.kind, t.name, t.last_scan_at, t.recheck_excluded, fc.*
+	rows, err := s.db.Query(ctx, `select t.id, t.kind, t.name, t.last_scan_at, t.recheck_excluded, t.db_checked_at, fc.*
 		from targets t cross join lateral `+openCountsSQL("f.target_id = t.id")+` fc
 		where t.project_id = $1 and t.last_scan_at is not null order by t.name, t.kind`, projectID)
 	if err != nil {
@@ -606,7 +607,7 @@ func (s *server) projectTargets(ctx context.Context, projectID int64) ([]targetV
 	for rows.Next() {
 		var v targetView
 		k := &v.Counts
-		if err := rows.Scan(&v.ID, &v.Kind, &v.Name, &v.LastScanAt, &v.RecheckExcluded,
+		if err := rows.Scan(&v.ID, &v.Kind, &v.Name, &v.LastScanAt, &v.RecheckExcluded, &v.DBCheckedAt,
 			&k.Critical, &k.High, &k.Medium, &k.Low, &k.Unknown, &k.Open); err != nil {
 			return nil, err
 		}

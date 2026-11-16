@@ -10,7 +10,7 @@ import Empty from "../components/Empty";
 import { PkgCell, SummaryCell } from "./Home";
 import { useToast } from "../components/Toast";
 import { ApiError, api } from "../api/client";
-import { useApi, useAuthConfig } from "../api/hooks";
+import { useApi, useAuthConfig, useMe } from "../api/hooks";
 import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, TARGET_KIND_LABEL, fmtDate, fmtDateTime, fmtNumber } from "../lib/format";
 import { exceptionWhat } from "./Exceptions";
 import { whereOf } from "./FindingDrawer";
@@ -41,6 +41,7 @@ export default function ProjectReport() {
     onError: (e) => toast(e.message, "error"),
   });
   const d = q.data;
+  const vulnDb = useMe().data?.vuln_db;
   const fixes = useApi<FixPlan>(q.isSuccess ? `/projects/${k}/fixes` : null).data; // the 조치 계획 tab's order; the report prints its top 10
   const history = runs.data ?? [];
   const shown = history.find((r) => r.id === sel) ?? history.find((r) => r.state === "done");
@@ -76,7 +77,7 @@ export default function ProjectReport() {
               <header>
                 <h2 style={{ fontSize: 20 }}>{d.project?.name ?? key} <span className="muted mono" style={{ fontSize: 13 }}>{key}</span></h2>
                 {d.project?.description && <p className="muted" style={{ margin: 0 }}>{d.project.description}</p>}
-                <p className="muted" style={{ margin: "4px 0 0" }}>작성 {fmtDateTime(d.generated_at ?? new Date().toISOString())}</p>
+                <p className="muted" style={{ margin: "4px 0 0" }}>작성 {fmtDateTime(d.generated_at ?? new Date().toISOString())}{vulnDb && ` · 취약점 DB ${fmtDate(vulnDb.updated_at)} 생성`}</p>
               </header>
               {t && <section><h2>요약</h2><div className="sev-row">
                 {(["critical", "high", "medium", "low", "unknown"] as const).map((s) => <SeverityBadge key={s} severity={s.toUpperCase() as "LOW"} count={t[s] ?? 0} />)}
@@ -91,7 +92,9 @@ export default function ProjectReport() {
                 <Table dense rows={d.targets} rowKey={(r) => r.name} caption="대상별 현황" columns={[
                   { key: "n", header: "대상", render: (r) => r.name }, { key: "k", header: "종류", nowrap: true, render: (r) => TARGET_KIND_LABEL[r.kind] ?? r.kind },
                   { key: "c", header: "열린 결과 심각도별", render: (r) => <SummaryCell s={r.counts} /> },
-                  { key: "s", header: "마지막 스캔", nowrap: true, render: (r) => fmtDate(r.last_scan_at) }]} /></section>}
+                  { key: "s", header: "마지막 스캔", nowrap: true, render: (r) => fmtDate(r.last_scan_at) },
+                  { key: "d", header: "검사 기준 DB", nowrap: true, render: (r) => fmtDate(r.db_checked_at) }]} />
+                <p className="muted" style={{ margin: "8px 0 0", fontSize: 12.5 }}>검사 기준 DB는 이 서버가 그 대상의 패키지를 마지막으로 대조한 취약점 DB의 생성일입니다. CI에서 검사해 올린 결과는 다음 재평가 때 기록됩니다.</p></section>}
               {fixes && fixes.groups.length > 0 && <section><h2>먼저 올릴 패키지</h2>
                 <p className="muted" style={{ margin: "0 0 8px" }}>가장 심각한 취약점을 해결하는 패키지부터, 같으면 많이 해결하는 순서입니다{fixes.groups.length > 10 ? `(패키지 ${fmtNumber(fixes.groups.length)}개 중 앞의 10개)` : ""}.
                   {fixes.totals.no_fix > 0 && ` 조치 버전이 아직 없는 취약점 ${fmtNumber(fixes.totals.no_fix)}건은 여기에 없습니다.`}</p>

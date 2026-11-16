@@ -8,10 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 // The administrator's MCP tools: what someone running the service asks about (is it healthy, what failed, who has
@@ -64,8 +61,9 @@ func mcpAdminTools() []mcpTool {
 		readTool(mcpAdmin, "system_status", "시스템 상태: 버전, DB, Trivy DB, 스캔 대기열, 동기화, 알림, 디스크와 문제점",
 			"Health of the service in one call: version and uptime, database, disk space of the data volume, the Trivy "+
 				"vulnerability DB and its age, scans queued, running and failed, the latest re-evaluation run, Keycloak sync, "+
-				"notification deliveries, pending exception requests, and totals. problems lists in plain words what needs "+
-				"attention; it is empty when all is well. Call this first when asked how the service is doing.",
+				"notification deliveries, pending exception requests, and totals. checks are the rows of the 시스템 상태 screen "+
+				"(state ok, warn or bad, the current value, what to do); problems lists, in Korean, the ones that need "+
+				"attention and is empty when all is well. Call this first when asked how the service is doing.",
 			none, mcpSystemStatus),
 		readTool(mcpAdmin, "get_server_logs", "서버 로그: 최근 로그에서 찾기",
 			"The server's recent log lines, oldest first (times are UTC): errors of scans, Keycloak sign-in and sync, "+
@@ -142,134 +140,50 @@ func mcpSystemStatus(m *mcpCall, raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	ctx, s := m.r.Context(), m.s
-	problems := []string{}
-	problem := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
-	out := map[string]any{"version": version, "started_at": startedAt.UTC().Truncate(time.Second),
-		"uptime_hours": int(time.Since(startedAt).Hours()), "time_zone": s.cfg.Loc.String(), "now": time.Now().UTC().Truncate(time.Second)}
-
-	// database
-	var db struct {
-		Version, Name, Schema string
-		SizeMB                int64
-	}
-	if err := s.db.QueryRow(ctx, `select current_setting('server_version'), current_database(), coalesce(current_schema(), ''),
-		pg_database_size(current_database()) >> 20`).Scan(&db.Version, &db.Name, &db.Schema, &db.SizeMB); err != nil {
+	in, err := s.systemInfo(ctx) // the same collection and rows as 관리 → 시스템 상태 (system.go)
+	if err != nil {
 		return nil, err
 	}
-	st := s.db.Stat()
-	out["database"] = map[string]any{"server_version": db.Version, "database": db.Name, "schema": db.Schema, "size_mb": db.SizeMB,
-		"connections_in_use": st.AcquiredConns(), "connections_max": st.MaxConns()}
-	if st.MaxConns() > 0 && st.AcquiredConns() >= st.MaxConns() {
-		problem("All %d database connections are in use: requests are waiting. Raise JASCA_DB_MAX_CONNS if the database allows it.", st.MaxConns())
-	}
-
-	// the data volume: the Trivy DB and scan uploads live there
-	var fs syscall.Statfs_t
-	if err := syscall.Statfs(s.cfg.DataDir, &fs); err == nil && fs.Blocks > 0 {
-		total, free := fs.Blocks*uint64(fs.Bsize)>>20, fs.Bavail*uint64(fs.Bsize)>>20
-		out["data_volume"] = map[string]any{"path": s.cfg.DataDir, "total_mb": total, "free_mb": free}
-		if free < 5<<10 {
-			problem("The data volume has only %d MB free: server scans extract up to %d MB. Grow the volume (PVC jasca-data).", free, s.cfg.MaxExtractMB)
+	now := time.Now()
+	checks := s.systemChecks(ctx, in, now)
+	problems := []string{}
+	for _, c := range checks {
+		if c.State != "ok" {
+			problems = append(problems, strings.TrimSpace(c.Label+": "+c.Value+". "+c.Action))
 		}
 	}
-
-	// Trivy
-	tv := s.trivyStatus(ctx)
-	trivyOut := map[string]any{"trivy_version": tv["trivy_version"], "vulnerability_db_installed": tv["updated_at"] != nil,
-		"vulnerability_db_built_at": tv["updated_at"], "java_db_installed": tv["java_db"] != nil}
-	if at, ok := tv["updated_at"].(time.Time); ok {
-		age := int(time.Since(at).Hours() / 24)
-		trivyOut["vulnerability_db_age_days"] = age
-		if age > 8 {
-			problem("The Trivy vulnerability DB is %d days old: newer vulnerabilities are not detected. Upload a fresh db.tar.gz at 관리 → Trivy DB.", age)
-		}
-	} else {
-		problem("The Trivy vulnerability DB is not installed: server scans and re-evaluation do not work. Upload db.tar.gz at 관리 → Trivy DB.")
+	out := map[string]any{"version": version, "started_at": startedAt.UTC().Truncate(time.Second),
+		"uptime_hours": int(time.Since(startedAt).Hours()), "time_zone": s.cfg.Loc.String(), "now": now.UTC().Truncate(time.Second),
+		"checks": checks, "problems": problems}
+	out["database"] = map[string]any{"server_version": in.DB.Version, "database": in.DB.Name, "schema": in.DB.Schema, "size_mb": in.DB.SizeMB,
+		"latency_ms": in.DB.LatencyMS, "connections_in_use": in.DB.InUse, "connections_max": in.DB.Max}
+	if v := in.Volume; v != nil {
+		out["data_volume"] = map[string]any{"path": s.cfg.DataDir, "total_mb": v.TotalMB, "free_mb": v.FreeMB}
 	}
-	if tv["java_db"] == nil {
-		problem("The Trivy Java DB is not installed: server scans skip JAR/WAR/EAR files. Upload javadb.tar.gz at 관리 → Trivy DB.")
+	trivyOut := map[string]any{"trivy_version": in.TrivyVersion, "vulnerability_db_installed": in.VulnDB,
+		"vulnerability_db_built_at": nil, "java_db_installed": in.Trivy.JavaDB}
+	if in.VulnDB {
+		trivyOut["vulnerability_db_built_at"] = in.Trivy.UpdatedAt.UTC()
+		trivyOut["vulnerability_db_age_days"] = int(now.Sub(in.Trivy.UpdatedAt).Hours() / 24)
+		trivyOut["vulnerability_db_stale"] = vulnDBStale(in.Trivy.NextUpdate, now)
 	}
 	out["trivy"] = trivyOut
-
-	// scans, jobs
-	var sc struct {
-		Queued, Running, Failed24, Done24, Jobs int
-		OldestQueuedMin                         *int
-	}
-	if err := s.db.QueryRow(ctx, `select count(*) filter (where status = 'queued'), count(*) filter (where status = 'running'),
-			count(*) filter (where status = 'failed' and created_at > now() - interval '24 hours'),
-			count(*) filter (where status = 'done' and created_at > now() - interval '24 hours'),
-			(select count(*) from jobs where state in ('queued', 'running')),
-			(extract(epoch from now() - min(created_at) filter (where status = 'queued')) / 60)::int
-		from scans where status in ('queued', 'running') or created_at > now() - interval '24 hours'`).
-		Scan(&sc.Queued, &sc.Running, &sc.Failed24, &sc.Done24, &sc.Jobs, &sc.OldestQueuedMin); err != nil {
-		return nil, err
-	}
-	scans := map[string]any{"queued": sc.Queued, "running": sc.Running, "failed_last_24h": sc.Failed24, "done_last_24h": sc.Done24,
-		"background_jobs_waiting_or_running": sc.Jobs}
-	if sc.OldestQueuedMin != nil {
-		scans["oldest_queued_minutes"] = *sc.OldestQueuedMin
-		if *sc.OldestQueuedMin > 60 {
-			problem("A scan has been queued for %d minutes: the server scans one at a time. list_all_scans shows the queue.", *sc.OldestQueuedMin)
-		}
-	}
-	if sc.Failed24 > 0 {
-		problem("%d scans failed in the last 24 hours. list_all_scans shows them with their errors.", sc.Failed24)
+	scans := map[string]any{"queued": in.Scans.Queued, "running": in.Scans.Running, "failed_last_24h": in.Scans.Failed24,
+		"done_last_24h": in.Scans.Done24, "background_jobs_waiting_or_running": in.Scans.Jobs}
+	if in.Scans.OldestQueuedMin != nil {
+		scans["oldest_queued_minutes"] = *in.Scans.OldestQueuedMin
 	}
 	out["scans"] = scans
-
-	// the latest re-evaluation
-	rows, _ := s.db.Query(ctx, `select `+recheckRunCols+` from recheck_runs order by id desc limit 1`)
-	if runs, err := pgx.CollectRows(rows, pgx.RowToStructByName[recheckRun]); err != nil {
-		return nil, err
-	} else if len(runs) == 1 {
-		r := runs[0]
+	if r := in.Recheck; r != nil {
 		out["last_recheck"] = map[string]any{"reason": r.Reason, "state": r.State, "targets_done": r.Done, "targets_total": r.Total,
 			"new_findings": r.NewFindings, "started_at": r.StartedAt.Truncate(time.Second), "finished_at": sec(r.FinishedAt), "error": r.Error}
-		if r.State == "failed" {
-			problem("The last re-evaluation failed: %s", clip(r.Error, 200))
-		}
 	}
-
-	// Keycloak
-	sso, err := s.ssoConf(ctx)
-	if err != nil {
-		return nil, err
-	}
-	sy, err := s.syncConf(ctx)
-	if err != nil {
-		return nil, err
-	}
-	kc := map[string]any{"sso_enabled": sso.Enabled, "sync_configured": sy.ClientID != "", "sync_interval_min": sy.IntervalMin,
-		"last_sync_at": sy.LastRun, "last_sync_error": sy.LastError, "users_read": sy.Users, "groups_read": sy.Groups}
-	if sy.LastError != "" {
-		problem("Keycloak sync is failing: %s", clip(sy.LastError, 200))
-	}
-	out["keycloak"] = kc
-
-	// notifications, exceptions, totals
-	var n struct {
-		Queued, Failed7, PendingEx, Users, Projects, Targets, Keys, Overdue int
-		Open                                                                sevCounts
-	}
-	if err := s.db.QueryRow(ctx, `select (select count(*) from deliveries where state = 'queued'),
-			(select count(*) from deliveries where state = 'failed' and created_at > now() - interval '7 days'),
-			(select count(*) from exceptions where status = 'pending' and expires_at > now()),
-			(select count(*) from users where active), (select count(*) from projects),
-			(select count(*) from targets), (select count(*) from mcp_keys where revoked_at is null and expires_at > now()),
-			(select count(*) from findings where status = 'open' and due_at < now()), fc.*
-		from `+openCountsSQL("true")+` fc`).Scan(&n.Queued, &n.Failed7, &n.PendingEx, &n.Users, &n.Projects, &n.Targets,
-		&n.Keys, &n.Overdue, &n.Open.Critical, &n.Open.High, &n.Open.Medium, &n.Open.Low, &n.Open.Unknown, &n.Open.Open); err != nil {
-		return nil, err
-	}
-	out["notifications"] = map[string]any{"queued": n.Queued, "failed_last_7d": n.Failed7}
-	if n.Failed7 > 0 {
-		problem("%d notifications failed in the last 7 days. list_notifications shows the errors.", n.Failed7)
-	}
-	out["waiting_for_people"] = map[string]any{"pending_exception_requests": n.PendingEx}
-	out["totals"] = map[string]any{"active_users": n.Users, "projects": n.Projects, "targets": n.Targets, "live_mcp_keys": n.Keys,
-		"open_findings": n.Open, "overdue_findings": n.Overdue}
-	out["problems"] = problems
+	out["keycloak"] = map[string]any{"sso_enabled": in.SSOEnabled, "sync_configured": in.Sync.ClientID != "", "sync_interval_min": in.Sync.IntervalMin,
+		"last_sync_at": in.Sync.LastRun, "last_sync_error": in.Sync.LastError, "users_read": in.Sync.Users, "groups_read": in.Sync.Groups}
+	out["notifications"] = map[string]any{"queued": in.Notify.Queued, "failed_last_7d": in.Notify.Failed7}
+	out["waiting_for_people"] = map[string]any{"pending_exception_requests": in.Totals.PendingEx}
+	out["totals"] = map[string]any{"active_users": in.Totals.Users, "projects": in.Totals.Projects, "targets": in.Totals.Targets,
+		"live_mcp_keys": in.Totals.Keys, "open_findings": in.Totals.Open, "overdue_findings": in.Totals.Overdue}
 	return out, nil
 }
 

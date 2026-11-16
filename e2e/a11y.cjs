@@ -80,6 +80,7 @@ L.run(async () => {
   const admin = await L.local(browser);
   for (const a of ["users", "sso", "sync", "default-policy", "trivy", "recheck", "ai", "channels", "retention", "audit"]) await visit(admin.page, `/admin/${a}`, `admin ${a}`);
   await visit(admin.page, "/nonexistent", "not found");
+  await visit(admin.page, "/admin/system", "admin system", () => admin.page.locator(".sys-list").waitFor());
 
   if (soft.length) console.log("minor/moderate (not failing):\n" + soft.map((s) => `  ${s.name}: ${s.id} (${s.impact}) x${s.n}`).join("\n"));
   if (found.length) {

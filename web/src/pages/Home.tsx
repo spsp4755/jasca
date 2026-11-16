@@ -11,6 +11,7 @@ import Table from "../components/Table";
 import TrendChart from "../components/TrendChart";
 import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, SOURCE_LABEL, daysSince, daysUntil, fmtDate, fmtDateTime, fmtNumber, fmtRelative } from "../lib/format";
 import { exceptionWhat } from "./Exceptions";
+import { SystemNotice } from "./admin/System";
 import "../styles/due.css"; // the 내 담당 / 기한 지남 row
 
 // why a finding turned up without a new scan, for 새로 알려진 취약점
@@ -18,6 +19,7 @@ const FOUND_BY: Record<FindingOrigin, string> = { scan: "스캔에서 발견", r
 
 export default function Home() {
   const q = useDashboard();
+  const me = useMe().data;
   return (
     <>
       <PageHeader title="홈" description="볼 수 있는 모든 프로젝트의 위험 요약입니다."
@@ -27,6 +29,7 @@ export default function Home() {
             <Link to="/scan" className="btn btn-primary"><Icon name="scan" />스캔하기</Link>
           </>
         } />
+      {isAdmin(me) && <SystemNotice skip={me?.vuln_db?.stale ? ["trivy_db"] : []} />}
       {q.isError ? (
         <div className="alert alert-danger" role="alert">
           <Icon name="alert" />요약을 불러오지 못했습니다. {q.error.message}

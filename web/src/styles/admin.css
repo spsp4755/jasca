@@ -6,7 +6,7 @@
 .admin-nav .nav-title { margin: 12px 10px 4px; }
 .admin-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 /* a page of forms only keeps a readable column instead of cards that are half blank on a wide screen (older browsers: full width) */
-.admin-main:not(:has(table, pre, .db-grid)) { max-width: 880px; }
+.admin-main:not(:has(table, pre, .db-grid, .sys-grid)) { max-width: 880px; }
 .admin-form { display: flex; flex-direction: column; gap: 14px; max-width: 560px; }
 .admin-form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .admin-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -45,3 +45,42 @@
 
 /* audit log 대상: one line, so an id is never broken at its hyphens ("JASCA / -2026- / 001"); long names are cut, the title has the rest */
 .audit-target { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+/* ---- 시스템 상태: a verdict, then one row per check (state · name · what is the case and what to do · where) ---- */
+.sys-summary { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 10px; border: 1px solid transparent; }
+.sys-summary b { font-size: 15px; }
+.sys-summary p { margin: 2px 0 0; font-size: 13px; color: var(--text-2); }
+.sys-ok { background: color-mix(in srgb, var(--ok) 9%, var(--surface)); border-color: color-mix(in srgb, var(--ok) 25%, transparent); }
+.sys-ok > .icon, .sys-ok b { color: var(--ok); }
+.sys-warn { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 25%, transparent); }
+.sys-warn > .icon, .sys-warn b { color: var(--warn); }
+.sys-bad { background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
+.sys-bad > .icon, .sys-bad b { color: var(--danger); }
+.sys-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.sys-row { display: grid; grid-template-columns: 64px 132px minmax(0, 1fr) 52px; gap: 14px; align-items: baseline; padding: 11px 18px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.sys-row:last-child { border-bottom: 0; border-radius: 0 0 10px 10px; }
+.sys-row-bad { background: color-mix(in srgb, var(--danger) 5%, transparent); }
+.sys-row-warn { background: color-mix(in srgb, var(--warn) 5%, transparent); }
+.sys-state { font-weight: 650; font-size: 13px; }
+.sys-label { font-weight: 600; }
+.sys-text p { margin: 0; overflow-wrap: anywhere; }
+.sys-value { color: var(--text-2); }
+.sys-row-bad .sys-value, .sys-row-warn .sys-value { color: var(--text); font-weight: 550; }
+.sys-action { margin-top: 3px !important; font-size: 13px; color: var(--text-2); line-height: 1.55; }
+.sys-link { justify-self: end; align-self: center; }
+.sys-log { margin: 0 !important; max-height: 220px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.sys-kv .kv-row { grid-template-columns: 112px minmax(0, 1fr); }
+.sys-kv dd { text-align: right; }
+.sys-noalert { display: flex; gap: 8px; align-items: flex-start; margin: 0; color: var(--warn); font-weight: 550; line-height: 1.5; }
+.sys-noalert .icon { flex: none; margin-top: 2px; }
+/* beside the list only when it still leaves the rows one line each; below it, the two side panels share a row */
+.sys-grid { grid-template-columns: minmax(0, 1fr) 300px; }
+@media (max-width: 1640px) {
+  .sys-grid { grid-template-columns: minmax(0, 1fr); }
+  .sys-grid > .detail-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+}
+@media (max-width: 720px) {
+  .sys-grid > .detail-side { grid-template-columns: minmax(0, 1fr); }
+  .sys-row { grid-template-columns: 64px minmax(0, 1fr) 52px; row-gap: 4px; }
+  .sys-text { grid-column: 1 / -1; grid-row: 2; }
+}

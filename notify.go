@@ -49,7 +49,7 @@ var eventLabels = map[string]string{
 	"new_critical": "새 CRITICAL/HIGH 취약점", "policy_failed": "정책 실패", "scan_failed": "스캔 실패",
 	"exception_requested": "예외 요청", "exception_approved": "예외 승인", "exception_rejected": "예외 반려",
 	"exception_expiring": "예외 만료 임박", "exception_expired": "예외 만료", "new_known": "새로 알려진 취약점", "test": "시험 메시지",
-	"due_soon": "조치 기한 임박", "overdue": "조치 기한 지남",
+	"due_soon": "조치 기한 임박", "overdue": "조치 기한 지남", "ops_alert": "운영 알림",
 }
 
 // --- queueing ---
@@ -121,7 +121,13 @@ type notifyMsg struct {
 	Link  string
 }
 
-func (m notifyMsg) subject() string { return "[JASCA] " + m.Title }
+// subject: an operator alert's title already starts with "[JASCA 운영]".
+func (m notifyMsg) subject() string {
+	if strings.HasPrefix(m.Title, "[JASCA") {
+		return m.Title
+	}
+	return "[JASCA] " + m.Title
+}
 
 func (m notifyMsg) text() string {
 	out := m.Title + "\n" + strings.Join(m.Lines, "\n")
@@ -317,6 +323,10 @@ func (s *server) renderMsg(ctx context.Context, event string, raw []byte) notify
 		if path != "" { // the project's results, filtered to these and sorted by deadline
 			path += "?due=" + map[string]string{"due_soon": "soon", "overdue": "overdue"}[event] + "&sort=due"
 		}
+	case "ops_alert": // opsCheck (system.go): one row of 관리 → 시스템 상태 that needs an operator
+		what = str("label")
+		m.Lines = slices.DeleteFunc([]string{str("value"), str("action")}, func(v string) bool { return v == "" })
+		p.Name, path = "JASCA 운영", "/admin/system"
 	case "test":
 		what = "알림 채널 시험 메시지"
 		add("채널", str("channel"))

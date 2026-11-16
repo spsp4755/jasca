@@ -247,6 +247,7 @@ func (s *server) recheckTarget(ctx context.Context, runID, targetID int64) error
 	if err != nil {
 		return err
 	}
+	dbAt := s.vulnDBDate() // before the evaluation: a DB installed meanwhile starts its own run
 	found, err := s.sbomFindings(ctx, fmt.Sprintf("recheck-%d-*.json", targetID), summary, inv)
 	if err != nil {
 		return err
@@ -302,10 +303,13 @@ func (s *server) recheckTarget(ctx context.Context, runID, targetID int64) error
 				Scan(&c.Critical, &c.High, &c.Medium, &c.Low, &c.Unknown, &c.Open); err != nil {
 				return err
 			}
-			if _, err := tx.Exec(ctx, `update scans set summary = $2 where id = $1`, rs, map[string]int{"critical": c.Critical,
-				"high": c.High, "medium": c.Medium, "low": c.Low, "unknown": c.Unknown, "open": c.Open}); err != nil {
+			if _, err := tx.Exec(ctx, `update scans set summary = $2 where id = $1`, rs, map[string]any{"critical": c.Critical,
+				"high": c.High, "medium": c.Medium, "low": c.Low, "unknown": c.Unknown, "open": c.Open, "db_updated_at": dbAt}); err != nil {
 				return err
 			}
+		}
+		if _, err := tx.Exec(ctx, `update targets set db_checked_at = $2 where id = $1`, targetID, dbAt); err != nil {
+			return err
 		}
 		return s.endItem(ctx, tx, runID, targetID, "done", added)
 	})

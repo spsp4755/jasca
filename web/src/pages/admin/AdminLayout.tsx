@@ -14,7 +14,8 @@ const ITEMS: { to: string; label: string; security?: boolean; group?: string }[]
   { to: "recheck", label: "재평가" },
   { to: "ai", label: "AI", group: "연동" },
   { to: "channels", label: "알림 채널" },
-  { to: "retention", label: "보존 기간", group: "운영" },
+  { to: "system", label: "시스템 상태", group: "운영" },
+  { to: "retention", label: "보존 기간" },
   { to: "audit", label: "감사 로그" },
 ];
 

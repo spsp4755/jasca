@@ -11,6 +11,7 @@ import (
 	"maps"
 	"runtime/debug"
 	"slices"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/spsp4755/jasca/internal/formats"
@@ -67,7 +68,7 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 			return err
 		}
 		if sum != nil && in.ScanID == nil {
-			err := tx.QueryRow(ctx, `select id, summary - '{os,packages,warnings}'::text[] from scans where target_id = $1 and report_sha256 = $2
+			err := tx.QueryRow(ctx, `select id, summary - '{os,packages,warnings,db_updated_at}'::text[] from scans where target_id = $1 and report_sha256 = $2
 				and status = 'done' and created_at > now() - interval '10 minutes' order by id desc limit 1`,
 				res.TargetID, sum).Scan(&res.ScanID, &res.Summary)
 			if err == nil {
@@ -170,10 +171,20 @@ func (s *server) ingest(ctx context.Context, in ingestInput) (*ingestResult, err
 		if rep.OS != nil { // the recheck task rebuilds the OS component from this
 			stored["os"] = map[string]string{"family": rep.OS.Family, "name": rep.OS.Name}
 		}
+		// which vulnerability DB this server checked the result against; a report scanned elsewhere (CI) has none,
+		// and its inventory is unchecked here until the next re-evaluation
+		var dbAt *time.Time
+		if in.Source == "server" || (rep.Format == "cyclonedx" && notEvaluated == "") {
+			if dbAt = s.vulnDBDate(); dbAt != nil {
+				stored["db_updated_at"] = dbAt
+			}
+		}
 		if _, err := tx.Exec(ctx, `update scans set summary = $2 where id = $1`, res.ScanID, stored); err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `update targets set last_scan_at = now() where id = $1`, res.TargetID)
+		_, err = tx.Exec(ctx, `update targets set last_scan_at = now(),
+			db_checked_at = case when $2::timestamptz is not null then $2 when $3 then null else db_checked_at end where id = $1`,
+			res.TargetID, dbAt, len(rep.Packages) > 0)
 		return err
 	})
 	if err != nil {

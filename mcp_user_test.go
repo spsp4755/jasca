@@ -737,7 +737,7 @@ func TestMCPAdminTools(t *testing.T) {
 		st.Totals.Projects != 1 || st.Totals.Keys != 1 || st.Totals.Open.Open != 3 {
 		t.Errorf("system_status: %+v", st)
 	}
-	if !slices.ContainsFunc(st.Problems, func(p string) bool { return strings.Contains(p, "Trivy vulnerability DB is not installed") }) {
+	if !slices.ContainsFunc(st.Problems, func(p string) bool { return strings.Contains(p, "취약점 DB: 설치 안 됨") }) {
 		t.Errorf("problems do not name the missing Trivy DB: %v", st.Problems)
 	}
 

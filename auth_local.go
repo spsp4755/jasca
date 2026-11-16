@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/spsp4755/jasca/internal/trivy"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -39,7 +40,12 @@ func (s *server) authLocalRoutes() {
 		out := struct {
 			user
 			Notice json.RawMessage `json:"session_notice,omitempty"` // {"ended":n,"active":m}, in the first /me after a login
+			// the installed vulnerability DB, for the page shell's "the DB is old" banner; absent without one
+			VulnDB *vulnDBInfo `json:"vuln_db,omitempty"`
 		}{user: u}
+		if st, err := trivy.Status(s.trivyCacheDir()); err == nil {
+			out.VulnDB = &vulnDBInfo{st.UpdatedAt.UTC(), vulnDBStale(st.NextUpdate, time.Now())}
+		}
 		if ck, e := r.Cookie(sessionCookie); e == nil && c.Key == nil {
 			out.Notice = s.takeNotice(r.Context(), ck.Value)
 		}

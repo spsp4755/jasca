@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type K
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthConfig, useLogout, useMe } from "../api/hooks";
 import type { Me } from "../api/types";
-import { SYSTEM_ROLE_LABEL, fmtDept } from "../lib/format";
+import { SYSTEM_ROLE_LABEL, daysSince, fmtDate, fmtDept } from "../lib/format";
 import { useHotkeys } from "../lib/hotkeys";
 import { getTheme, setTheme, type ThemeMode } from "../lib/theme";
 import { useMutation } from "@tanstack/react-query";
@@ -142,6 +142,14 @@ export default function Layout() {
               본인이 접속한 것이 아니었다면 보안 담당자에게 알리세요.
             </span>
             <Button className="alert-action" onClick={() => setNotice(undefined)}>확인</Button>
+          </div>
+        )}
+        {me.data.vuln_db?.stale && (
+          <div className="alert alert-warn shell-alert no-print" role="status"><Icon name="alert" />
+            <span>
+              취약점 DB가 {daysSince(me.data.vuln_db.updated_at)}일 전 것입니다({fmtDate(me.data.vuln_db.updated_at)} 생성). 그 뒤에 알려진 취약점은 스캔과 재평가에서 탐지되지 않습니다.{" "}
+              {me.data.system_role === "admin" ? <><Link to="/admin/trivy">관리 → Trivy DB</Link>에서 새 DB를 올리세요.</> : "관리자에게 DB 갱신을 요청하세요."}
+            </span>
           </div>
         )}
         {me.data.source === "local" && (

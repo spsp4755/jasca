@@ -18,6 +18,7 @@ import AdminRecheck from "./pages/admin/Recheck";
 import AdminRetention from "./pages/admin/Retention";
 import AdminSSO from "./pages/admin/SSO";
 import AdminSync from "./pages/admin/Sync";
+import AdminSystem from "./pages/admin/System";
 import AdminTrivy from "./pages/admin/Trivy";
 import AdminUsers from "./pages/admin/Users";
 import Advisories from "./pages/Advisories";
@@ -56,7 +57,7 @@ export const pages: RouteObject[] = [
       { path: "users", element: <AdminUsers /> }, { path: "sso", element: <AdminSSO /> }, { path: "sync", element: <AdminSync /> },
       { path: "default-policy", element: <AdminDefaultPolicy /> }, { path: "trivy", element: <AdminTrivy /> }, { path: "recheck", element: <AdminRecheck /> },
       { path: "ai", element: <AdminAI /> }, { path: "channels", element: <AdminChannels /> },
-      { path: "retention", element: <AdminRetention /> }, { path: "audit", element: <AdminAudit /> },
+      { path: "system", element: <AdminSystem /> }, { path: "retention", element: <AdminRetention /> }, { path: "audit", element: <AdminAudit /> },
     ],
   },
   { path: "admin/*", element: <AdminLayout /> },

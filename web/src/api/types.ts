@@ -35,6 +35,8 @@ export interface Me {
   id: number; username: string; name: string; email: string; system_role: SystemRole; source: "local" | "sso"; depts: string[]; groups: string[];
   /** Only in the first /me after a login that found the account open elsewhere: sessions it ended, sessions still open. */
   session_notice?: { ended: number; active: number };
+  /** The installed vulnerability DB (absent without one). stale: 7 days past its next update, the rule of 관리 → Trivy DB. */
+  vuln_db?: { updated_at: string; stale: boolean };
 }
 export interface Principal { kind: "user" | "group"; principal: string; display: string }
 
@@ -70,6 +72,8 @@ export interface Policy { enabled: boolean; min_severity: Severity; max_count: n
 export interface NotifySub { channel_id: number; events: string[] }
 export interface Target {
   id: number; kind: TargetKind; name: string; last_scan_at: string | null; counts: Counts; recheck_excluded: boolean;
+  /** Build time of the vulnerability DB this server last checked the target's packages against; null = not checked here yet. */
+  db_checked_at: string | null;
 }
 
 // --- scans ---
@@ -80,7 +84,7 @@ export interface Scan {
   id: number; project_id: number; target_id: number; target_kind: TargetKind; target_name: string; source: ScanSource;
   format: string; ref: string; status: JobState; error: string; created_by_user: number | null; created_by_token: number | null; created_by: string;
   /** packages: how many the scan examined. warnings: what it could not examine (Java archives without a Java DB, nothing recognisable). */
-  summary: Partial<Counts> & { os?: { family: string; name: string }; packages?: number; warnings?: string[] }; policy: PolicyResult | null; has_raw: boolean;
+  summary: Partial<Counts> & { os?: { family: string; name: string }; packages?: number; warnings?: string[]; db_updated_at?: string }; policy: PolicyResult | null; has_raw: boolean;
   created_at: string; finished_at: string | null;
 }
 export interface ScanPage { items: Scan[]; next_before: number | null }

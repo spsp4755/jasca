@@ -21,6 +21,7 @@ L.run(async () => {
   await tour("lee", ["/", "/projects", "/projects/e2e-proj", "/projects/e2e-proj/fixes", "/projects/e2e-proj/settings", "/findings", "/findings?assignee=me", "/packages", "/account/mcp", "/exceptions", "/advisories", "/reports", "/admin"]);
   await tour("admin", ["/admin/users", "/admin/sso", "/admin/sync", "/admin/default-policy", "/admin/trivy", "/admin/recheck", "/admin/ai",
     "/admin/channels", "/admin/retention", "/admin/audit"]);
+  await tour("admin", ["/admin/system"]);
   await browser.close();
   const f = L.OUT + "/console-errors.log";
   const rows = fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n").filter(Boolean) : [];

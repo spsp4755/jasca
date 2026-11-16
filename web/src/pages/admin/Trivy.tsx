@@ -246,6 +246,7 @@ export default function Trivy() {
     qc.setQueryData(["/admin/trivy"], r);
     qc.invalidateQueries({ queryKey: ["/admin/recheck"] });
     qc.invalidateQueries({ queryKey: ["/auth/config"] }); // trivy_db_ready: the scan page stops saying there is no DB
+    qc.invalidateQueries({ queryKey: ["/me"] }); // vuln_db: the shell's "the DB is old" banner goes away
   }
 
   return (
