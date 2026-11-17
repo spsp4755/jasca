@@ -122,16 +122,25 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request, c *reqC
 		return
 	}
 	// Open on day D = first seen before the end of D and not fixed before then (accepted and false-positive
-	// findings are left out). Days are in JASCA_TZ.
+	// findings are left out). Days are in JASCA_TZ. One pass over the findings: each is open from day a (0 = before
+	// the 30 days) until day b, counted as +1 at a and -1 at b, and a running sum gives the days. Joining every
+	// finding to every day took seconds with a few hundred thousand findings. The first day is a scalar subquery
+	// so that it is computed once and the scan can run in parallel.
 	tz := s.cfg.Loc.String()
 	cond, args = vis("f", 2)
-	rows, err := s.db.Query(ctx, `select to_char(d, 'YYYY-MM-DD'),
-			count(f.id) filter (where f.severity = 'CRITICAL'), count(f.id) filter (where f.severity = 'HIGH'),
-			count(f.id) filter (where f.severity = 'MEDIUM'), count(f.id) filter (where f.severity = 'LOW')
-		from generate_series((now() at time zone $1)::date::timestamp - interval '29 days', (now() at time zone $1)::date::timestamp, interval '1 day') d
-		left join findings f on f.status in ('open', 'fixed') and f.first_seen_at < (d + interval '1 day') at time zone $1
-			and (f.fixed_at is null or f.fixed_at >= (d + interval '1 day') at time zone $1) and `+cond+`
-		group by d order by d`, append([]any{tz}, args...)...)
+	const day0 = `(select (now() at time zone $1)::date - 29)`
+	rows, err := s.db.Query(ctx, `with ev as (select g.day, x.severity, sum(g.n) n from (
+				select f.severity, greatest((f.first_seen_at at time zone $1)::date - `+day0+`, 0) a,
+					coalesce((f.fixed_at at time zone $1)::date - `+day0+`, 30) b, count(*) n
+				from findings f where f.status in ('open', 'fixed')
+					and (f.fixed_at is null or f.fixed_at >= (select `+day0+`::timestamp at time zone $1)) and `+cond+` group by 1, 2, 3) x
+			cross join lateral (values (x.a, x.n), (x.b, -x.n)) g(day, n) where x.a < x.b and x.a < 30 group by 1, 2)
+		select to_char(`+day0+` + i, 'YYYY-MM-DD'),
+			coalesce(sum(sum(ev.n) filter (where ev.severity = 'CRITICAL')) over (order by i), 0)::int,
+			coalesce(sum(sum(ev.n) filter (where ev.severity = 'HIGH')) over (order by i), 0)::int,
+			coalesce(sum(sum(ev.n) filter (where ev.severity = 'MEDIUM')) over (order by i), 0)::int,
+			coalesce(sum(sum(ev.n) filter (where ev.severity = 'LOW')) over (order by i), 0)::int
+		from generate_series(0, 29) i left join ev on ev.day = i group by i order by i`, append([]any{tz}, args...)...)
 	if err != nil {
 		fail(err)
 		return

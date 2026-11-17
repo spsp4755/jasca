@@ -26,10 +26,20 @@ func openDB(ctx context.Context, dsn, schema string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
+	// SET after connecting, not a startup parameter: connection poolers refuse startup parameters they do not know
+	set := ""
 	if schema != "" {
-		// SET after connecting, not a startup parameter: connection poolers refuse startup parameters they do not know
-		set := "set search_path to " + pgx.Identifier{schema}.Sanitize()
-		pc.AfterConnect = func(ctx context.Context, c *pgx.Conn) error { _, err := c.Exec(ctx, set); return err }
+		set = "set search_path to " + pgx.Identifier{schema}.Sanitize()
+	}
+	pc.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
+		// The planner overestimates the membership subqueries so far that it JIT-compiles the list queries, 100 to
+		// 300 ms each time, to run them in a few ms. Tuning only: a server that refuses it works as before.
+		c.Exec(ctx, "set jit = off")
+		if set == "" {
+			return nil
+		}
+		_, err := c.Exec(ctx, set)
+		return err
 	}
 	db, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {

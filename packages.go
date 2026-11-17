@@ -94,12 +94,15 @@ func (s *server) searchPackages(ctx context.Context, c *reqCtx, q url.Values) (r
 		return nil, "", err
 	}
 	args = append(w.args, "%"+likeEscaper.Replace(name)+"%")
+	// offset 0 keeps the packages inside the loop over the inventory scans, read by scan. Left to choose, the planner
+	// reads the whole packages table once the inventories pass a few percent of it: 4 s at 5,000 targets, for a
+	// member with ten targets too.
 	rows, err := s.db.Query(ctx, `with inv as materialized (`+inv+`)
 		select pr.key, pr.name, i.id, i.kind, i.name, p.ecosystem, p.name, p.version,
 			coalesce(array_agg(distinct p.path) filter (where p.path <> ''), '{}'), sc.id, coalesce(sc.finished_at, sc.created_at)
-		from inv i join packages p on p.scan_id = i.scan_id join scans sc on sc.id = i.scan_id
-			join projects pr on pr.id = i.project_id
-		where p.name ilike $`+strconv.Itoa(len(args))+`
+		from inv i cross join lateral (select p.ecosystem, p.name, p.version, p.path from packages p
+				where p.scan_id = i.scan_id and p.name ilike $`+strconv.Itoa(len(args))+` offset 0) p
+			join scans sc on sc.id = i.scan_id join projects pr on pr.id = i.project_id
 		group by pr.key, pr.name, i.id, i.kind, i.name, p.ecosystem, p.name, p.version, sc.id
 		order by pr.key, i.name, i.id, p.name, p.version, p.ecosystem`, args...)
 	if err != nil {

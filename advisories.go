@@ -133,8 +133,12 @@ func loadAdvisories(ctx context.Context, q queryer, activeOnly bool, ids ...stri
 // whose installed version could not be compared.
 func (s *server) addWarnings(ctx context.Context, advs []*advisory) error {
 	unc := map[string]int{}
-	rows, _ := s.db.Query(ctx, `select rule_id, count(*) from findings where tool = 'advisory' and status <> 'fixed'
-		and details->>'version_uncertain' = 'true' group by rule_id`)
+	ids := make([]string, len(advs)) // by rule id: the index answers it, where tool alone reads every finding
+	for i, a := range advs {
+		ids[i] = a.ID
+	}
+	rows, _ := s.db.Query(ctx, `select rule_id, count(*) from findings where rule_id = any($1) and tool = 'advisory' and status <> 'fixed'
+		and details->>'version_uncertain' = 'true' group by rule_id`, ids)
 	for rows.Next() {
 		var id string
 		var n int
