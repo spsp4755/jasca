@@ -95,9 +95,12 @@ spec:
             - { name: data, mountPath: /var/lib/postgresql/data }
             - { name: run, mountPath: /var/run/postgresql }
             - { name: tmp, mountPath: /tmp }
+            # 병렬 쿼리가 쓰는 공유 메모리. 컨테이너 기본값(64MB)이면 여럿이 동시에 큰 목록을 열 때 "could not resize shared memory segment"로 실패합니다.
+            - { name: shm, mountPath: /dev/shm }
       volumes:
         - { name: run, emptyDir: {} }
         - { name: tmp, emptyDir: {} }
+        - { name: shm, emptyDir: { medium: Memory, sizeLimit: 256Mi } } # 메모리 한도(1Gi) 안에서 쓰입니다
   volumeClaimTemplates:
     - metadata:
         name: data

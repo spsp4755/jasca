@@ -1,4 +1,4 @@
-# JASCA v1.3.0 — 폐쇄망 배포 / 데이터 보존
+# JASCA v1.4.0 — 폐쇄망 배포 / 데이터 보존
 
 ## 가장 중요한 점
 
@@ -7,7 +7,7 @@
 - **PostgreSQL**: 사용자·프로젝트·스캔 결과·취약점 상태·감사 기록·설정 전부
 - **앱 PVC `jasca-data`(`/data`)**: Trivy 취약점 DB(`/data/trivy`)와 스캔 작업 폴더(`/data/work`, 스캔이 끝나면 지워짐)
 
-이미지나 Pod만 교체하고 **같은 DB와 같은 PVC**를 연결하면 데이터가 유지됩니다. Trivy DB는 PVC에 있으므로 PVC를 잃으면 관리자 화면에서 다시 올려야 합니다.
+이미지나 Pod만 교체하고 **같은 DB와 같은 PVC**를 연결하면 데이터가 유지됩니다. 백업은 DB만 받으면 됩니다. PVC를 잃으면 Trivy DB를 관리자 화면에서 다시 올리면 됩니다.
 
 - `data-jasca-postgres-0`: PostgreSQL 데이터 PVC. `jasca-data`: 앱 PVC. **Namespace/PVC/PV 삭제, 새 빈 PVC로 변경, DB 이름 변경 금지.**
 - PostgreSQL StatefulSet은 축소/삭제 시 PVC Retain을 명시합니다. 그러나 Namespace/PVC 자체 삭제, 스토리지 장애까지 막아주지는 않습니다. 별도 백업이 필수입니다.
@@ -18,7 +18,7 @@
 
 | 파일 | 용도 |
 |---|---|
-| jasca-v1.3.0.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.3.0`만 포함(Trivy 0.76.2 실행 파일 포함) |
+| jasca-v1.4.0.tar.gz | Linux/amd64 서비스 이미지 `jasca:v1.4.0`만 포함(Trivy 0.76.2 실행 파일 포함) |
 | postgres-v17.11-jasca1.tar.gz | 별도 선택 이미지 `postgres:v17.11-jasca1` (공식 17.11-bookworm 기반, 쓰지 않는 gosu·snakeoil 키 제거, root로 실행 불가) |
 | jasca.yaml | Secret·ConfigMap·PVC·Deployment·Service·Ingress. 사내 PostgreSQL 접속 정보까지 이 파일 하나에 적습니다 |
 | postgres.yaml | 사내 DB가 없을 때만 쓰는 전용 PostgreSQL·영구 PVC·내부 Service·NetworkPolicy |
@@ -36,16 +36,16 @@
 
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS # 이번에 반입한 파일 검증
-podman load -i jasca-v1.3.0.tar.gz
+podman load -i jasca-v1.4.0.tar.gz
 podman load -i postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
-podman image inspect jasca:v1.3.0 --format '{{.Os}}/{{.Architecture}}'
+podman image inspect jasca:v1.4.0 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 **Podman load만으로 Kubernetes containerd에 이미지가 등록되지는 않습니다.** 실행 가능한 모든 워커의 실제 CRI에 반입하세요.
 
 ```sh
 # 일반 containerd
-sudo ctr -n k8s.io images import jasca-v1.3.0.tar.gz
+sudo ctr -n k8s.io images import jasca-v1.4.0.tar.gz
 sudo ctr -n k8s.io images import postgres-v17.11-jasca1.tar.gz # postgres.yaml을 쓸 때만
 # k3s는 sudo k3s ctr images import, RKE2는 해당 런타임의 socket/ctr 사용.
 ```
@@ -206,7 +206,7 @@ sha256sum known_exploited_vulnerabilities.json epss_scores-current.csv.gz > inte
 
 이미지 태그만 바꾸면 됩니다. DB 스키마는 앱이 시작할 때 올립니다.
 
-1. DB와 PVC를 백업합니다(아래 "백업과 복원").
+1. DB를 백업합니다(아래 "백업과 복원").
 2. 새 `jasca-vX.Y.Z.tar.gz`를 모든 워커에 반입합니다(위 "이미지 반입").
 3. 새 `jasca.yaml`에 쓰던 값(Ingress host, `ingressClassName`, `JASCA_BOOTSTRAP_PASSWORD`, `JASCA_SECRET_KEY`, `JASCA_TZ`, DB 접속 정보, 이미지 경로)을 옮겨 적고 적용합니다. v1.1.1까지의 `jasca.yaml`(`JASCA_DATABASE_URL`과 `PGPASSWORD`)을 그대로 쓰면서 이미지 태그만 바꿔도 됩니다. 두 방식을 한 파일에 섞으면 앱이 시작하지 않습니다. `CHANGE_ME`인 채로 적용하면 Secret을 덮어씁니다. 새 `postgres.yaml`을 적용할 때도 `POSTGRES_PASSWORD`를 옮겨 적으세요.
 ```sh
@@ -257,30 +257,29 @@ kubectl -n jasca exec jasca-postgres-0 -- rm /tmp/jasca-move.sql
 
 ## 백업과 복원
 
-DB와 앱 PVC를 **같은 시점에** 함께 받으세요.
+**DB만 받으면 됩니다.** 프로젝트, 스캔 결과와 원본 보고서, 사용자, 설정, 감사 로그, 악용 정보가 모두 PostgreSQL에 있습니다. 앱 PVC(`jasca-data`)에는 다시 올리면 되는 Trivy DB와, 스캔이 끝나면 지워지는 작업 파일만 있으므로 백업하지 않습니다. 앱을 멈출 필요도 없습니다.
+
+| 받아 둘 것 | 방법 |
+|---|---|
+| DB | 사내 DB는 DB 담당자의 백업 정책을 따르거나 `pg_dump -h <Host> -p <Port> -U <User> -d <Database> -n '<Schema>' -Fc > jasca.dump`로 JASCA 스키마만 받습니다. 전용 PostgreSQL은 아래 명령을 씁니다 |
+| 쓰고 있는 `jasca.yaml` | `JASCA_SECRET_KEY`가 들어 있습니다. 이 키는 DB 백업에 없으므로 DB 백업과 **다른 곳에** 접근을 제한해 보관합니다 |
+| 마지막으로 올린 `db.tar.gz`, `javadb.tar.gz` | 선택. 복원한 뒤 다시 올릴 파일입니다. 없으면 인터넷 PC에서 새로 받으면 됩니다 |
 
 ```sh
 umask 077
-kubectl -n jasca exec jasca-postgres-0 -- pg_dump -U jasca -d jasca -Fc > jasca.dump
+kubectl -n jasca exec jasca-postgres-0 -- pg_dump -U jasca -d jasca -Fc > jasca.dump   # 전용 PostgreSQL일 때
 ```
 
-사내 DB를 쓰면 DB 백업은 DB 담당자의 백업 정책을 따르거나, `pg_dump -h <Host> -p <Port> -U <User> -d <Database> -n '<Schema>' -Fc`로 JASCA 스키마만 받습니다.
+백업 파일에는 사용자 정보와 보고서가 들어 있으므로 접근을 제한하세요.
 
-앱 PVC(`jasca-data`)는 스토리지의 스냅샷 기능(CSI VolumeSnapshot 등)으로 받는 것이 가장 간단합니다. 스냅샷을 쓸 수 없으면, 앱 이미지에는 셸이 없으므로 이미 반입한 PostgreSQL 이미지로 임시 Pod를 띄워 받습니다(PVC가 ReadWriteOnce라 앱을 잠시 멈춥니다). 스캔 작업 폴더(`work`)는 제외합니다.
+### 복원
 
-```sh
-kubectl -n jasca scale deployment/jasca --replicas=0
-kubectl -n jasca run jasca-data-backup --image=postgres:v17.11-jasca1 --restart=Never \
-  --overrides='{"spec":{"securityContext":{"runAsUser":10001,"fsGroup":10001},"containers":[{"name":"jasca-data-backup","image":"postgres:v17.11-jasca1","command":["sleep","3600"],"volumeMounts":[{"name":"data","mountPath":"/data","readOnly":true}]}],"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"jasca-data"}}]}}'
-kubectl -n jasca wait --for=condition=Ready pod/jasca-data-backup --timeout=120s
-kubectl -n jasca exec jasca-data-backup -- tar -C /data --exclude=./work -cf - . > jasca-data.tar
-kubectl -n jasca delete pod jasca-data-backup
-kubectl -n jasca scale deployment/jasca --replicas=1
-```
+1. 빈 DB(사내 DB면 빈 스키마)에 백업을 넣습니다: `pg_restore -h <Host> -p <Port> -U <User> -d <Database> --no-owner jasca.dump`. 넣은 뒤 `psql … -c 'ANALYZE'`를 한 번 실행해 두면 처음부터 제 속도가 납니다(하지 않아도 PostgreSQL이 얼마 뒤 스스로 합니다). 전용 PostgreSQL이면 `kubectl -n jasca exec -i jasca-postgres-0 -- pg_restore -U jasca -d jasca --no-owner < jasca.dump`.
+2. **백업 때 쓰던 것과 같은 `JASCA_SECRET_KEY`** 가 든 `jasca.yaml`을 적용합니다. 키가 다르거나 없어도 앱은 시작하지만 연동 비밀값은 "설정 안 됨"으로 보이고, 관리 화면에서 다시 입력해야 합니다. `JASCA_BOOTSTRAP_PASSWORD`는 빈 DB에서만 쓰이므로 복원한 DB의 관리자 비밀번호는 백업 때 그대로입니다.
+3. 앱 PVC가 새것이면 **관리 → Trivy DB**에서 `db.tar.gz`와 `javadb.tar.gz`를 다시 올립니다. 올리기 전에도 저장된 결과는 모두 볼 수 있고, 서버 스캔과 재평가만 멈춰 있습니다. 올리면 재평가가 자동으로 시작됩니다. 백업 시점에 차례를 기다리던 서버 스캔은 올린 파일이 없어 실패로 끝나니 다시 올리세요.
+4. **관리 → 시스템 상태**를 엽니다. "취약점 DB"와 "연동 비밀값 저장"이 정상이면 복원이 끝난 것입니다. 프로젝트 수와 최근 스캔도 확인합니다.
 
-복원은 같은 방법으로 임시 Pod를 띄우되 `readOnly`를 빼고, `kubectl exec -i … -- tar -C /data -xf - < jasca-data.tar`로 풉니다. DB는 빈 DB에 `pg_restore -U jasca -d jasca --clean --if-exists`로 복원합니다. 백업 파일에는 사용자 정보와 보고서가 들어 있으므로 접근을 제한하세요.
-
-`JASCA_SECRET_KEY`는 DB 백업에 들어 있지 않습니다. 복원한 DB는 **백업 때 쓰던 것과 같은 키**로 시작해야 연동 비밀값을 읽습니다. 키를 `jasca.yaml`과 함께 따로 보관하세요. 키가 다르거나 없어도 앱은 시작하지만 연동 비밀값은 "설정 안 됨"으로 보이고, 관리 화면에서 다시 입력해야 합니다.
+복원 연습에서 잰 시간입니다(대상 2,000개, 결과 119만 건, DB 8.6GB, NVMe SSD 한 대): `pg_dump` 3분 7초(백업 파일 4.3GB), 빈 PostgreSQL에 `pg_restore` 1분 54초, 빈 PVC로 앱 시작 1초, Trivy DB 올리기 2초 뒤 재평가 시작. 운영 장비에서도 한 번 해 보고 걸린 시간을 적어 두세요.
 
 ## 자원과 규모
 
@@ -289,6 +288,7 @@ kubectl -n jasca scale deployment/jasca --replicas=1
 - 디스크: PVC `jasca-data` 30Gi(Trivy DB 1~2GB + 작업 폴더, 압축 해제 상한 4GiB), `/tmp` emptyDir 2Gi. 스캔은 한 번에 하나씩 돌고, 올린 파일은 차례가 올 때까지 작업 폴더에서 기다렸다가 스캔이 끝나면 지워집니다. 큰 파일을 여러 개씩 올리는 환경이면 "기다리는 파일 크기의 합 + 4GiB"가 들어가도록 PVC를 늘리세요.
 - PostgreSQL PVC에는 스캔마다 원본 보고서(gzip으로 저장, 내려받을 때는 JSON)와 패키지 목록이 쌓입니다. **관리 → 보존 기간**의 두 조건(대상당 최근 N개, N일)을 모두 넘긴 스캔은 원본, 패키지 목록, 결과 연결이 지워지고 스캔 기록과 결과(취약점 이력)는 남습니다. 대상의 현재 인벤토리(패키지가 있는 가장 최근 스캔)는 재평가와 사내 권고 매칭에 쓰이므로 항상 남습니다.
 - 크기는 `대상 수 × max(최근 N개, 보존 일수 × 하루 업로드 수) × 스캔 1건`으로 잡으세요. 스캔 1건은 원본 0.1~1MB와 패키지 1,000개당 약 0.3MB입니다(부하 시험에서 잰 값은 패키지 1,000개당 0.15MB, 그 스캔이 본 결과 1,000건당 0.09MB였으니 이 식은 넉넉한 쪽입니다). 결과 자체는 100만 건에 약 0.5GB입니다. 예: 대상 300개, CI가 하루 5번 올리고 보존 14일이면 300 × 70 × 약 0.8MB ≈ 17GB입니다. 기본값(90일)은 업로드가 잦은 곳에서 20Gi를 넘을 수 있으니 일수를 줄이거나 PVC를 늘리세요.
+- 전용 PostgreSQL(`postgres.yaml`)은 병렬 쿼리용 공유 메모리(`/dev/shm`)로 256Mi를 둡니다. 컨테이너 기본값(64MB)에서는 대상 2,000개 규모에서 20명이 같은 큰 프로젝트의 보고서를 동시에 열 때 일부 요청이 실패했고, 256MB에서는 실패가 없었습니다.
 - 대상 2,000개 규모에서 재 본 숫자는 아래 "부하 시험으로 확인한 규모"에 있습니다. 대상 수백 개인 설치는 그보다 훨씬 가볍습니다.
 - Ingress는 업로드 상한보다 조금 큰 `proxy-body-size`, 요청 버퍼링 끄기, 600초 읽기·쓰기 제한 시간이 필요합니다(`jasca.yaml`에 있음). NGINX가 아닌 Ingress는 같은 의미의 설정을 따로 하세요.
 - AI 에이전트용 MCP 주소(`/mcp`)도 같은 Service와 Ingress로 나갑니다. 요청마다 JSON으로 한 번 응답하므로(SSE·WebSocket 없음) 따로 설정할 것이 없습니다. `Authorization` 헤더만 그대로 전달되면 됩니다. 개인 MCP 키로 작은 보고서를 올리는 요청은 본문이 8MB까지이므로 기본 `proxy-body-size`(2100m) 안에 들어갑니다.
@@ -298,29 +298,29 @@ kubectl -n jasca scale deployment/jasca --replicas=1
 `scripts/loadtest`(docs/maintaining.md "부하 시험")로 만든 데이터에 실제 서버를 띄워 잰 값입니다. 운영 장비의 약속이 아니라 "이 크기에서 이 정도였다"는 기록이니, 장비가 느리면 그만큼 느려집니다.
 
 - **데이터**: 프로젝트 200개(가장 큰 것은 대상 139개), 대상 2,000개, 사용자 300명, 스캔 8만 4천 건(기본 보존 기간, 패키지 목록이 남은 것 5만 건), 패키지 2,300만 줄, 예외 6천 건, 감사 로그 9만 건. 결과는 처음에 63만 건(열림 34만)이고, Trivy DB를 올린 첫 재평가가 54만 건을 더 찾아 **119만 건(열림 89만)** 이 된 상태에서 쟀습니다.
-- **장비**: 16코어 데스크톱 CPU, 메모리 32GB, NVMe SSD 한 대에 JASCA와 PostgreSQL 17을 함께 두었고 PostgreSQL 설정은 기본값(`shared_buffers` 128MB)입니다. 같은 장비에서 다른 시험이 함께 돌고 있었습니다.
+- **장비**: 16코어 데스크톱 CPU, 메모리 32GB, NVMe SSD 한 대에 JASCA와 PostgreSQL 17(컨테이너, 공유 메모리 256MB)을 함께 두었고 PostgreSQL 설정은 기본값(`shared_buffers` 128MB)입니다. 아래 표는 악용 정보(KEV 1,781건, EPSS 40만 건)를 올린 상태에서 다른 작업 없이 잰 값이고, 표 아래 항목은 같은 장비에서 다른 시험이 함께 돌 때 잰 값입니다.
 - **데이터베이스 크기**: 8.7GB. 스캔 원본 3.5GB, 패키지 목록 3.4GB, 스캔과 결과의 연결 0.9GB, 결과 0.6GB.
 
 화면이 보내는 요청 하나가 걸린 시간입니다(중앙값 / 95%). "20명 동시"는 20명이 쉬지 않고 모든 화면을 번갈아 요청한 경우라 실제 20명보다 훨씬 무겁습니다.
 
 | 화면 | 관리자 1명 (모든 프로젝트) | 멤버 1명 (자기 프로젝트 7개) | 20명 동시 |
 |---|---|---|---|
-| 홈 | 0.47초 / 0.69초 | 0.32초 / 0.34초 | 0.74초 / 1.6초 |
-| 프로젝트 목록 | 0.26초 / 0.31초 | 0.01초 | 0.03초 / 0.47초 |
-| 프로젝트의 결과 목록(검색, 정렬, 다음 쪽 포함) | 0.01~0.10초 | 0.01초 | 0.04초 / 0.19초 |
-| 프로젝트의 대상, 스캔 기록, 보고서 | 0.08초 / 0.13초 | 0.01초 | 0.04초 / 0.14초 |
-| 조치 계획 (열린 취약점 3만 5천 건인 프로젝트) | 0.17초 / 0.25초 | 0.06초 | 0.25초 / 0.37초 |
-| 결과 CSV 내려받기 (3만 5천 건, 17MB) | 0.31초 / 0.33초 | 0.03초 | 0.09초 / 0.41초 |
-| 전체 결과 목록 (열린 89만 건) | 0.56초 / 0.56초 | 0.19초 / 0.25초 | 0.36초 / 0.93초 |
-| 전체 결과 검색 | 0.56초 / 0.60초 | 0.55초 / 0.66초 | 2.0초 / 3.0초 |
-| 패키지 찾기 | 0.27~0.35초 / 0.54초 | 0.01초 | 0.06초 / 0.70초 |
-| 취약점·결과·스캔 상세, 예외, 감사 로그, 사용자 목록, MCP 도구 목록 | 0.01초 이하 | 0.01초 이하 | 0.04초 이하 |
+| 홈 | 0.47초 / 0.47초 | 0.35초 / 0.37초 | 1.1초 / 2.0초 |
+| 프로젝트 목록 | 0.24초 / 0.24초 | 0.01초 | 0.03초 / 0.44초 |
+| 프로젝트의 결과 목록(검색, 정렬, 다음 쪽 포함) | 0.01~0.07초 | 0.03초 이하 | 0.09초 / 0.17초 |
+| 프로젝트의 대상, 스캔 기록, 보고서 | 0.10초 / 0.10초 | 0.04초 이하 | 0.11초 / 0.28초 |
+| 조치 계획 (열린 취약점 3만 5천 건인 프로젝트) | 0.30초 / 0.38초 | 0.07초 | 0.34초 / 0.59초 |
+| 결과 CSV 내려받기 (3만 5천 건, 17MB) | 0.35초 / 0.36초 | 0.03초 | 0.12초 / 0.69초 |
+| 전체 결과 목록 (열린 89만 건) | 0.12초 / 0.14초 | 0.15초 / 0.16초 | 0.28초 / 0.57초 |
+| 전체 결과 검색 | 0.54초 / 0.54초 | 0.54초 / 0.68초 | 2.0초 / 3.0초 |
+| 패키지 찾기 | 0.27~0.35초 / 0.37초 | 0.01초 | 0.06초 / 0.66초 |
+| 취약점·결과·스캔 상세, 예외, 감사 로그, 사용자 목록, MCP 도구 목록 | 0.01초 이하 | 0.01초 이하 | 0.02초 이하 |
 | 로컬 `admin` 로그인 (비밀번호 해시 계산) | 0.15초 | | |
 
 - **전체 결과 검색**은 열린 결과 전체에서 글자를 찾으므로 결과 수에 비례합니다. 여러 사람이 동시에 검색하면 초 단위로 걸릴 수 있습니다. 프로젝트 안에서 찾으면 0.1초 안쪽입니다.
 - **CI 보고서 업로드**: 한 건에 0.07~0.4초(패키지 60~2,000개, 보고서 0.4~3.5MB). 5건씩 동시에 올리면 초당 12건, 가장 느린 한 건이 1.5초였습니다.
 - **서버 스캔**(한 번에 1건): 압축 19MB(풀면 60MB, 파일 4천 개, 패키지 830개)인 소스 묶음은 0.6초, 154MB 컨테이너 이미지(OS 패키지 144개)는 4.7초. 이미지 10개를 한꺼번에 올리면 마지막 것은 34초를 기다렸습니다.
-- **재평가**(대상 2,000개): 새 결과 54만 건을 넣은 첫 실행이 7분, 새로 찾을 것이 없는 실행이 2분 45초. 그동안 한 사람이 쓰는 화면 응답은 평소와 같았고, 20명 동시에서는 홈의 95% 값이 1.6초에서 2.2초로 늘었습니다.
+- **재평가**(대상 2,000개): 새 결과 54만 건을 넣은 첫 실행이 7분, 새로 찾을 것이 없는 실행이 2분 45초, 백업을 복원한 직후 새 Trivy DB를 올린 실행(새 결과 900건)이 4분 41초. 그동안 한 사람이 쓰는 화면 응답은 평소와 같았고, 20명 동시에서는 홈의 95% 값이 1.6초에서 2.2초로 늘었습니다.
 - **백그라운드 작업**: 하루 한 번 보존 기간 정리 2.3초, 한 시간마다 조치 기한 확인 0.02초(기한이 지난 8만 건을 처음 알릴 때는 1.7초). 조치 기한 설정을 바꾸거나 기한 기능이 없던 버전에서 올린 직후에는 열린 결과 전체의 기한을 다시 계산하는데, 34만 건에 5초였고 서버 시작이 그만큼 늦어집니다.
 - **메모리**: JASCA 프로세스는 40~75MB였고, 스캔과 재평가 때 뜨는 Trivy가 150~170MB를 더 썼습니다. 기본 한도(2Gi)의 대부분은 큰 이미지를 스캔하는 Trivy 몫입니다.
 - **대상 5,000개**로 늘린 같은 시험(프로젝트 500개, 결과 162만 건, 패키지 5,900만 줄, 데이터베이스 21GB): 홈 0.60초, 프로젝트 목록 0.24초, 전체 결과 목록과 검색 0.54~0.58초, 패키지 찾기 0.67~0.92초, CI 업로드 0.05~0.5초. 화면 대부분은 2,000개일 때와 같고 패키지 찾기만 대상 수에 비례해 늘었습니다. 재평가와 서버 스캔은 이 크기에서 재지 않았습니다.
@@ -347,6 +347,7 @@ kubectl -n jasca scale deployment/jasca --replicas=1
 | MCP 키로 API를 부르면 403 "MCP 키는 MCP 주소(/mcp)와 스캔 업로드에만 쓸 수 있습니다" | 개인 MCP 키(`jsu_…`)는 `/mcp`와 업로드(`POST …/scans`, `POST …/scan-jobs`)에서만 받습니다. CI에는 프로젝트 API 토큰(`jsc_…`)을 쓰세요. |
 | 모든 쓰기 요청이 403(`csrf`) | 프록시가 `Origin`/`Host`를 바꾸고 있습니다. 브라우저가 접속한 호스트가 그대로 전달되어야 합니다. |
 | 알림이 오지 않음 | **관리 → 알림 채널**의 시험 발송, SMTP 설정, 프로젝트 **설정 → 알림**에서 채널과 이벤트를 골랐는지 확인합니다. 전송은 실패하면 1분, 5분, 30분 뒤에 다시 시도하고 4번째 실패에서 멈춥니다. |
+| 여럿이 동시에 쓸 때 가끔 "서버 오류가 발생했습니다", 서버 로그에 `could not resize shared memory segment … No space left on device` | PostgreSQL이 컨테이너에서 돌고 공유 메모리(`/dev/shm`)가 기본값 64MB인 경우입니다. 병렬 쿼리가 이 공간을 쓰는데, 결과가 많은 프로젝트의 목록이나 보고서를 여럿이 동시에 열면 모자랍니다. 전용 PostgreSQL이면 이번 버전의 `postgres.yaml`을 적용하세요(`/dev/shm` 256Mi, `POSTGRES_PASSWORD`를 옮겨 적고 적용하면 DB Pod가 한 번 다시 시작합니다). 사내 DB가 컨테이너라면 DB 담당자에게 공유 메모리 크기를 늘려 달라고 요청합니다. 일반 서버에 설치한 PostgreSQL은 해당하지 않습니다. |
 | `/healthz`는 되는데 화면이 안 열림 | Ingress 경로와 TLS를 확인합니다. 앱은 `/` 전체를 서비스합니다. |
 
 무엇이 잘못됐는지 모를 때는 **관리 → 시스템 상태**부터 봅니다: DB, 데이터 볼륨, Trivy DB, 스캔 대기열, 재평가, 알림 전송, Keycloak 동기화, 최근 서버 로그가 한 화면에 "정상·주의·문제"와 할 일로 나옵니다. 화면을 열어 보지 않아도 알 수 있게 **관리 → 알림 채널 → 운영 알림**에서 받을 채널을 골라 두세요.
