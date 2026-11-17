@@ -87,7 +87,7 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
           <Empty compact icon="shield" title="14일 안에 만료되는 예외가 없습니다" />
         ) : (
           <ul className="list">
-            {d.expiring_exceptions.map((x) => {
+            {d.expiring_exceptions.slice(0, 5).map((x) => { // the soonest five fill the height of the chart beside it; fifty rows stretched the row to 2,800px
               const left = Math.max(0, daysUntil(x.expires_at));
               return (
                 <li key={x.id} className="list-row">
@@ -101,6 +101,9 @@ function HomeBody({ d, loading }: { d?: Dashboard; loading: boolean }) {
                 </li>
               );
             })}
+            {d.expiring_exceptions.length > 5 && (
+              <li className="list-row"><span className="list-sub">외 {d.expiring_exceptions.length - 5}건{d.expiring_exceptions.length >= 50 ? " 이상" : ""}이 14일 안에 만료됩니다</span></li>
+            )}
           </ul>
         )}
       </section>
