@@ -10,7 +10,7 @@ import Button from "../components/Button";
 import StatusBadge from "../components/StatusBadge";
 import Empty from "../components/Empty";
 import { useToast } from "../components/Toast";
-import { ApiError, api } from "../api/client";
+import { ApiError, api, qs } from "../api/client";
 import { isSecurity, useApi, useMe } from "../api/hooks";
 import { RESOLUTION_LABEL, SCOPE_LABEL, SEVERITY_LABEL, daysUntil, fmtDate } from "../lib/format";
 import type { ExceptionItem } from "../api/types";
@@ -59,7 +59,6 @@ export default function Exceptions() {
   const nav = useNavigate();
   const { data: me } = useMe();
   const sec = isSecurity(me);
-  const q = useApi<ExceptionItem[]>("/exceptions");
   const qc = useQueryClient();
   const toast = useToast();
   const [act, setAct] = useState<Act | null>(null);
@@ -75,13 +74,18 @@ export default function Exceptions() {
     if (t === firstTab) n.delete("tab"); else n.set("tab", t);
     nav({ search: n.toString() });
   };
-  const all = (q.data ?? []).filter((e) => (!onlyProject || e.project_key === onlyProject) && (!onlyID || e.id === onlyID));
-  const mine = all.filter((e) => e.requested_by === me?.id);
-  const pending = all.filter((e) => e.status === "pending");
-  const rows = tab === "pending" ? pending : tab === "all" ? all : mine;
+  // Each view asks the server for its own rows. The API returns the newest 500, so filtering one shared list here
+  // would hide an older request that still waits for a decision behind everybody else's newer ones.
+  const list = (view: Record<string, string>) => `/exceptions${qs({ project: onlyProject ?? undefined, id: onlyID ?? undefined, ...view })}`;
+  const allQ = useApi<ExceptionItem[]>(list({}));
+  const mineQ = useApi<ExceptionItem[]>(list({ mine: "true" }));
+  const pendingQ = useApi<ExceptionItem[]>(sec ? list({ status: "pending" }) : null);
+  const all = allQ.data ?? [], mine = mineQ.data ?? [], pending = pendingQ.data ?? [];
+  const q = tab === "pending" ? pendingQ : tab === "all" ? allQ : mineQ;
+  const rows = q.data ?? [];
 
   const close = () => { setAct(null); setNote(""); };
-  const done = () => { void qc.invalidateQueries({ queryKey: ["/exceptions"] }); close(); };
+  const done = () => { void qc.invalidateQueries({ predicate: (x) => String(x.queryKey[0]).startsWith("/exceptions") }); close(); };
   const decide = useMutation<unknown, ApiError, Act>({
     mutationFn: ({ item, kind }) => api.post(`/exceptions/${item.id}/${kind}`, { note: note.trim() }),
     onSuccess: (_r, v) => { toast(v.kind === "approve" ? "승인했습니다." : "반려했습니다.", "ok"); done(); },
@@ -130,6 +134,7 @@ export default function Exceptions() {
       {!approvals && <Tabs label="예외 구분" value={tab} onChange={setTab}
         tabs={[{ id: "mine", label: "내 요청", count: mine.length }, { id: "pending", label: "승인 대기", count: pending.length, hidden: !sec }, { id: "all", label: "전체", count: all.length }]} />}
       {q.error && <div className="alert alert-danger" role="alert">{q.error.message}</div>}
+      {rows.length >= 500 && <p className="muted">가장 최근 500건만 보입니다.{!onlyProject && " 더 오래된 예외는 프로젝트 화면의 예외 탭에서 프로젝트별로 볼 수 있습니다."}</p>}
       <div {...(approvals ? {} : { role: "tabpanel", id: `tabpanel-${tab}`, "aria-labelledby": `tab-${tab}` })} className="panel">
         <Table columns={cols} rows={rows} rowKey={(e) => e.id} loading={q.isLoading} caption="예외 목록"
           empty={<Empty title={tab === "pending" ? "승인 대기 중인 요청이 없습니다" : "예외가 없습니다"}

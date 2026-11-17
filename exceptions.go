@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -86,6 +87,19 @@ func (s *server) handleExceptionList(w http.ResponseWriter, r *http.Request, c *
 	}
 	if v := q.Get("project"); v != "" {
 		wh.add("p.key = ?", v)
+	}
+	// The list is the newest 500. The screens ask for exactly what they show (one exception, the caller's own
+	// requests, what waits for a decision), so that an older one is not cut off by everybody else's.
+	if v := q.Get("id"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			badRequest(w, "id는 숫자여야 합니다.")
+			return
+		}
+		wh.add("e.id = ?", n)
+	}
+	if q.Get("mine") == "true" && c.User != nil {
+		wh.add("e.requested_by = ?", c.User.ID)
 	}
 	rows, _ := s.db.Query(r.Context(), exceptionCols+`where `+wh.sql()+` order by e.id desc limit 500`, wh.args...)
 	items, err := pgx.CollectRows(rows, pgx.RowToStructByPos[exception])

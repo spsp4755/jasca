@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -386,6 +387,18 @@ func TestExceptionListNamesFindingAndNoDuplicates(t *testing.T) {
 	f := list[1]
 	if f["finding_rule"] != "CVE-2024-1" || f["finding_pkg"] != "zlib" || f["finding_severity"] != "HIGH" {
 		t.Fatalf("finding brief: %v", f)
+	}
+	// what the screens ask for: one exception, and the caller's own requests (the security user made none)
+	for q, want := range map[string]int{fmt.Sprintf("?id=%v", f["id"]): 1, "?mine=true": 0, "?mine=true&status=pending": 0} {
+		if n := len(decode[[]exView](t, do(t, e.s, "GET", "/api/v1/exceptions"+q, nil, e.secA))); n != want {
+			t.Errorf("%s: %d rows, want %d", q, n, want)
+		}
+	}
+	if rec := do(t, e.s, "GET", "/api/v1/exceptions?id=x", nil, e.secA); rec.Code != 400 {
+		t.Errorf("id=x: status %d, want 400", rec.Code)
+	}
+	if n := len(decode[[]exView](t, do(t, e.s, "GET", "/api/v1/exceptions?mine=true", nil, mck))); n != 2 {
+		t.Errorf("the requester's own: %d rows, want 2", n)
 	}
 }
 
