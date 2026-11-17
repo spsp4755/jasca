@@ -12,7 +12,8 @@ RUN npm run build \
     done
 
 # Trivy is built from its release tag instead of copied from the official image: the official 0.76.2 binary still carries
-# golang.org/x/crypto v0.58.0 (GO-2026-5932) and an older Go standard library. Same build flags as upstream's goreleaser.yml.
+# golang.org/x/crypto v0.58.0 (GO-2026-5932), OpenTelemetry v1.46.0 (CVE-2026-128085) and an older Go standard library.
+# Same build flags as upstream's goreleaser.yml.
 FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS trivy
 ARG TRIVY_VERSION=0.76.2
 ARG TRIVY_COMMIT=3f6334d223b52188324af3b9923b4249cd206652
@@ -20,7 +21,7 @@ WORKDIR /src
 RUN apk add --no-cache git \
     && git clone -q --depth 1 --branch "v${TRIVY_VERSION}" https://github.com/aquasecurity/trivy . \
     && [ "$(git rev-parse HEAD)" = "$TRIVY_COMMIT" ] \
-    && go get golang.org/x/crypto@v0.59.0 \
+    && go get golang.org/x/crypto@v0.59.0 go.opentelemetry.io/otel/sdk@v1.47.0 go.opentelemetry.io/otel/trace@v1.47.0 && go mod tidy \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -extldflags '-static' -X github.com/aquasecurity/trivy/pkg/version/app.ver=${TRIVY_VERSION}" -o /trivy ./cmd/trivy \
     && /trivy --version
 
@@ -40,7 +41,7 @@ RUN go vet ./... && go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="
     done
 # Apache-2.0 asks for the license text and a note of what was changed.
 COPY --from=trivy /src/LICENSE /out/licenses/Trivy-LICENSE
-RUN printf 'Trivy 0.76.2 (c) Aqua Security Software Ltd., licensed under the Apache License 2.0 (Trivy-LICENSE).\nBuilt from the source of that release (https://github.com/aquasecurity/trivy) with one change: golang.org/x/crypto raised to v0.59.0.\n' > /out/licenses/Trivy-NOTICE.txt
+RUN printf 'Trivy 0.76.2 (c) Aqua Security Software Ltd., licensed under the Apache License 2.0 (Trivy-LICENSE).\nBuilt from the source of that release (https://github.com/aquasecurity/trivy) with two changes: golang.org/x/crypto raised to v0.59.0 and the OpenTelemetry modules to v1.47.0.\n' > /out/licenses/Trivy-NOTICE.txt
 # npm packages shipped in the bundle
 COPY --from=web /lic/ /out/licenses/
 COPY --from=web /src/web/node_modules/pretendard/dist/LICENSE.txt /out/licenses/Pretendard-OFL.txt

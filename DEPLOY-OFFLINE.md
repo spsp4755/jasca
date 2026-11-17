@@ -356,4 +356,4 @@ kubectl -n jasca exec jasca-postgres-0 -- pg_dump -U jasca -d jasca -Fc > jasca.
 
 ## 서드파티 라이선스
 
-이미지의 `/licenses/`에 Go 모듈과 npm 패키지의 라이선스, Pretendard(OFL)가 들어 있습니다. 포함된 Trivy 0.76.2(Aqua Security, Apache License 2.0)는 그 릴리스의 소스에서 직접 빌드한 것입니다(`golang.org/x/crypto`만 v0.59.0으로 올림). 라이선스 원문은 `/licenses/Trivy-LICENSE`, 고지문은 `/licenses/Trivy-NOTICE.txt`에 있습니다.
+이미지의 `/licenses/`에 Go 모듈과 npm 패키지의 라이선스, Pretendard(OFL)가 들어 있습니다. 포함된 Trivy 0.76.2(Aqua Security, Apache License 2.0)는 그 릴리스의 소스에서 직접 빌드한 것입니다(`golang.org/x/crypto`를 v0.59.0으로, OpenTelemetry 모듈을 v1.47.0으로 올림). 라이선스 원문은 `/licenses/Trivy-LICENSE`, 고지문은 `/licenses/Trivy-NOTICE.txt`에 있습니다.
