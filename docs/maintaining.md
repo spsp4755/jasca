@@ -91,6 +91,31 @@ cd web && npm ci && npm run build
 - `JASCA_TRIVY_CACHE`는 이미 받아 둔 Trivy DB 디렉터리입니다. 설정하지 않으면 해당 테스트는 건너뜁니다.
 - 회사·내부 식별자 검사: `sh scripts/check-forbidden.sh`(금지어 목록은 저장소 밖 `~/.config/jasca/forbidden-words.txt`, 파일이 없거나 비어 있으면 실패).
 
+## 부하 시험
+
+`scripts/loadtest`는 빈 DB를 운영 규모의 데이터로 채우고, 그 DB로 띄운 서버를 재는 도구입니다. 서버 바이너리에 들어가지 않고 `go test`로도 돌지 않습니다. 목록 조회나 인덱스, 백그라운드 작업을 고쳤을 때, 그리고 DEPLOY-OFFLINE.md "자원과 규모"의 숫자를 고치기 전에 돌립니다.
+
+```sh
+# 1. 빈 DB를 만들고 서버를 그 DB로 한 번 띄웠다 끕니다(시드는 마이그레이션이 끝난 빈 DB에만 들어갑니다).
+export JASCA_LOADTEST_DATABASE_URL='postgres://jasca:<암호>@127.0.0.1:55440/jasca_load'
+
+# 2. 채우기. 대상 2,000개 기준 약 5분, 약 9GB (5,000개는 약 13분, 21GB)
+go run ./scripts/loadtest seed -targets 2000
+
+# 3. 그 DB로 서버를 띄운 뒤(예: JASCA_ADDR=127.0.0.1:18411, JASCA_TRIVY_BIN, JASCA_DATA_DIR) 잽니다.
+go run ./scripts/loadtest upload    # CI 보고서 60건을 업로드 API로 올림 (1분 안쪽)
+go run ./scripts/loadtest measure   # 화면마다 요청 시간: 관리자 1명, 멤버 1명, 20명 동시 (1~3분)
+go run ./scripts/loadtest scans     # 서버 스캔 10건을 한꺼번에 올려 대기·실행 시간 (Trivy DB를 올린 뒤)
+```
+
+- **시드가 만드는 것**(`scripts/loadtest/seed.sql`): 프로젝트 200개(가장 큰 것은 대상 약 140개), 대상 2,000개, 사용자 300명과 부서·그룹 멤버십, 스캔 약 8만 건(기본 보존 기간 모양: 대상의 15%는 가끔, 75%는 매주, 10%는 매일 올림. 패키지 목록이 남은 스캔 약 5만 건), 패키지 약 2,300만 줄(스캔 1건에 60~2,000개), 결과 약 63만 건(열림 34만, 해결 29만, 예외 처리 5천), 예외 6천 건, 감사 로그 9만 건. `-targets`를 바꾸면 프로젝트와 사용자 수가 함께 바뀝니다.
+- **시드와 서버가 어긋나지 않게**: 시드는 SQL로 지문(fingerprint)을 계산하므로 끝에 서버의 계산(`formats.Fingerprint`)과 대조하고, `upload`는 올린 보고서마다 서버가 "새 결과 2건, 뺀 패키지의 결과는 해결"로 받아들였는지 확인합니다. 둘 중 하나가 실패하면 `seed.sql`이 `ingest.go`와 달라진 것이니 시드를 고칩니다.
+- **재평가**: 시드에는 실제로 취약한 옛 버전 패키지 70여 개(lodash 4.17.15, log4j-core 2.14.1 등)가 들어 있고 그 취약점은 넣지 않았습니다. Trivy DB를 올리면 시작하는 첫 재평가가 그것을 찾아 넣고(가장 무거운 경우), 바로 한 번 더 돌리면(**지금 재평가**) 새로 찾을 것이 없는 평소 상태를 잽니다. 소요 시간은 **관리 → 재평가**에 남습니다.
+- **느린 쿼리 찾기**: `alter database jasca_load set log_min_duration_statement = 250`을 주고 서버를 다시 띄우면 250ms 넘는 문장이 PostgreSQL 로그에 남습니다. 실행 계획까지 보려면 `session_preload_libraries = 'auto_explain'`, `auto_explain.log_min_duration`, `auto_explain.log_analyze`를 같은 방법으로 켭니다(잴 때는 끕니다).
+- `JASCA_BOOTSTRAP_PASSWORD`를 주면 `measure`가 로컬 `admin` 로그인 시간도 잽니다. `-out 파일`로 숫자를 JSON으로 남겨 고치기 전후를 비교합니다.
+- `measure`와 `scans`는 시드 사용자의 세션을 DB에 직접 넣습니다. **시험용 DB에만 쓰세요.**
+- 화면은 숫자만으로 알 수 없습니다. 채운 서버를 브라우저로 열어 긴 목록, 넘치는 칸, 항목이 많은 선택 상자를 직접 확인하세요.
+
 ## 릴리스
 
 1. `deploy/jasca.yaml`의 `image: jasca:vX.Y.Z`와 `Dockerfile`의 `ARG VERSION` 기본값, `CHANGELOG.md`(새 항목을 위에 추가), `RELEASE-NOTES.md`(**이번 버전만**)를 고치고 커밋합니다. 작업 트리가 깨끗해야 합니다.
