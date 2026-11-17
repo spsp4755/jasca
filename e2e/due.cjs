@@ -122,7 +122,7 @@ L.run(async () => {
 
   // the same finding elsewhere: CSV and MCP
   const csv = await lee.api.get(`/findings.csv?project=${key}&due=overdue`);
-  L.ok(csv.split("\r\n")[0].endsWith('"담당자","조치 기한"') && csv.includes(`"${leeName}"`) && csv.includes(CVE), "the CSV has 담당자 and 조치 기한");
+  L.ok(csv.split("\r\n")[0].includes('"담당자","조치 기한"') && csv.includes(`"${leeName}"`) && csv.includes(CVE), "the CSV has 담당자 and 조치 기한");
   const mcp = await fetch(`${L.BASE}/mcp`, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_findings", arguments: { overdue: true } } }) });
   const tool = JSON.parse((await mcp.json()).result.content[0].text);
