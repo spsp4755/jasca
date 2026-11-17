@@ -161,6 +161,9 @@ func (s *server) systemInfo(ctx context.Context) (*sysInfo, error) {
 		// "context canceled": a browser left before its answer, not a fault of the server
 		if time.Since(e.at) > 24*time.Hour || strings.Contains(e.text, " listening on ") || strings.Contains(e.text, "shutting down") ||
 			strings.Contains(e.text, "context canceled") ||
+			// routine lines of other features: the secrets row and the 악용 정보 row already say what these say
+			strings.Contains(e.text, "secrets: JASCA_SECRET_KEY is not set") || strings.Contains(e.text, "secrets: encrypted ") ||
+			(strings.Contains(e.text, "intel: ") && strings.Contains(e.text, " replaced, ")) ||
 			(strings.Contains(e.text, " database ") && strings.Contains(e.text, ", schema ")) {
 			continue
 		}

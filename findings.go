@@ -339,7 +339,11 @@ func (s *server) writeFindings(w http.ResponseWriter, r *http.Request, u *user, 
 			return
 		}
 	}
-	rows, _ := s.db.Query(ctx, findingCols+`where `+f.sql()+order+` limit `+strconv.Itoa(limit), f.args...)
+	// The page's ids first, on the narrow findings rows (the conditions and sort keys name only f and vi), then the
+	// full rows of just that page: sorting every matching row already joined to its target, project and details
+	// took 0.8 s for 890k open findings, this takes 0.1 s.
+	rows, _ := s.db.Query(ctx, findingCols+`where f.id in (select f.id from findings f`+intelJoin+`where `+f.sql()+order+
+		` limit `+strconv.Itoa(limit)+`)`+order, f.args...)
 	items, err := pgx.CollectRows(rows, pgx.RowToStructByPos[findingView])
 	if err != nil {
 		writeInternal(w, "finding list", err)
